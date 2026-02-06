@@ -7,12 +7,13 @@ Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),
     'verified',
-])->prefix('users')->name('users.')->group(function () {
+])->group(function () {
     
-    Route::get('/', [UserController::class, 'index'])->name('index');
-    Route::post('/', [UserController::class, 'store'])->name('store');
-    Route::put('/{user}', [UserController::class, 'update'])->name('update');
-    Route::delete('/{user}', [UserController::class, 'destroy'])->name('destroy');
-    Route::put('/{user}/toggle-status', [UserController::class, 'toggleStatus'])->name('toggle-status');
+    // Rutas personalizadas (definirlas explícitamente)
+    Route::put('users/{user}/toggle-status', [UserController::class, 'toggleStatus'])->name('users.toggle-status');
+
+    // Ruta Resource: Genera index, create, store, show, edit, update, destroy automáticamente
+    // URL base: /users | Nombre base: users.*
+    Route::resource('users', UserController::class);
 
 });
