@@ -61,6 +61,13 @@ const toggleSidebar = () => {
                     @toggle-sidebar="toggleSidebar"
                 />
 
+                <!-- Page Header (Aquí se renderizan los botones y títulos de las vistas) -->
+                <header v-if="$slots.header" class="bg-white dark:bg-[#1e1e20] shadow-sm border-b border-gray-100 dark:border-[#2b2b2e] z-10 flex-none">
+                    <div class="mx-auto py-2 px-4 sm:px-6 lg:px-8">
+                        <slot name="header" />
+                    </div>
+                </header>
+
                 <!-- Main Content Scrollable Area -->
                 <main class="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
                     <!-- Slot del contenido de la página -->
@@ -72,7 +79,7 @@ const toggleSidebar = () => {
 </template>
 
 <style scoped>
-/* Eliminar padding por defecto del body del drawer de Element Plus para que el sidebar llene todo */
+/* Eliminar padding por defecto del body del drawer de Element Plus */
 :deep(.el-drawer__body) {
     padding: 0;
     background-color: transparent;

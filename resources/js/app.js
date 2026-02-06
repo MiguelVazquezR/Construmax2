@@ -8,6 +8,7 @@ import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 import locale from 'element-plus/dist/locale/es.mjs';
+import VueApexCharts from "vue3-apexcharts"; // Agregar import
 
 // 1. Importar librería de íconos
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
@@ -24,7 +25,8 @@ createInertiaApp({
         // Usamos los plugins
         app.use(plugin)
            .use(ZiggyVue)
-           .use(ElementPlus, { locale });
+           .use(ElementPlus, { locale })
+           .use(VueApexCharts);
 
         // 2. Registrar cada ícono globalmente
         for (const [key, component] of Object.entries(ElementPlusIconsVue)) {

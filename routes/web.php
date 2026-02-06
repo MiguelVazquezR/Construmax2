@@ -20,3 +20,7 @@ Route::middleware([
 
 // Importar rutas modulares
 require __DIR__ . '/web/users.php';
+require __DIR__ . '/web/roles-permissions.php';
+require __DIR__ . '/web/customers.php';
+require __DIR__ . '/web/budgets.php';
+require __DIR__ . '/web/crm.php';
