@@ -1,13 +1,33 @@
 <script setup>
-import { router } from '@inertiajs/vue3';
+import { ref, onMounted } from 'vue'; // Importamos onMounted y ref
+import { router, Link } from '@inertiajs/vue3';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
+import axios from 'axios'; // Importamos axios para la consulta ligera
 
 defineProps({
     title: String,
 });
 
 const emit = defineEmits(['toggleSidebar']);
+
+// Estado para notificaciones de calendario
+const calendarStatus = ref({
+    invitations: 0,
+    today_events: 0,
+    total: 0
+});
+
+// Consultar estado al cargar la barra
+onMounted(async () => {
+    try {
+        // Hacemos una petición ligera para no cargar el servidor en cada navegación completa
+        const response = await axios.get(route('calendar.overview'));
+        calendarStatus.value = response.data;
+    } catch (error) {
+        console.error('Error cargando estado de calendario', error);
+    }
+});
 
 const switchToTeam = (team) => {
     router.put(route('current-team.update'), {
@@ -44,8 +64,29 @@ const logout = () => {
         <!-- Right: Actions -->
         <div class="flex items-center gap-2">
             
+            <!-- Calendario Icon con Badge -->
+            <el-tooltip 
+                effect="dark" 
+                :content="`Hoy: ${calendarStatus.today_events} eventos | Invitaciones: ${calendarStatus.invitations}`" 
+                placement="bottom"
+            >
+                <Link :href="route('calendar.index')" class="p-2 mr-1 text-gray-400 hover:text-primary transition-colors relative flex items-center">
+                    <el-badge 
+                        :value="calendarStatus.total" 
+                        :hidden="calendarStatus.total === 0" 
+                        :max="99" 
+                        class="!flex items-center"
+                        type="danger"
+                    >
+                        <el-icon :size="22"><Calendar /></el-icon>
+                    </el-badge>
+                </Link>
+            </el-tooltip>
+
+            <div class="h-6 w-px bg-gray-200 dark:bg-gray-700 mx-2"></div>
+
             <!-- Teams Dropdown -->
-            <div class="relative ms-3" v-if="$page.props.jetstream.hasTeamFeatures">
+            <div class="relative" v-if="$page.props.jetstream.hasTeamFeatures">
                 <Dropdown align="right" width="60">
                     <template #trigger>
                         <span class="inline-flex rounded-md">

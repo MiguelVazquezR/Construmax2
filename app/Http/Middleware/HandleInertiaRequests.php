@@ -27,17 +27,26 @@ class HandleInertiaRequests extends Middleware
     }
 
     /**
-     * Define the props that are shared by default.
+     * Defines the props that are shared by default.
      *
      * @see https://inertiajs.com/shared-data
-     *
-     * @return array<string, mixed>
+     * @param  \Illuminate\Http\Request  $request
+     * @return array
      */
     public function share(Request $request): array
     {
-        return [
-            ...parent::share($request),
-            //
-        ];
+        return array_merge(parent::share($request), [
+            'auth' => [
+                'user' => $request->user(),
+                // Enviamos solo los nombres para mantener el payload ligero
+                'permissions' => $request->user() ? $request->user()->getAllPermissions()->pluck('name') : [],
+                'roles' => $request->user() ? $request->user()->getRoleNames() : [],
+            ],
+            // Variables globales adicionales
+            'flash' => [
+                'success' => fn () => $request->session()->get('success'),
+                'error' => fn () => $request->session()->get('error'),
+            ],
+        ]);
     }
 }

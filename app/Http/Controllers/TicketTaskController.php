@@ -14,11 +14,14 @@ class TicketTaskController extends Controller
             'name' => 'required|string|max:255',
             'user_id' => 'nullable|exists:users,id',
             'start_date' => 'nullable|date',
-            'due_date' => 'nullable|date|after_or_equal:start_date', // Validación lógica
+            'due_date' => 'nullable|date|after_or_equal:start_date',
             'description' => 'nullable|string',
         ]);
 
         $ticket->tasks()->create($validated);
+        
+        // Actualizar estatus del ticket
+        $ticket->updateStatusBasedOnTasks();
 
         return back()->with('success', 'Tarea agregada al cronograma.');
     }
@@ -44,6 +47,9 @@ class TicketTaskController extends Controller
 
         $task->update($validated);
 
+        // Actualizar estatus del ticket padre
+        $task->ticket->updateStatusBasedOnTasks();
+
         return back()->with('success', 'Tarea actualizada.');
     }
 
@@ -56,12 +62,20 @@ class TicketTaskController extends Controller
             'completed_at' => $isComplete ? null : now(),
         ]);
 
+        // Actualizar estatus del ticket padre (Magia aquí)
+        $task->ticket->updateStatusBasedOnTasks();
+
         return back()->with('success', 'Estado de tarea actualizado.');
     }
 
     public function destroy(TicketTask $task)
     {
+        $ticket = $task->ticket; // Guardar referencia antes de borrar
         $task->delete();
+        
+        // Actualizar estatus del ticket por si borramos la única tarea pendiente
+        $ticket->updateStatusBasedOnTasks();
+
         return back()->with('success', 'Tarea eliminada.');
     }
 

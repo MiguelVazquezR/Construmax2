@@ -29,6 +29,9 @@ class Ticket extends Model implements HasMedia
         'scheduled_end' => 'date',
     ];
 
+    // IMPORTANTE: Esto asegura que 'progress' se envíe siempre en el JSON
+    protected $appends = ['progress'];
+
     // Relaciones
     public function budget(): BelongsTo
     {
@@ -45,7 +48,7 @@ class Ticket extends Model implements HasMedia
         return $this->hasMany(TicketTask::class);
     }
 
-    // Accessors rápidos para datos del presupuesto (evita cadenas largas en blade/vue)
+    // Accessors
     public function getCustomerNameAttribute()
     {
         return $this->budget->customer->name ?? 'N/A';
@@ -56,13 +59,51 @@ class Ticket extends Model implements HasMedia
         return $this->budget->service_type ?? 'N/A';
     }
     
-    // Progreso calculado basado en tareas completadas
+    // Progreso calculado
     public function getProgressAttribute()
     {
-        $total = $this->tasks->count();
+        // Usamos la relación cargada o la cargamos si no existe
+        $tasks = $this->relationLoaded('tasks') ? $this->tasks : $this->tasks()->get();
+        
+        $total = $tasks->count();
         if ($total === 0) return 0;
         
-        $completed = $this->tasks->where('status', 'Completada')->count();
+        $completed = $tasks->where('status', 'Completada')->count();
         return round(($completed / $total) * 100);
+    }
+
+    /**
+     * Automatización de Estatus
+     * Se llama desde el controlador de tareas al modificar avances
+     */
+    public function updateStatusBasedOnTasks()
+    {
+        // Recargar tareas para tener el conteo fresco
+        $this->load('tasks');
+        
+        $total = $this->tasks->count();
+        $completed = $this->tasks->where('status', 'Completada')->count();
+        $currentStatus = $this->status;
+        $newStatus = $currentStatus;
+
+        if ($total > 0) {
+            if ($completed === $total) {
+                // Si TODAS están completas -> Completado
+                $newStatus = 'Completado';
+            } elseif ($completed > 0 && $currentStatus === 'Programado') {
+                // Si hay avance y estaba en "Programado" -> En proceso
+                $newStatus = 'En proceso';
+            } elseif ($completed === 0 && $currentStatus === 'Completado') {
+                // Si se desmarcaron todas -> Regresa a Programado (o En proceso si hubiera logica intermedia)
+                $newStatus = 'Programado';
+            }
+        } elseif ($total === 0 && $currentStatus === 'Completado') {
+            // Si se borraron todas las tareas -> Programado
+            $newStatus = 'Programado';
+        }
+
+        if ($newStatus !== $currentStatus) {
+            $this->update(['status' => $newStatus]);
+        }
     }
 }
