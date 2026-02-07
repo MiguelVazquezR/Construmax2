@@ -14,44 +14,30 @@ defineProps({
 </script>
 
 <template>
-    <AppLayout title="Profile">
-        <template #header>
-            <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                Profile
-            </h2>
-        </template>
-
-        <div>
-            <div class="max-w-7xl mx-auto py-10 sm:px-6 lg:px-8">
-                <div v-if="$page.props.jetstream.canUpdateProfileInformation">
-                    <UpdateProfileInformationForm :user="$page.props.auth.user" />
-
-                    <SectionBorder />
-                </div>
-
-                <div v-if="$page.props.jetstream.canUpdatePassword">
-                    <UpdatePasswordForm class="mt-10 sm:mt-0" />
-
-                    <SectionBorder />
-                </div>
-
-                <div v-if="$page.props.jetstream.canManageTwoFactorAuthentication">
-                    <TwoFactorAuthenticationForm
-                        :requires-confirmation="confirmsTwoFactorAuthentication"
-                        class="mt-10 sm:mt-0"
-                    />
-
-                    <SectionBorder />
-                </div>
-
-                <LogoutOtherBrowserSessionsForm :sessions="sessions" class="mt-10 sm:mt-0" />
-
-                <template v-if="$page.props.jetstream.hasAccountDeletionFeatures">
-                    <SectionBorder />
-
-                    <DeleteUserForm class="mt-10 sm:mt-0" />
-                </template>
+    <AppLayout title="Mi Perfil">
+        <div class="max-w-4xl mx-auto py-8 sm:px-6 lg:px-8 space-y-8">
+            
+            <div v-if="$page.props.jetstream.canUpdateProfileInformation">
+                <UpdateProfileInformationForm :user="$page.props.auth.user" />
             </div>
+
+            <div v-if="$page.props.jetstream.canUpdatePassword">
+                <UpdatePasswordForm />
+            </div>
+
+            <div v-if="$page.props.jetstream.canManageTwoFactorAuthentication">
+                <TwoFactorAuthenticationForm
+                    :requires-confirmation="confirmsTwoFactorAuthentication"
+                />
+            </div>
+
+            <LogoutOtherBrowserSessionsForm :sessions="sessions" />
+
+            <template v-if="$page.props.jetstream.hasAccountDeletionFeatures">
+                <div class="pt-8 border-t border-gray-200 dark:border-gray-700">
+                    <DeleteUserForm />
+                </div>
+            </template>
         </div>
     </AppLayout>
 </template>

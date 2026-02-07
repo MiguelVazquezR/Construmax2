@@ -4,6 +4,9 @@ import { router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { debounce } from 'lodash';
 import { ElMessageBox, ElMessage } from 'element-plus';
+import { usePermissions } from '@/Composables/usePermissions';
+
+const { can } = usePermissions();
 
 const props = defineProps({
     users: Object,
@@ -13,7 +16,6 @@ const props = defineProps({
 const search = ref(props.filters.search || '');
 const perPage = ref(parseInt(props.filters.perPage) || 10);
 
-// Sincronización con el servidor
 const handleSearch = debounce((val) => {
     router.get(route('users.index'), { search: val, perPage: perPage.value }, {
         preserveState: true,
@@ -36,12 +38,10 @@ const handlePageChange = (val) => {
     });
 };
 
-// Navegación al detalle (Show)
 const handleRowClick = (row) => {
     router.visit(route('users.show', row.id));
 };
 
-// Acciones
 const confirmToggleStatus = (user) => {
     const action = user.is_active ? 'dar de baja' : 'reactivar';
     const type = user.is_active ? 'warning' : 'info';
@@ -66,9 +66,7 @@ const confirmToggleStatus = (user) => {
             }
         });
     })
-    .catch(() => {
-        // Cancelado por el usuario
-    });
+    .catch(() => {});
 };
 
 const deleteUser = (user) => {
@@ -101,12 +99,6 @@ watch(search, (val) => {
 
 <template>
     <AppLayout title="Gestión de usuarios">
-        <template #header>
-            <h2 class="font-semibold text-xl text-gray-800 dark:text-white leading-tight">
-                Usuarios
-            </h2>
-        </template>
-
         <div class="space-y-4">
             <!-- Barra de Herramientas -->
             <div class="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e]">
@@ -125,7 +117,7 @@ watch(search, (val) => {
                         <el-option label="20 / pág" :value="20" />
                         <el-option label="50 / pág" :value="50" />
                     </el-select>
-                    <Link :href="route('users.create')">
+                    <Link v-if="can('users.create')" :href="route('users.create')">
                         <el-button type="primary" color="#f26c17" icon="Plus">
                             Nuevo usuario
                         </el-button>
@@ -133,10 +125,10 @@ watch(search, (val) => {
                 </div>
             </div>
 
-            <!-- CONTENEDOR UNIFICADO (Tabla + Paginación) -->
+            <!-- CONTENEDOR UNIFICADO -->
             <div class="bg-white dark:bg-[#1e1e20] rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
                 
-                <!-- VISTA DE ESCRITORIO (Tabla) -->
+                <!-- VISTA DE ESCRITORIO -->
                 <div class="hidden md:block">
                     <el-table 
                         :data="users.data" 
@@ -159,6 +151,24 @@ watch(search, (val) => {
                             </template>
                         </el-table-column>
 
+                        <!-- Nueva Columna: Roles -->
+                        <el-table-column label="Rol" min-width="150">
+                            <template #default="scope">
+                                <div class="flex flex-wrap gap-1">
+                                    <el-tag 
+                                        v-for="role in scope.row.roles" 
+                                        :key="role.id" 
+                                        size="small" 
+                                        type="info" 
+                                        effect="plain"
+                                    >
+                                        {{ role.name }}
+                                    </el-tag>
+                                    <span v-if="!scope.row.roles || scope.row.roles.length === 0" class="text-xs text-gray-400">Sin rol</span>
+                                </div>
+                            </template>
+                        </el-table-column>
+
                         <el-table-column label="Departamento" min-width="150">
                             <template #default="scope">
                                 {{ scope.row.employee ? scope.row.employee.department : 'N/A' }}
@@ -176,7 +186,6 @@ watch(search, (val) => {
                         <!-- Acciones -->
                         <el-table-column label="Acciones" width="100" align="center" fixed="right">
                             <template #default="scope">
-                                <!-- @click.stop evita que el clic en el botón dispare el row-click -->
                                 <div @click.stop>
                                     <el-dropdown trigger="click">
                                         <span class="el-dropdown-link cursor-pointer p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition display-inline-block">
@@ -184,25 +193,22 @@ watch(search, (val) => {
                                         </span>
                                         <template #dropdown>
                                             <el-dropdown-menu>
-                                                <!-- Opción Ver -->
                                                 <Link :href="route('users.show', scope.row.id)">
                                                     <el-dropdown-item icon="View">Ver detalles</el-dropdown-item>
                                                 </Link>
                                                 
-                                                <!-- Opción Editar -->
-                                                <Link :href="route('users.edit', scope.row.id)">
+                                                <Link v-if="can('users.edit')" :href="route('users.edit', scope.row.id)">
                                                     <el-dropdown-item icon="Edit">Editar</el-dropdown-item>
                                                 </Link>
                                                 
-                                                <!-- Opción Activar/Desactivar -->
-                                                <el-dropdown-item 
+                                                <el-dropdown-item v-if="can('users.toggle-status')"
                                                     icon="SwitchButton" 
                                                     @click="confirmToggleStatus(scope.row)"
                                                 >
                                                     {{ scope.row.is_active ? 'Dar de baja' : 'Reactivar' }}
                                                 </el-dropdown-item>
                                                 
-                                                <el-dropdown-item divided icon="Delete" class="text-red-500" @click="deleteUser(scope.row)">
+                                                <el-dropdown-item v-if="can('users.delete')" divided icon="Delete" class="text-red-500" @click="deleteUser(scope.row)">
                                                     Eliminar
                                                 </el-dropdown-item>
                                             </el-dropdown-menu>
@@ -231,28 +237,30 @@ watch(search, (val) => {
                         </div>
                         
                         <div class="text-sm text-gray-600 dark:text-gray-400 mb-4 pt-2">
+                            <p class="mb-1"><span class="font-semibold">Rol:</span> 
+                                <span v-if="user.roles && user.roles.length > 0">{{ user.roles.map(r => r.name).join(', ') }}</span>
+                                <span v-else class="italic text-gray-400">Sin rol</span>
+                            </p>
                             <p><span class="font-semibold">Depto:</span> {{ user.employee ? user.employee.department : 'Sin asignar' }}</p>
-                            <p><span class="font-semibold">Puesto:</span> {{ user.employee ? user.employee.position : 'Sin asignar' }}</p>
                         </div>
 
-                        <!-- Botones móviles con stop propagation -->
                         <div class="flex justify-end gap-2" @click.stop>
-                            <Link :href="route('users.edit', user.id)">
+                            <Link v-if="can('users.edit')" :href="route('users.edit', user.id)">
                                 <el-button size="small" icon="Edit" circle />
                             </Link>
-                            <el-button 
+                            <el-button v-if="can('users.toggle-status')"
                                 size="small" 
                                 :type="user.is_active ? 'warning' : 'success'" 
                                 icon="SwitchButton" 
                                 circle 
                                 @click="confirmToggleStatus(user)" 
                             />
-                            <el-button size="small" type="danger" icon="Delete" circle @click="deleteUser(user)" />
+                            <el-button v-if="can('users.delete')" size="small" type="danger" icon="Delete" circle @click="deleteUser(user)" />
                         </div>
                     </div>
                 </div>
 
-                <!-- Footer Paginación Integrado -->
+                <!-- Footer Paginación -->
                 <div class="flex flex-col sm:flex-row justify-between items-center p-4 bg-gray-50 dark:bg-[#252529] border-t border-gray-100 dark:border-[#2b2b2e]">
                     <div class="text-xs text-gray-500 mb-3 sm:mb-0">
                         Mostrando {{ users.from }} a {{ users.to }} de {{ users.total }} registros
@@ -274,17 +282,12 @@ watch(search, (val) => {
 </template>
 
 <style scoped>
-/* Para que la fila parezca cliqueable */
 :deep(.el-table .cursor-pointer) {
     cursor: pointer;
 }
-
-/* Evitar outline azul al hacer clic en el dropdown */
 .el-dropdown-link:focus {
     outline: none;
 }
-
-/* Fix para enlaces dentro del dropdown (display block para llenar el área) */
 :deep(.el-dropdown-menu__item a) {
     display: flex;
     align-items: center;

@@ -3,20 +3,22 @@ import { ref, reactive } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
-// Referencia al formulario de Element Plus para validaciones
+const props = defineProps({
+    roles: Array, // Recibimos la lista de roles
+});
+
 const formRef = ref();
 
-// Formulario de Inertia (sin password_confirmation)
 const form = useForm({
     name: '',
     email: '',
     password: '',
+    roles: [], // Array para múltiples roles
     department: '',
     position: '',
     phone: '',
 });
 
-// Reglas de validación para Element Plus (Cliente)
 const rules = reactive({
     name: [
         { required: true, message: 'El nombre es obligatorio', trigger: 'blur' },
@@ -29,6 +31,9 @@ const rules = reactive({
     password: [
         { required: true, message: 'La contraseña es obligatoria', trigger: 'blur' },
         { min: 8, message: 'Mínimo 8 caracteres', trigger: 'blur' },
+    ],
+    roles: [
+        { required: true, message: 'Debes asignar al menos un rol', trigger: 'change' },
     ],
     department: [
         { required: true, message: 'El departamento es obligatorio', trigger: 'change' },
@@ -44,7 +49,6 @@ const rules = reactive({
 const submit = () => {
     if (!formRef.value) return;
     
-    // Validar con Element Plus primero
     formRef.value.validate((valid) => {
         if (valid) {
             form.post(route('users.store'), {
@@ -100,9 +104,28 @@ const submit = () => {
                                     <el-input v-model="form.email" placeholder="juan@empresa.com" />
                                 </el-form-item>
 
-                                <!-- Password (Texto visible) -->
+                                <!-- Password -->
                                 <el-form-item label="Contraseña" prop="password" :error="form.errors.password">
                                     <el-input v-model="form.password" placeholder="Ingrese la contraseña inicial" />
+                                </el-form-item>
+
+                                <!-- Roles (Selector Múltiple) -->
+                                <el-form-item label="Rol de usuario" prop="roles" :error="form.errors.roles">
+                                    <el-select 
+                                        v-model="form.roles" 
+                                        multiple 
+                                        placeholder="Seleccionar roles" 
+                                        class="w-full"
+                                        collapse-tags
+                                        collapse-tags-tooltip
+                                    >
+                                        <el-option
+                                            v-for="role in roles"
+                                            :key="role.id"
+                                            :label="role.name"
+                                            :value="role.name"
+                                        />
+                                    </el-select>
                                 </el-form-item>
                             </div>
                         </div>
