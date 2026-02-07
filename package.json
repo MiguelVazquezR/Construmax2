@@ -25,7 +25,9 @@
     },
     "dependencies": {
         "@element-plus/icons-vue": "^2.3.2",
+        "apexcharts": "^5.3.6",
         "element-plus": "^2.13.2",
-        "lodash": "^4.17.23"
+        "lodash": "^4.17.23",
+        "vue3-apexcharts": "^1.10.0"
     }
 }
