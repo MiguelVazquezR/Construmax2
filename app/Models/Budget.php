@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
@@ -41,6 +42,12 @@ class Budget extends Model implements HasMedia
     public function responsible(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    // Relación con Ticket (Uno a Uno)
+    public function ticket(): HasOne
+    {
+        return $this->hasOne(Ticket::class);
     }
 
     // Conceptos del presupuesto

@@ -63,7 +63,9 @@ defineProps({
                         <span>Tickets</span>
                     </template>
                     <el-menu-item index="tickets-analytics">Analíticas</el-menu-item>
-                    <el-menu-item index="tickets-list">Gestión de Tickets</el-menu-item>
+                    <Link :href="route('tickets.index')">
+                        <el-menu-item index="tickets-list">Gestión de tickets</el-menu-item>
+                    </Link>
                 </el-sub-menu>
 
                 <!-- Módulo Configuración -->

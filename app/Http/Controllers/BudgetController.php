@@ -54,7 +54,9 @@ class BudgetController extends Controller
             'concepts.*.amount' => 'required|numeric|min:0',
         ]);
 
-        DB::transaction(function () use ($validated) {
+        $budget = null;
+
+        DB::transaction(function () use ($validated, &$budget) {
             $budget = Budget::create([
                 'name' => $validated['name'],
                 'service_type' => $validated['service_type'],
@@ -70,6 +72,15 @@ class BudgetController extends Controller
 
             $budget->concepts()->createMany($validated['concepts']);
         });
+
+        // --- RESPUESTA RÁPIDA PARA MODAL EN TICKETS ---
+        if ($request->boolean('quick_create')) {
+            // Devolvemos el objeto JSON para que el frontend lo agregue a la lista sin recargar
+            return response()->json([
+                'budget' => $budget?->load('customer'),
+                'message' => 'Presupuesto creado exitosamente.'
+            ], 201);
+        }
 
         return redirect()->route('budgets.index')->with('success', 'Presupuesto registrado correctamente.');
     }
