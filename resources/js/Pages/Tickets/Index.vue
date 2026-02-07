@@ -4,6 +4,9 @@ import { router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { debounce } from 'lodash';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { usePermissions } from '@/Composables/usePermissions';
+
+const { can } = usePermissions();
 
 const props = defineProps({
     tickets: Object, // Paginado
@@ -151,7 +154,7 @@ const deleteTicket = (ticket) => {
                         <el-option label="50 / pág" :value="50" />
                     </el-select>
 
-                    <Link :href="route('tickets.create')">
+                    <Link v-if="can('tickets.create')" :href="route('tickets.create')">
                         <el-button type="primary" color="#f26c17" icon="Plus" class="!font-bold">
                             Nuevo ticket
                         </el-button>
@@ -263,10 +266,10 @@ const deleteTicket = (ticket) => {
                                                 <Link :href="route('tickets.show', scope.row.id)">
                                                     <el-dropdown-item icon="View">Ver detalles</el-dropdown-item>
                                                 </Link>
-                                                <Link :href="route('tickets.edit', scope.row.id)">
+                                                <Link v-if="can('tickets.edit')" :href="route('tickets.edit', scope.row.id)">
                                                     <el-dropdown-item icon="Edit">Editar</el-dropdown-item>
                                                 </Link>
-                                                <el-dropdown-item divided icon="Delete" class="text-red-500" @click="deleteTicket(scope.row)">
+                                                <el-dropdown-item v-if="can('tickets.delete')" divided icon="Delete" class="text-red-500" @click="deleteTicket(scope.row)">
                                                     Eliminar
                                                 </el-dropdown-item>
                                             </el-dropdown-menu>

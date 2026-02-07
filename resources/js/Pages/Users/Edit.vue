@@ -5,21 +5,23 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 
 const props = defineProps({
     user: Object,
+    roles: Array, // Lista de roles disponibles
 });
 
 const formRef = ref();
 
-// Inicializamos el formulario con los datos existentes
+// Inicializamos el formulario y mapeamos los roles actuales del usuario
 const form = useForm({
     name: props.user.name,
     email: props.user.email,
-    password: '', // Se deja vacío intencionalmente
+    password: '', 
+    // Extraemos solo los nombres de los roles para el select múltiple
+    roles: props.user.roles ? props.user.roles.map(r => r.name) : [],
     department: props.user.employee?.department || '',
     position: props.user.employee?.position || '',
     phone: props.user.employee?.phone || '',
 });
 
-// Reglas de validación (Password es opcional aquí)
 const rules = reactive({
     name: [
         { required: true, message: 'El nombre es obligatorio', trigger: 'blur' },
@@ -30,8 +32,10 @@ const rules = reactive({
         { type: 'email', message: 'Ingresa un correo válido', trigger: 'blur' },
     ],
     password: [
-        // No es requerido, solo validamos longitud si se escribe algo
         { min: 8, message: 'Mínimo 8 caracteres', trigger: 'blur' },
+    ],
+    roles: [
+        { required: true, message: 'Debes asignar al menos un rol', trigger: 'change' },
     ],
     department: [
         { required: true, message: 'El departamento es obligatorio', trigger: 'change' },
@@ -103,6 +107,25 @@ const submit = () => {
                                         v-model="form.password" 
                                         placeholder="Dejar vacío para mantener la actual" 
                                     />
+                                </el-form-item>
+
+                                <!-- Roles (Selector Múltiple) -->
+                                <el-form-item label="Rol de usuario" prop="roles" :error="form.errors.roles">
+                                    <el-select 
+                                        v-model="form.roles" 
+                                        multiple 
+                                        placeholder="Seleccionar roles" 
+                                        class="w-full"
+                                        collapse-tags
+                                        collapse-tags-tooltip
+                                    >
+                                        <el-option
+                                            v-for="role in roles"
+                                            :key="role.id"
+                                            :label="role.name"
+                                            :value="role.name"
+                                        />
+                                    </el-select>
                                 </el-form-item>
                             </div>
                         </div>

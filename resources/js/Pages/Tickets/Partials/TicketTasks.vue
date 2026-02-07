@@ -2,6 +2,9 @@
 import { ref } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { usePermissions } from '@/Composables/usePermissions';
+
+const { can } = usePermissions();
 
 const props = defineProps({
     ticket: Object,
@@ -131,7 +134,7 @@ const showImage = (url) => {
                 <h3 class="text-lg font-bold text-gray-800 dark:text-white">Lista de actividades</h3>
                 <p class="text-sm text-gray-500">Gestiona las tareas operativas y sus evidencias.</p>
             </div>
-            <el-button type="primary" plain icon="Plus" @click="openCreateModal">
+            <el-button v-if="can('tickets.tasks.create')" type="primary" plain icon="Plus" @click="openCreateModal">
                 Nueva tarea
             </el-button>
         </div>
@@ -145,7 +148,7 @@ const showImage = (url) => {
             >
                 <div class="flex items-start gap-4">
                     <div class="pt-1">
-                        <div 
+                        <div v-if="can('tickets.tasks.toggle')"
                             @click="toggleTask(task)"
                             class="w-6 h-6 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors"
                             :class="task.status === 'Completada' ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-primary'"
@@ -163,8 +166,8 @@ const showImage = (url) => {
                                 {{ task.name }}
                             </h4>
                             <div class="flex items-center gap-1">
-                                <el-button type="primary" icon="Edit" circle size="small" plain @click="openEditModal(task)" />
-                                <el-button type="danger" icon="Delete" circle size="small" plain @click="deleteTask(task)" />
+                                <el-button v-if="can('tickets.tasks.edit')" type="primary" icon="Edit" circle size="small" plain @click="openEditModal(task)" />
+                                <el-button v-if="can('tickets.tasks.delete')" type="danger" icon="Delete" circle size="small" plain @click="deleteTask(task)" />
                             </div>
                         </div>
                         
@@ -209,7 +212,7 @@ const showImage = (url) => {
                                         <el-icon><ZoomIn /></el-icon>
                                     </div>
                                 </div>
-                                <el-upload
+                                <el-upload v-if="can('tickets.tasks.edit')"
                                     :show-file-list="false"
                                     :auto-upload="false"
                                     :on-change="(file) => handleEvidenceUpload(file, task)"

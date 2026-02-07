@@ -6,12 +6,12 @@ import { debounce } from 'lodash';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { usePermissions } from '@/Composables/usePermissions';
 
+const { can } = usePermissions();
+
 const props = defineProps({
     customers: Object, // Paginado
     filters: Object,
 });
-
-const { can } = usePermissions();
 
 const search = ref(props.filters.search || '');
 const perPage = ref(parseInt(props.filters.perPage) || 10);
@@ -93,7 +93,7 @@ watch(search, (val) => {
                         <el-option label="20 / pág" :value="20" />
                         <el-option label="50 / pág" :value="50" />
                     </el-select>
-                    <Link :href="route('customers.create')">
+                    <Link v-if="can('customers.create')" :href="route('customers.create')">
                         <el-button type="primary" color="#f26c17" icon="Plus">
                             Nuevo cliente
                         </el-button>
@@ -165,11 +165,11 @@ watch(search, (val) => {
                                                     <el-dropdown-item icon="View">Ver detalles</el-dropdown-item>
                                                 </Link>
                                                 
-                                                <Link :href="route('customers.edit', scope.row.id)">
+                                                <Link v-if="can('customers.edit')" :href="route('customers.edit', scope.row.id)">
                                                     <el-dropdown-item icon="Edit">Editar</el-dropdown-item>
                                                 </Link>
                                                 
-                                                <el-dropdown-item divided icon="Delete" class="text-red-500" @click="deleteCustomer(scope.row)">
+                                                <el-dropdown-item v-if="can('customers.delete')" divided icon="Delete" class="text-red-500" @click="deleteCustomer(scope.row)">
                                                     Eliminar
                                                 </el-dropdown-item>
                                             </el-dropdown-menu>

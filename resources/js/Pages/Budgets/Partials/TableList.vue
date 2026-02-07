@@ -153,10 +153,10 @@ const deleteBudget = (budget) => {
                 <div class="flex justify-between items-center pt-2 border-t border-gray-50 dark:border-gray-800">
                     <span class="text-xs text-gray-400">{{ item.service_type }}</span>
                     <div class="flex gap-2" @click.stop>
-                         <Link :href="route('budgets.edit', item.id)">
+                         <Link v-if="can('budgets.edit')" :href="route('budgets.edit', item.id)">
                             <el-button size="small" icon="Edit" circle />
                         </Link>
-                        <el-button size="small" type="danger" icon="Delete" circle @click="deleteBudget(item)" />
+                        <el-button v-if="can('budgets.delete')" size="small" type="danger" icon="Delete" circle @click="deleteBudget(item)" />
                     </div>
                 </div>
             </div>

@@ -3,6 +3,9 @@ import { ref, reactive, computed } from 'vue';
 import { useForm, usePage, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { usePermissions } from '@/Composables/usePermissions';
+
+const { can } = usePermissions();
 
 const props = defineProps({
     roles: Array,
@@ -166,7 +169,7 @@ const deletePermission = (perm) => {
                         <el-tab-pane label="Roles de usuario" name="roles">
                             <div class="flex justify-between items-center mb-4">
                                 <p class="text-sm text-gray-500">Administra los roles y sus accesos al sistema.</p>
-                                <el-button type="primary" color="#f26c17" icon="Plus" @click="openCreateRole">
+                                <el-button v-if="can('roles.create')" type="primary" color="#f26c17" icon="Plus" @click="openCreateRole">
                                     Crear rol
                                 </el-button>
                             </div>
@@ -189,8 +192,8 @@ const deletePermission = (perm) => {
                                     </div>
 
                                     <div class="flex justify-end gap-2 border-t border-gray-200 dark:border-[#3f3f46] pt-3 mt-auto">
-                                        <el-button size="small" icon="Edit" @click="openEditRole(role)">Editar</el-button>
-                                        <el-button size="small" type="danger" icon="Delete" plain @click="deleteRole(role)" />
+                                        <el-button v-if="can('roles.edit')" size="small" icon="Edit" @click="openEditRole(role)">Editar</el-button>
+                                        <el-button v-if="can('roles.delete')" size="small" type="danger" icon="Delete" plain @click="deleteRole(role)" />
                                     </div>
                                 </div>
                             </div>

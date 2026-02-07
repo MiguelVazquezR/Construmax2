@@ -153,9 +153,24 @@ class PermissionSeeder extends Seeder
                 'description' => 'Eliminar tickets operativos'
             ],
             [
-                'name' => 'tickets.tasks.manage',
+                'name' => 'tickets.tasks.create',
                 'category' => 'Tickets',
-                'description' => 'Gestionar tareas, check-lists y evidencias'
+                'description' => 'Crear tareas dentro de tickets'
+            ],
+            [
+                'name' => 'tickets.tasks.edit',
+                'category' => 'Tickets',
+                'description' => 'Editar tareas dentro de tickets y adjuntar evidencias'
+            ],
+            [
+                'name' => 'tickets.tasks.delete',
+                'category' => 'Tickets',
+                'description' => 'Eliminar tareas dentro de tickets'
+            ],
+            [
+                'name' => 'tickets.tasks.toggle',
+                'category' => 'Tickets',
+                'description' => 'Marcar tareas como completadas o pendientes de cualquier usuario'
             ],
 
             // --- MÓDULO: CALENDARIO ---

@@ -5,6 +5,9 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { debounce } from 'lodash';
 import Kanban from '@/Pages/Budgets/Partials/Kanban.vue';
 import TableList from '@/Pages/Budgets/Partials/TableList.vue';
+import { usePermissions } from '@/Composables/usePermissions';
+
+const { can } = usePermissions();
 
 const props = defineProps({
     budgets: Object,
@@ -107,7 +110,7 @@ watch([search, statusFilter, perPage], fetchData);
                         <el-option label="50 / pág" :value="50" />
                     </el-select>
 
-                    <Link :href="route('budgets.create')">
+                    <Link v-if="can('budgets.create')" :href="route('budgets.create')">
                         <el-button type="primary" color="#f26c17" icon="Plus">
                             Nuevo
                         </el-button>

@@ -1,6 +1,9 @@
 <script setup>
 import { Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { usePermissions } from '@/Composables/usePermissions';
+
+const { can } = usePermissions();
 
 defineProps({
     customer: Object,
@@ -32,11 +35,11 @@ const getWhatsappUrl = (phone) => {
     <AppLayout :title="`Cliente: ${customer.name}`">
         <template #header>
             <div class="flex items-center justify-between">
-                <h2 class="font-semibold text-xl text-gray-800 dark:text-white leading-tight">
+                <h2 class="font-semibold text-base text-gray-800 dark:text-white leading-tight">
                     Detalles del cliente
                 </h2>
                 <div class="flex gap-2">
-                    <Link :href="route('customers.edit', customer.id)">
+                    <Link v-if="can('customers.edit')" :href="route('customers.edit', customer.id)">
                         <el-button type="primary" color="#f26c17" icon="Edit">
                             Editar
                         </el-button>

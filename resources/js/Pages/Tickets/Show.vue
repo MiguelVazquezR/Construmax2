@@ -5,6 +5,9 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import TicketTasks from '@/Pages/Tickets/Partials/TicketTasks.vue';
 import TicketInfo from '@/Pages/Tickets/Partials/TicketInfo.vue';
 import TicketTimeline from '@/Pages/Tickets/Partials/TicketTimeline.vue';
+import { usePermissions } from '@/Composables/usePermissions';
+
+const { can } = usePermissions();
 
 const props = defineProps({
     ticket: Object,
@@ -31,7 +34,7 @@ const getStatusColor = (status) => {
         <template #header>
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div class="flex items-center gap-3">
-                    <h2 class="font-semibold text-xl text-gray-800 dark:text-white leading-tight">
+                    <h2 class="font-semibold text-gray-800 dark:text-white leading-tight">
                         Ticket de servicio #{{ ticket.id }}
                     </h2>
                     <el-tag :type="getStatusColor(ticket.status)" effect="dark" size="large">
@@ -43,7 +46,7 @@ const getStatusColor = (status) => {
                     <Link :href="route('tickets.index')">
                         <el-button icon="Back">Volver</el-button>
                     </Link>
-                    <Link :href="route('tickets.edit', ticket.id)">
+                    <Link v-if="can('tickets.edit')" :href="route('tickets.edit', ticket.id)">
                         <el-button type="primary" color="#f26c17" icon="Edit">
                             Editar
                         </el-button>

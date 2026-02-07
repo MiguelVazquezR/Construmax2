@@ -3,6 +3,9 @@ import { ref, computed } from 'vue';
 import { Link, useForm, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { usePermissions } from '@/Composables/usePermissions';
+
+const { can } = usePermissions();
 
 const props = defineProps({
     budget: Object,
@@ -146,7 +149,7 @@ const openPreview = (file) => {
         <template #header>
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div class="flex items-center gap-3">
-                    <h2 class="font-semibold text-xl text-gray-800 dark:text-white leading-tight">
+                    <h2 class="font-semibold text-gray-800 dark:text-white leading-tight">
                         Detalle del proyecto
                     </h2>
                     <el-tag :type="getStatusColor(budget.status)" effect="dark">
@@ -155,11 +158,10 @@ const openPreview = (file) => {
                 </div>
                 
                 <div class="flex gap-2 w-full sm:w-auto">
-                    <!-- BOTÓN VOLVER (Requerimiento 1) -->
                     <Link :href="route('budgets.index')" class="w-full sm:w-auto">
                         <el-button class="w-full sm:w-auto" icon="Back">Volver al listado</el-button>
                     </Link>
-                    <Link :href="route('budgets.edit', budget.id)" class="w-full sm:w-auto">
+                    <Link v-if="can('budgets.edit')" :href="route('budgets.edit', budget.id)" class="w-full sm:w-auto">
                         <el-button type="primary" color="#f26c17" icon="Edit" class="w-full sm:w-auto">
                             Editar
                         </el-button>
