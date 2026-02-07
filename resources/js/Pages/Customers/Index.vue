@@ -4,11 +4,14 @@ import { router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { debounce } from 'lodash';
 import { ElMessageBox, ElMessage } from 'element-plus';
+import { usePermissions } from '@/Composables/usePermissions';
 
 const props = defineProps({
     customers: Object, // Paginado
     filters: Object,
 });
+
+const { can } = usePermissions();
 
 const search = ref(props.filters.search || '');
 const perPage = ref(parseInt(props.filters.perPage) || 10);
@@ -72,12 +75,6 @@ watch(search, (val) => {
 
 <template>
     <AppLayout title="Gestión de clientes">
-        <template #header>
-            <h2 class="font-semibold text-xl text-gray-800 dark:text-white leading-tight">
-                Clientes
-            </h2>
-        </template>
-
         <div class="space-y-4">
             <!-- Barra de Herramientas -->
             <div class="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e]">

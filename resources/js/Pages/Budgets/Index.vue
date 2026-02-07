@@ -53,12 +53,6 @@ watch([search, statusFilter, perPage], fetchData);
 
 <template>
     <AppLayout title="Gestión de presupuestos">
-        <template #header>
-            <h2 class="font-semibold text-xl text-gray-800 dark:text-white leading-tight">
-                Presupuestos y servicios
-            </h2>
-        </template>
-
         <div class="space-y-4">
             <!-- Barra de Herramientas -->
             <div class="bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] flex flex-col lg:flex-row justify-between items-center gap-4">

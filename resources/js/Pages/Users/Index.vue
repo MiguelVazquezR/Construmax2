@@ -101,12 +101,6 @@ watch(search, (val) => {
 
 <template>
     <AppLayout title="Gestión de usuarios">
-        <template #header>
-            <h2 class="font-semibold text-xl text-gray-800 dark:text-white leading-tight">
-                Usuarios
-            </h2>
-        </template>
-
         <div class="space-y-4">
             <!-- Barra de Herramientas -->
             <div class="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e]">

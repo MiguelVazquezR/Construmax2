@@ -11,20 +11,17 @@ use Inertia\Inertia;
 
 class CalendarController extends Controller
 {
-    // --- NUEVO MÉTODO PARA EL BADGE ---
     public function overview()
     {
         $userId = Auth::id();
         $today = now()->startOfDay();
         $endToday = now()->endOfDay();
 
-        // 1. Invitaciones pendientes (Donde me invitaron y no he respondido)
         $pendingInvitations = DB::table('calendar_participants')
             ->where('user_id', $userId)
             ->where('status', 'Pendiente')
             ->count();
 
-        // 2. Eventos para hoy (Creados por mí O aceptados por mí)
         $todaysEvents = Calendar::where(function ($query) use ($userId) {
                 $query->where('user_id', $userId)
                       ->orWhereHas('participants', function ($q) use ($userId) {
@@ -32,7 +29,6 @@ class CalendarController extends Controller
                       });
             })
             ->where(function ($q) use ($today, $endToday) {
-                // Eventos que inician hoy o que están ocurriendo hoy (transcurso)
                 $q->whereBetween('start_time', [$today, $endToday])
                   ->orWhere(function($sub) use ($today) {
                       $sub->where('start_time', '<', $today)
@@ -69,8 +65,10 @@ class CalendarController extends Controller
                     'title' => $event->title,
                     'type' => $event->type,
                     'description' => $event->description,
-                    'start' => $event->start_time,
-                    'end' => $event->end_time,
+                    // CORRECCIÓN: Convertir a string para evitar que Inertia/JSON lo convierta a UTC
+                    // Esto asegura que el cliente reciba "2026-02-07 10:00:00" tal cual
+                    'start' => $event->start_time->toDateTimeString(),
+                    'end' => $event->end_time->toDateTimeString(),
                     'creator' => $event->creator,
                     'participants' => $event->participants,
                     'my_status' => $status,
@@ -86,6 +84,8 @@ class CalendarController extends Controller
 
     public function store(Request $request)
     {
+        // Se valida como fecha, Laravel Carbon lo parsea usando el timezone configurado en app.php
+        // Si recibimos "2026-02-07 10:00:00", Carbon lo toma como válido.
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'type' => 'required|string',

@@ -99,7 +99,7 @@ const serviceOptions = computed(() => ({
     <AppLayout title="Analíticas CRM">
         <template #header>
             <div class="flex flex-col md:flex-row justify-between items-center gap-4">
-                <h2 class="font-semibold text-xl text-gray-800 dark:text-white leading-tight">
+                <h2 class="font-semibold text-base text-gray-800 dark:text-white leading-tight">
                     Tablero de control CRM
                 </h2>
                 

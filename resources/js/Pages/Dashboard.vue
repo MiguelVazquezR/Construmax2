@@ -25,12 +25,6 @@ const formatCurrency = (val) => {
 
 <template>
     <AppLayout title="Panel Principal">
-        <template #header>
-            <h2 class="font-semibold text-xl text-gray-800 dark:text-white leading-tight">
-                Dashboard
-            </h2>
-        </template>
-
         <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 space-y-8">
             
             <!-- 1. BIENVENIDA -->
