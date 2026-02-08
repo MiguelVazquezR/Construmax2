@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { ElMessage } from 'element-plus';
 
@@ -50,11 +50,10 @@ const onDragStart = (e, budget) => {
     draggedItem.value = budget;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', budget.id);
-    // Para ocultar la "sombra" original si se quisiera customizar, pero default está bien
 };
 
 const onDragOver = (e) => {
-    e.preventDefault(); // Necesario para permitir el drop
+    e.preventDefault(); 
     e.dataTransfer.dropEffect = 'move';
 };
 
@@ -82,7 +81,6 @@ const updateStatus = (budgetId, newStatus) => {
         preserveScroll: true,
         preserveState: true,
         onError: () => {
-            // Revertir si falla (Recargar datos originales)
             router.reload({ only: ['budgets'] });
             ElMessage.error('Error al actualizar el estado.');
         }
@@ -94,11 +92,13 @@ const handleCardClick = (id) => {
     router.visit(route('budgets.show', id));
 };
 
-const formatCurrency = (value) => {
+// Actualizado para soportar moneda dinámica
+const formatCurrency = (value, currency = 'MXN') => {
     return new Intl.NumberFormat('es-MX', {
         style: 'currency',
-        currency: 'MXN',
-        minimumFractionDigits: 0
+        currency: currency,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2
     }).format(value || 0);
 };
 
@@ -119,7 +119,7 @@ const handlePageChange = (val) => {
                 <div 
                     v-for="col in columns" 
                     :key="col.id" 
-                    class="flex-1 min-w-[260px] bg-gray-100 dark:bg-[#18181b] rounded-xl p-3 flex flex-col h-[calc(100vh-240px)] border border-transparent transition-colors"
+                    class="flex-1 min-w-[260px] bg-white dark:bg-[#18181b] rounded-xl p-3 flex flex-col h-[calc(100vh-240px)] border border-transparent transition-colors"
                     @dragover="onDragOver"
                     @drop="onDrop($event, col.id)"
                 >
@@ -171,13 +171,26 @@ const handlePageChange = (val) => {
                             </div>
 
                             <!-- Footer: Costo y Responsable -->
-                            <div class="flex justify-between items-center border-t border-gray-100 dark:border-[#2b2b2e] pt-2 mt-2">
-                                <span class="font-bold text-sm text-gray-700 dark:text-gray-300">
-                                    {{ formatCurrency(budget.concepts_sum_amount) }}
-                                </span>
+                            <div class="flex justify-between items-end border-t border-gray-100 dark:border-[#2b2b2e] pt-2 mt-2">
                                 
+                                <!-- Sección de Costos -->
+                                <div class="flex flex-col">
+                                    <span class="font-bold text-sm text-gray-700 dark:text-gray-300">
+                                        {{ formatCurrency(budget.concepts_sum_amount, budget.currency) }}
+                                    </span>
+                                    <!-- Conversión pequeña si es USD -->
+                                    <span v-if="budget.currency === 'USD'" class="text-[10px] text-gray-400">
+                                        ≈ {{ formatCurrency(budget.concepts_sum_amount * budget.exchange_rate, 'MXN') }}
+                                    </span>
+                                </div>
+                                
+                                <!-- Responsable -->
                                 <div class="flex items-center gap-1" :title="`Responsable: ${budget.responsible?.name}`">
-                                    <el-avatar :size="20" class="!text-[10px] bg-gray-200 text-gray-600">
+                                    <el-avatar 
+                                        :size="24" 
+                                        :src="budget.responsible?.profile_photo_url"
+                                        class="!text-[10px] bg-primary-100 text-primary border border-white dark:border-gray-700 shadow-sm"
+                                    >
                                         {{ budget.responsible?.name?.charAt(0) }}
                                     </el-avatar>
                                 </div>

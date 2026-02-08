@@ -198,6 +198,18 @@ const deleteTicket = (ticket) => {
                                     <div class="flex items-center gap-1 text-xs text-gray-500">
                                         <el-icon><OfficeBuilding /></el-icon>
                                         <span class="truncate">{{ scope.row.budget?.customer?.name }}</span>
+                                        
+                                        <!-- Enlace a Presupuesto (Condicional) -->
+                                        <div v-if="scope.row.budget_id" class="ml-2" @click.stop>
+                                            <Link v-if="can('budgets.index')" :href="route('budgets.show', scope.row.budget_id)">
+                                                <el-tag size="small" effect="plain" class="cursor-pointer hover:bg-blue-50">
+                                                    Presupuesto #{{ scope.row.budget_id }}
+                                                </el-tag>
+                                            </Link>
+                                            <el-tag v-else size="small" type="info" effect="plain">
+                                                Presupuesto #{{ scope.row.budget_id }}
+                                            </el-tag>
+                                        </div>
                                     </div>
                                 </div>
                             </template>
@@ -207,7 +219,7 @@ const deleteTicket = (ticket) => {
                         <el-table-column label="Técnico" min-width="150">
                             <template #default="scope">
                                 <div class="flex items-center gap-2">
-                                    <el-avatar :size="24" class="!text-[10px] bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                                    <el-avatar :size="24" :src="scope.row.responsible?.profile_photo_url" class="bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
                                         {{ scope.row.responsible?.name?.charAt(0) }}
                                     </el-avatar>
                                     <span class="text-sm text-gray-700 dark:text-gray-300 truncate">
@@ -230,7 +242,6 @@ const deleteTicket = (ticket) => {
                         <!-- Progreso -->
                         <el-table-column label="Progreso" width="120">
                             <template #default="scope">
-                                <!-- El atributo 'progress' debe venir del backend (append) o calcularse aquí si vienen las tareas -->
                                 <div class="flex items-center gap-2">
                                     <el-progress 
                                         :percentage="scope.row.progress || 0" 
@@ -317,7 +328,7 @@ const deleteTicket = (ticket) => {
                             </div>
                             
                             <div class="flex items-center gap-2" @click.stop>
-                                <el-avatar :size="24" class="!text-[10px] bg-gray-100 text-gray-600">
+                                <el-avatar :size="24" :src="ticket.responsible?.profile_photo_url" class="bg-gray-100 text-gray-600">
                                     {{ ticket.responsible?.name?.charAt(0) }}
                                 </el-avatar>
                                 
