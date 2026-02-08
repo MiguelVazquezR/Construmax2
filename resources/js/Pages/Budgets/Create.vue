@@ -1,17 +1,20 @@
 <script setup>
 import { ref, reactive, computed, watch } from 'vue';
-import { useForm, Link } from '@inertiajs/vue3';
+import { useForm, Link, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage } from 'element-plus';
+import axios from 'axios';
 
 const props = defineProps({
-    customers: Array, // Vienen con la relación 'contacts'
-    users: Array,     // Usuarios activos para asignar responsable
+    customers: Array, 
+    users: Array,     
 });
 
-const formRef = ref();
+const page = usePage();
 
-// Listas estáticas según requerimiento
+const formRef = ref();
+const loadingRate = ref(false);
+
 const serviceTypes = [
     'Iluminación', 'Herrería', 'Acabados', 'Eléctrico', 'Aire acondicionado', 
     'Sanitario', 'Anuncios', 'Pintura', 'Carpintería', 'Vidrio', 
@@ -20,7 +23,7 @@ const serviceTypes = [
 ];
 
 const statuses = [
-    'Borrador', // Status agregado
+    'Borrador', 
     'Presupuesto enviado', 'Facturado', 'Trabajo en proceso', 
     'Trabajo terminado', 'Pagado', 'Perdido'
 ];
@@ -30,67 +33,95 @@ const priorities = ['Baja', 'Media', 'Alta', 'Urgente'];
 const form = useForm({
     name: '',
     service_type: '',
-    status: 'Borrador', // Valor por defecto actualizado a Borrador
+    status: 'Borrador',
     priority: 'Media',
     duration: '',
     description: '',
     
-    // Relaciones
-    user_id: '',
+    // Moneda
+    currency: 'MXN',
+    exchange_rate: 1,
+
+    // por defecto el usuario autenticado
+    user_id: page.props.auth.user.id || null,
     customer_id: '',
     customer_contact_id: '',
     branch: '',
 
-    // Costos
     concepts: [
         { concept: '', amount: 0 }
     ]
 });
 
-// --- LÓGICA DINÁMICA (CASCADA) ---
+// --- LÓGICA DINÁMICA ---
 
-// 1. Filtrar Contactos según Cliente seleccionado
 const filteredContacts = computed(() => {
     if (!form.customer_id) return [];
     const customer = props.customers.find(c => c.id === form.customer_id);
     return customer ? customer.contacts : [];
 });
 
-// 2. Obtener Sucursales según Contacto seleccionado
 const contactBranches = computed(() => {
     if (!form.customer_contact_id) return [];
-    
-    // Buscamos el contacto en la lista filtrada
     const contact = filteredContacts.value.find(c => c.id === form.customer_contact_id);
-    
     if (!contact || !contact.branches) return [];
-
-    // Separamos por comas y limpiamos espacios
     return contact.branches.split(',').map(b => b.trim()).filter(b => b !== '');
 });
 
-// Reseteos automáticos al cambiar padres
+// Cambio de Cliente: Heredar Moneda
 const handleCustomerChange = () => {
     form.customer_contact_id = '';
     form.branch = '';
+    
+    const customer = props.customers.find(c => c.id === form.customer_id);
+    if (customer && customer.currency) {
+        form.currency = customer.currency; // Heredar moneda del cliente
+    } else {
+        form.currency = 'MXN';
+    }
+};
+
+// Cambio de Moneda: Obtener Tipo de Cambio
+watch(() => form.currency, async (newCurrency) => {
+    if (newCurrency === 'MXN') {
+        form.exchange_rate = 1;
+    } else if (newCurrency === 'USD') {
+        fetchExchangeRate();
+    }
+});
+
+const fetchExchangeRate = async () => {
+    loadingRate.value = true;
+    try {
+        const response = await axios.get('https://open.er-api.com/v6/latest/USD');
+        const rate = response.data.rates.MXN;
+        console.log('Tipo de cambio USD a MXN:', rate);
+        if (rate) {
+            form.exchange_rate = rate;
+            ElMessage.success(`Tipo de cambio actualizado: $${rate}`);
+        }
+    } catch (error) {
+        console.error(error);
+        ElMessage.warning('No se pudo obtener el tipo de cambio automáticamente. Ingrésalo manualmente.');
+    } finally {
+        loadingRate.value = false;
+    }
 };
 
 const handleContactChange = () => {
     form.branch = '';
-    // Intentar auto-seleccionar si solo hay una sucursal
     if (contactBranches.value.length === 1) {
         form.branch = contactBranches.value[0];
     }
 };
 
-// --- LÓGICA DE COSTOS ---
-
 const totalCost = computed(() => {
     return form.concepts.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
 });
 
+// Formato dinámico según moneda seleccionada
 const formatCurrency = (value) => {
-    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(value);
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: form.currency }).format(value);
 };
 
 const addConcept = () => {
@@ -105,8 +136,6 @@ const removeConcept = (index) => {
     }
 };
 
-// --- VALIDACIÓN Y ENVÍO ---
-
 const rules = reactive({
     name: [{ required: true, message: 'Requerido', trigger: 'blur' }],
     service_type: [{ required: true, message: 'Requerido', trigger: 'change' }],
@@ -115,7 +144,8 @@ const rules = reactive({
     customer_id: [{ required: true, message: 'Requerido', trigger: 'change' }],
     customer_contact_id: [{ required: true, message: 'Requerido', trigger: 'change' }],
     branch: [{ required: true, message: 'Requerido', trigger: 'change' }],
-    priority: [{ required: true, message: 'Requerido', trigger: 'change' }],
+    currency: [{ required: true, message: 'Requerido', trigger: 'change' }],
+    exchange_rate: [{ required: true, message: 'Requerido', trigger: 'blur' }],
 });
 
 const submit = () => {
@@ -123,18 +153,14 @@ const submit = () => {
     
     formRef.value.validate((valid) => {
         if (valid) {
-            // Validar que los montos sean válidos
             const invalidCost = form.concepts.some(c => c.concept.trim() === '' || c.amount < 0);
             if(invalidCost) {
-                ElMessage.error('Revisa los conceptos de costos. Todos deben tener nombre y monto válido.');
+                ElMessage.error('Revisa los conceptos de costos.');
                 return;
             }
-
             form.post(route('budgets.store'), {
                 onSuccess: () => ElMessage.success('Presupuesto registrado correctamente')
             });
-        } else {
-            ElMessage.error('Completa los campos obligatorios.');
         }
     });
 };
@@ -144,7 +170,7 @@ const submit = () => {
     <AppLayout title="Nuevo presupuesto">
         <template #header>
             <div class="flex items-center justify-between">
-                <h2 class="font-semibold text-xl text-gray-800 dark:text-white leading-tight">
+                <h2 class="font-semibold text-gray-800 dark:text-white leading-tight">
                     Nuevo presupuesto / servicio
                 </h2>
                 <Link :href="route('budgets.index')">
@@ -165,10 +191,8 @@ const submit = () => {
             >
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     
-                    <!-- COLUMNA IZQUIERDA: DATOS GENERALES (2/3 ancho) -->
                     <div class="lg:col-span-2 space-y-6">
                         
-                        <!-- Tarjeta 1: Información del Proyecto -->
                         <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
                             <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
                                 <el-icon class="text-primary"><Document /></el-icon> Datos del proyecto
@@ -176,7 +200,7 @@ const submit = () => {
                             
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <el-form-item label="Nombre del proyecto" prop="name" class="md:col-span-2">
-                                    <el-input v-model="form.name" placeholder="Ej. Mantenimiento de luminarias NAVE B" />
+                                    <el-input v-model="form.name" placeholder="Ej. Mantenimiento de luminarias" />
                                 </el-form-item>
 
                                 <el-form-item label="Tipo de servicio" prop="service_type">
@@ -202,25 +226,51 @@ const submit = () => {
                                 </el-form-item>
 
                                 <el-form-item label="Descripción detallada" class="md:col-span-2">
-                                    <el-input 
-                                        v-model="form.description" 
-                                        type="textarea" 
-                                        :rows="3" 
-                                        placeholder="Detalles adicionales sobre el alcance del trabajo..." 
-                                    />
+                                    <el-input v-model="form.description" type="textarea" :rows="3" />
                                 </el-form-item>
                             </div>
                         </div>
 
-                        <!-- Tarjeta 2: Costos y Presupuesto -->
+                        <!-- Tarjeta de Costos con Moneda -->
                         <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
                             <div class="flex justify-between items-center mb-4">
                                 <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                                     <el-icon class="text-primary"><Money /></el-icon> Desglose de costos
                                 </h3>
-                                <el-button size="small" type="primary" plain icon="Plus" @click="addConcept">
-                                    Agregar concepto
-                                </el-button>
+                                
+                                <!-- Selector de Moneda y Tipo de Cambio -->
+                                <div class="flex gap-2 items-center">
+                                    <el-form-item prop="currency" class="!mb-0 w-24">
+                                        <el-select v-model="form.currency" placeholder="Moneda">
+                                            <el-option label="MXN" value="MXN" />
+                                            <el-option label="USD" value="USD" />
+                                        </el-select>
+                                    </el-form-item>
+
+                                    <!-- Input Tipo de Cambio (Visible si es USD) -->
+                                    <el-form-item 
+                                        v-if="form.currency === 'USD'" 
+                                        prop="exchange_rate" 
+                                        class="!mb-0 w-40"
+                                        :rules="[{ required: true, message: 'Requerido', trigger: 'blur' }]"
+                                    >
+                                        <el-input 
+                                            v-model="form.exchange_rate" 
+                                            placeholder="TC" 
+                                            type="number" 
+                                            step="0.0001"
+                                        >
+                                            <template #prefix><span class="text-xs text-gray-400">Tipo cambio:</span></template>
+                                            <template #suffix>
+                                                <el-icon v-if="loadingRate" class="is-loading"><Loading /></el-icon>
+                                            </template>
+                                        </el-input>
+                                    </el-form-item>
+
+                                    <el-button size="small" type="primary" plain icon="Plus" @click="addConcept">
+                                        Agregar
+                                    </el-button>
+                                </div>
                             </div>
 
                             <div class="bg-gray-50 dark:bg-[#252529] rounded-lg p-4 border border-gray-200 dark:border-[#3f3f46]">
@@ -233,11 +283,12 @@ const submit = () => {
                                             v-model="item.amount" 
                                             :min="0" 
                                             :precision="2" 
-                                            :step="0.1"
                                             class="!w-full" 
                                             placeholder="Monto"
                                             controls-position="right"
-                                        />
+                                        >
+                                            <template #prefix>{{ form.currency === 'USD' ? '$' : '$' }}</template>
+                                        </el-input-number>
                                     </div>
                                     <el-button 
                                         type="danger" 
@@ -253,17 +304,19 @@ const submit = () => {
                             <div class="flex justify-end mt-4 items-center gap-4">
                                 <span class="text-gray-500 text-sm font-medium uppercase">Total Presupuesto:</span>
                                 <span class="text-2xl font-bold text-gray-800 dark:text-white">
-                                    {{ formatCurrency(totalCost) }}
+                                    {{ formatCurrency(totalCost) }} <span class="text-sm text-gray-400">{{ form.currency }}</span>
                                 </span>
+                            </div>
+                            <!-- Conversión Informativa si es USD -->
+                            <div v-if="form.currency === 'USD'" class="text-right mt-1 text-xs text-gray-500">
+                                Aprox: {{ new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(totalCost * form.exchange_rate) }} MXN
                             </div>
                         </div>
 
                     </div>
 
-                    <!-- COLUMNA DERECHA: RELACIONES (1/3 ancho) -->
+                    <!-- COLUMNA DERECHA -->
                     <div class="lg:col-span-1 space-y-6">
-                        
-                        <!-- Tarjeta 3: Cliente y Ubicación -->
                         <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6 sticky top-6">
                             <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
                                 <el-icon class="text-primary"><OfficeBuilding /></el-icon> Cliente y sitio
@@ -302,7 +355,6 @@ const submit = () => {
                                             :value="contact.id" 
                                         />
                                     </el-select>
-                                    <p v-if="!form.customer_id" class="text-xs text-gray-400 mt-1">Selecciona un cliente primero</p>
                                 </el-form-item>
 
                                 <el-form-item label="Sucursal / Sitio" prop="branch">
@@ -322,9 +374,6 @@ const submit = () => {
                                             :value="branch" 
                                         />
                                     </el-select>
-                                    <p v-if="form.customer_contact_id" class="text-xs text-gray-400 mt-1">
-                                        Puedes escribir una nueva si no está en la lista.
-                                    </p>
                                 </el-form-item>
 
                                 <el-divider class="!my-4" />
@@ -358,7 +407,6 @@ const submit = () => {
                                 </div>
                             </div>
                         </div>
-
                     </div>
                 </div>
             </el-form>

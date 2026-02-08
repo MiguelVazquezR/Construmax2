@@ -89,10 +89,8 @@ defineProps({
                         class="mt-8 bg-gray-50 dark:bg-[#252529] p-4 rounded-lg text-sm text-gray-600 dark:text-gray-400">
                         <h4 class="font-bold mb-2">Información técnica</h4>
                         <p>ID de usuario: <span class="font-mono">{{ user.id }}</span></p>
-                        <p>Verificación de correo: {{ user.email_verified_at ? 'Verificado' : 'Pendiente' }}</p>
                     </div>
                 </div>
-
             </div>
         </div>
     </AppLayout>

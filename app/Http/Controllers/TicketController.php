@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\Customer;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\URL;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class TicketController extends Controller
@@ -63,6 +64,26 @@ class TicketController extends Controller
             ->with('success', 'Ticket operativo generado correctamente.');
     }
 
+    // --- MÉTODO PARA CREACIÓN AUTOMÁTICA DESDE PRESUPUESTO ---
+    public function storeFromBudget(Request $request, Budget $budget)
+    {
+        if ($budget->ticket) {
+            return back()->with('error', 'Este presupuesto ya tiene un ticket asociado.');
+        }
+
+        $ticket = Ticket::create([
+            'budget_id' => $budget->id,
+            'user_id' => $budget->user_id,
+            'priority' => $budget->priority,
+            'status' => 'Programado',
+            'scheduled_start' => now(),
+            'scheduled_end' => now()->addWeeks(2),
+            'instructions' => 'Ticket generado automáticamente a partir del Presupuesto #' . $budget->id . '. ' . $budget->name,
+        ]);
+
+        return back()->with('success', 'Ticket generado automáticamente.');
+    }
+
     public function show(Ticket $ticket)
     {
         $ticket->load([
@@ -75,6 +96,12 @@ class TicketController extends Controller
         ]);
         
         $ticket->append('progress');
+
+        // Generar URLs firmadas para compartir tareas públicamente
+        $ticket->tasks->transform(function ($task) {
+            $task->share_url = URL::signedRoute('tasks.public.show', ['task' => $task->id]);
+            return $task;
+        });
 
         return Inertia::render('Tickets/Show', [
             'ticket' => $ticket,
@@ -122,10 +149,9 @@ class TicketController extends Controller
     // --- EVIDENCIAS GENERALES ---
     public function storeEvidence(Request $request, Ticket $ticket)
     {
-        // CAMBIO AQUÍ: Se cambió 'image' por 'file' y se agregaron mimes permitidos
         $request->validate([
             'files' => 'required|array', 
-            'files.*' => 'file|max:20480' // Max 20MB, permite cualquier archivo
+            'files.*' => 'file|max:20480'
         ]);
         
         if ($request->hasFile('files')) {

@@ -9,6 +9,7 @@ import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 import locale from 'element-plus/dist/locale/es.mjs';
 import VueApexCharts from "vue3-apexcharts"; // Agregar import
+import 'element-plus/theme-chalk/dark/css-vars.css'; // Importar tema oscuro
 
 // 1. Importar librería de íconos
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'

@@ -80,8 +80,8 @@ const submit = () => {
     <AppLayout title="Registrar nuevo cliente">
         <template #header>
             <div class="flex items-center justify-between">
-                <h2 class="font-semibold text-xl text-gray-800 dark:text-white leading-tight">
-                    Registrar nuevo cliente
+                <h2 class="font-semibold text-gray-800 dark:text-white leading-tight">
+                    Nuevo cliente
                 </h2>
                 <Link :href="route('customers.index')">
                     <el-button icon="Back" circle />

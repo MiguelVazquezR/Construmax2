@@ -16,15 +16,27 @@ class BudgetController extends Controller
     public function index(Request $request)
     {
         $perPage = $request->input('perPage', 10);
+        
+        // Obtener filtros del request
+        $filters = $request->only(['search', 'status', 'perPage', 'user_id']);
+
+        // Lógica para valor por defecto: "Mis Presupuestos"
+        // Si es una carga inicial limpia (sin parámetros), filtramos por el usuario actual.
+        // Si el frontend envía 'all' explícitamente (al limpiar filtro), no entramos aquí.
+        if (!$request->has('user_id') && !$request->has('search') && !$request->has('status') && !$request->has('page')) {
+            $filters['user_id'] = [auth()->id()];
+        }
 
         return Inertia::render('Budgets/Index', [
             'budgets' => Budget::with(['customer', 'responsible'])
                 ->withSum('concepts', 'amount')
-                ->filter($request->only('search', 'status'))
+                ->filter($filters)
                 ->orderBy('id', 'desc')
                 ->paginate($perPage)
                 ->withQueryString(),
-            'filters' => $request->only(['search', 'status', 'perPage']),
+            'filters' => $filters,
+            // Enviamos lista de usuarios para el filtro
+            'users' => User::where('is_active', true)->orderBy('name')->get(['id', 'name']),
         ]);
     }
 
@@ -49,6 +61,8 @@ class BudgetController extends Controller
             'duration' => 'nullable|string',
             'priority' => 'required|string',
             'description' => 'nullable|string',
+            'currency' => 'required|string|in:MXN,USD',
+            'exchange_rate' => 'required|numeric|min:0.0001',
             'concepts' => 'array|min:1',
             'concepts.*.concept' => 'required|string',
             'concepts.*.amount' => 'required|numeric|min:0',
@@ -68,6 +82,8 @@ class BudgetController extends Controller
                 'duration' => $validated['duration'],
                 'priority' => $validated['priority'],
                 'description' => $validated['description'],
+                 'currency' => $validated['currency'],
+                'exchange_rate' => $validated['exchange_rate'],
             ]);
 
             $budget->concepts()->createMany($validated['concepts']);
@@ -87,7 +103,7 @@ class BudgetController extends Controller
 
     public function show(Budget $budget)
     {
-        $budget->load(['customer', 'contact', 'responsible', 'concepts', 'payments.media', 'media']);
+        $budget->load(['customer', 'contact', 'responsible', 'concepts', 'payments.media', 'media', 'ticket']);
         $budget->append(['total_cost', 'total_paid', 'balance_due']);
 
         return Inertia::render('Budgets/Show', [
@@ -119,6 +135,8 @@ class BudgetController extends Controller
             'duration' => 'nullable|string',
             'priority' => 'required|string',
             'description' => 'nullable|string',
+            'currency' => 'required|string|in:MXN,USD',
+            'exchange_rate' => 'required|numeric|min:0.0001',
             'concepts' => 'array|min:1',
             'concepts.*.concept' => 'required|string',
             'concepts.*.amount' => 'required|numeric|min:0',
@@ -136,6 +154,8 @@ class BudgetController extends Controller
                 'duration' => $validated['duration'],
                 'priority' => $validated['priority'],
                 'description' => $validated['description'],
+                'currency' => $validated['currency'],
+                'exchange_rate' => $validated['exchange_rate'],
             ]);
 
             $budget->concepts()->delete();

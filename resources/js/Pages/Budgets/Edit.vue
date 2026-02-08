@@ -3,14 +3,16 @@ import { ref, reactive, computed, watch } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage } from 'element-plus';
+import axios from 'axios';
 
 const props = defineProps({
-    budget: Object,   // El presupuesto a editar (con conceptos cargados)
-    customers: Array, // Lista de clientes con contactos
-    users: Array,     // Usuarios activos
+    budget: Object,   // El presupuesto a editar
+    customers: Array, 
+    users: Array,     
 });
 
 const formRef = ref();
+const loadingRate = ref(false);
 
 // Listas estáticas
 const serviceTypes = [
@@ -37,52 +39,85 @@ const form = useForm({
     duration: props.budget.duration,
     description: props.budget.description,
     
+    // Moneda (Nuevos campos)
+    currency: props.budget.currency || 'MXN',
+    exchange_rate: parseFloat(props.budget.exchange_rate) || 1,
+
     // Relaciones
     user_id: props.budget.user_id,
     customer_id: props.budget.customer_id,
     customer_contact_id: props.budget.customer_contact_id,
     branch: props.budget.branch,
 
-    // Costos (Mapeamos para asegurar que sean editables)
+    // Costos
     concepts: props.budget.concepts.length > 0 
         ? props.budget.concepts.map(c => ({ concept: c.concept, amount: parseFloat(c.amount) }))
         : [{ concept: '', amount: 0 }]
 });
 
-// --- LÓGICA DINÁMICA (CASCADA) ---
+// --- LÓGICA DINÁMICA ---
 
-// 1. Filtrar Contactos según Cliente seleccionado
 const filteredContacts = computed(() => {
     if (!form.customer_id) return [];
     const customer = props.customers.find(c => c.id === form.customer_id);
     return customer ? customer.contacts : [];
 });
 
-// 2. Obtener Sucursales según Contacto seleccionado
 const contactBranches = computed(() => {
     if (!form.customer_contact_id) return [];
-    
-    // Buscamos el contacto en la lista filtrada
     const contact = filteredContacts.value.find(c => c.id === form.customer_contact_id);
-    
-    // Si estamos editando y el contacto actual ya no existe en la lista (caso raro), no mostramos nada
-    // Pero si existe, mostramos sus sucursales
     if (!contact || !contact.branches) return [];
-
-    // Separamos por comas y limpiamos
     return contact.branches.split(',').map(b => b.trim()).filter(b => b !== '');
 });
 
-// Manejadores de cambio (Solo resetean si el usuario cambia el valor manualmente)
 const handleCustomerChange = () => {
     form.customer_contact_id = '';
     form.branch = '';
+    
+    // Al cambiar cliente en EDICIÓN, preguntamos si queremos heredar su moneda
+    // Solo si es diferente a la actual para no molestar
+    const customer = props.customers.find(c => c.id === form.customer_id);
+    if (customer && customer.currency && customer.currency !== form.currency) {
+        form.currency = customer.currency;
+    }
 };
 
 const handleContactChange = () => {
     form.branch = '';
     if (contactBranches.value.length === 1) {
         form.branch = contactBranches.value[0];
+    }
+};
+
+// --- GESTIÓN DE MONEDA ---
+
+// Detectar cambios manuales de moneda para actualizar TC
+watch(() => form.currency, async (newCurrency, oldCurrency) => {
+    // Solo actuamos si el cambio es real y no es la inicialización
+    if (newCurrency === oldCurrency) return;
+
+    if (newCurrency === 'MXN') {
+        form.exchange_rate = 1;
+    } else if (newCurrency === 'USD') {
+        // Si cambiamos a USD, intentamos traer el TC actual
+        fetchExchangeRate();
+    }
+});
+
+const fetchExchangeRate = async () => {
+    loadingRate.value = true;
+    try {
+        const response = await axios.get('https://open.er-api.com/v6/latest/USD');
+        const rate = response.data.rates.MXN;
+        if (rate) {
+            form.exchange_rate = rate;
+            ElMessage.success(`Tipo de cambio actualizado: $${rate}`);
+        }
+    } catch (error) {
+        console.error(error);
+        ElMessage.warning('No se pudo obtener el tipo de cambio automáticamente.');
+    } finally {
+        loadingRate.value = false;
     }
 };
 
@@ -93,7 +128,7 @@ const totalCost = computed(() => {
 });
 
 const formatCurrency = (value) => {
-    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(value);
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: form.currency }).format(value);
 };
 
 const addConcept = () => {
@@ -108,8 +143,6 @@ const removeConcept = (index) => {
     }
 };
 
-// --- VALIDACIÓN Y ENVÍO ---
-
 const rules = reactive({
     name: [{ required: true, message: 'Requerido', trigger: 'blur' }],
     service_type: [{ required: true, message: 'Requerido', trigger: 'change' }],
@@ -119,6 +152,8 @@ const rules = reactive({
     customer_contact_id: [{ required: true, message: 'Requerido', trigger: 'change' }],
     branch: [{ required: true, message: 'Requerido', trigger: 'change' }],
     priority: [{ required: true, message: 'Requerido', trigger: 'change' }],
+    currency: [{ required: true, message: 'Requerido', trigger: 'change' }],
+    exchange_rate: [{ required: true, message: 'Requerido', trigger: 'blur' }],
 });
 
 const submit = () => {
@@ -126,10 +161,9 @@ const submit = () => {
     
     formRef.value.validate((valid) => {
         if (valid) {
-            // Validar montos
             const invalidCost = form.concepts.some(c => c.concept.trim() === '' || c.amount < 0);
             if(invalidCost) {
-                ElMessage.error('Revisa los conceptos de costos. Todos deben tener nombre y monto válido.');
+                ElMessage.error('Revisa los conceptos de costos.');
                 return;
             }
 
@@ -147,7 +181,7 @@ const submit = () => {
     <AppLayout :title="`Editar presupuesto: ${budget.name}`">
         <template #header>
             <div class="flex items-center justify-between">
-                <h2 class="font-semibold text-xl text-gray-800 dark:text-white leading-tight">
+                <h2 class="font-semibold text-gray-800 dark:text-white leading-tight">
                     Editar presupuesto: {{ budget.name }}
                 </h2>
                 <Link :href="route('budgets.index')">
@@ -168,10 +202,10 @@ const submit = () => {
             >
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     
-                    <!-- COLUMNA IZQUIERDA: DATOS GENERALES (2/3 ancho) -->
+                    <!-- COLUMNA IZQUIERDA -->
                     <div class="lg:col-span-2 space-y-6">
                         
-                        <!-- Tarjeta 1: Información del Proyecto -->
+                        <!-- Tarjeta 1: Datos del Proyecto -->
                         <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
                             <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
                                 <el-icon class="text-primary"><Document /></el-icon> Datos del proyecto
@@ -179,7 +213,7 @@ const submit = () => {
                             
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <el-form-item label="Nombre del proyecto" prop="name" class="md:col-span-2">
-                                    <el-input v-model="form.name" placeholder="Ej. Mantenimiento de luminarias NAVE B" />
+                                    <el-input v-model="form.name" />
                                 </el-form-item>
 
                                 <el-form-item label="Tipo de servicio" prop="service_type">
@@ -189,7 +223,7 @@ const submit = () => {
                                 </el-form-item>
 
                                 <el-form-item label="Duración estimada" prop="duration">
-                                    <el-input v-model="form.duration" placeholder="Ej. 2 semanas" />
+                                    <el-input v-model="form.duration" />
                                 </el-form-item>
 
                                 <el-form-item label="Prioridad" prop="priority">
@@ -205,25 +239,50 @@ const submit = () => {
                                 </el-form-item>
 
                                 <el-form-item label="Descripción detallada" class="md:col-span-2">
-                                    <el-input 
-                                        v-model="form.description" 
-                                        type="textarea" 
-                                        :rows="3" 
-                                        placeholder="Detalles adicionales..." 
-                                    />
+                                    <el-input v-model="form.description" type="textarea" :rows="3" />
                                 </el-form-item>
                             </div>
                         </div>
 
-                        <!-- Tarjeta 2: Costos y Presupuesto -->
+                        <!-- Tarjeta 2: Costos y Moneda -->
                         <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
                             <div class="flex justify-between items-center mb-4">
                                 <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                                     <el-icon class="text-primary"><Money /></el-icon> Desglose de costos
                                 </h3>
-                                <el-button size="small" type="primary" plain icon="Plus" @click="addConcept">
-                                    Agregar concepto
-                                </el-button>
+                                
+                                <!-- Controles de Moneda -->
+                                <div class="flex gap-2 items-center">
+                                    <el-form-item prop="currency" class="!mb-0 w-24">
+                                        <el-select v-model="form.currency" placeholder="Moneda">
+                                            <el-option label="MXN" value="MXN" />
+                                            <el-option label="USD" value="USD" />
+                                        </el-select>
+                                    </el-form-item>
+
+                                    <el-form-item 
+                                        v-if="form.currency === 'USD'" 
+                                        prop="exchange_rate" 
+                                        class="!mb-0 w-40"
+                                        :rules="[{ required: true, message: 'Requerido', trigger: 'blur' }]"
+                                    >
+                                        <el-input 
+                                            v-model="form.exchange_rate" 
+                                            placeholder="Tipo cambio" 
+                                            type="number" 
+                                            step="0.0001"
+                                        >
+                                            <template #prefix><span class="text-xs text-gray-400">TC:</span></template>
+                                            <template #suffix>
+                                                <el-icon v-if="loadingRate" class="is-loading"><Loading /></el-icon>
+                                            </template>
+                                        </el-input>
+                                    </el-form-item>
+
+                                    <el-button size="small" type="primary" plain icon="Plus" @click="addConcept">
+                                        Agregar
+                                    </el-button>
+                                </div>
                             </div>
 
                             <div class="bg-gray-50 dark:bg-[#252529] rounded-lg p-4 border border-gray-200 dark:border-[#3f3f46]">
@@ -236,11 +295,12 @@ const submit = () => {
                                             v-model="item.amount" 
                                             :min="0" 
                                             :precision="2" 
-                                            :step="0.1"
                                             class="!w-full" 
                                             placeholder="Monto"
                                             controls-position="right"
-                                        />
+                                        >
+                                            <template #prefix>{{ form.currency === 'USD' ? '$' : '$' }}</template>
+                                        </el-input-number>
                                     </div>
                                     <el-button 
                                         type="danger" 
@@ -256,17 +316,21 @@ const submit = () => {
                             <div class="flex justify-end mt-4 items-center gap-4">
                                 <span class="text-gray-500 text-sm font-medium uppercase">Total Presupuesto:</span>
                                 <span class="text-2xl font-bold text-gray-800 dark:text-white">
-                                    {{ formatCurrency(totalCost) }}
+                                    {{ formatCurrency(totalCost) }} <span class="text-sm text-gray-400">{{ form.currency }}</span>
                                 </span>
+                            </div>
+                            
+                            <!-- Conversión aproximada -->
+                            <div v-if="form.currency === 'USD'" class="text-right mt-1 text-xs text-gray-500">
+                                Aprox: {{ new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(totalCost * form.exchange_rate) }} MXN
                             </div>
                         </div>
 
                     </div>
 
-                    <!-- COLUMNA DERECHA: RELACIONES (1/3 ancho) -->
+                    <!-- COLUMNA DERECHA -->
                     <div class="lg:col-span-1 space-y-6">
                         
-                        <!-- Tarjeta 3: Cliente y Ubicación -->
                         <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6 sticky top-6">
                             <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
                                 <el-icon class="text-primary"><OfficeBuilding /></el-icon> Cliente y sitio
