@@ -1,8 +1,14 @@
 <script setup>
-import { ref, watch, reactive, computed } from 'vue'; // Agregamos 'computed'
+import { ref, watch, reactive, computed } from 'vue'; 
 import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import VueApexCharts from 'vue3-apexcharts';
+
+// Iconos
+import { 
+    DataAnalysis, Money, User, Wallet, TrendCharts, 
+    Histogram, UserFilled, List, Calendar 
+} from '@element-plus/icons-vue';
 
 const props = defineProps({
     kpis: Object,
@@ -11,8 +17,27 @@ const props = defineProps({
     filters: Object,
 });
 
+// --- ESTADO DE MONEDA ---
+const currencyMode = ref('MXN'); // 'MXN' o 'USD'
+
 const formatCurrency = (value) => {
-    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0 }).format(value);
+    return new Intl.NumberFormat('es-MX', { 
+        style: 'currency', 
+        currency: currencyMode.value, 
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(value || 0);
+};
+
+// --- COMPUTED HELPERS PARA VALORES DINÁMICOS ---
+// Función auxiliar para elegir el valor correcto según el modo
+const getValue = (obj) => {
+    if (!obj) return 0;
+    // Si el objeto ya viene separado en {mxn, usd}
+    if (typeof obj === 'object' && ('mxn' in obj || 'usd' in obj)) {
+        return currencyMode.value === 'MXN' ? obj.mxn : obj.usd;
+    }
+    return obj; // Si es un valor plano
 };
 
 // --- FILTRO DE FECHAS ---
@@ -39,12 +64,13 @@ const handleDateChange = (val) => {
     }
 };
 
-// --- CONFIGURACIÓN DE GRÁFICAS (REACTIVAS CON COMPUTED) ---
+// --- CONFIGURACIÓN DE GRÁFICAS (REACTIVAS) ---
 
-// 1. Ingresos (Bar Chart)
+// 1. Ingresos (Bar Chart) - Dinámico por moneda
 const incomeSeries = computed(() => [{
-    name: 'Ingresos',
-    data: props.charts.income.data
+    name: `Ingresos (${currencyMode.value})`,
+    // Seleccionamos el array correcto que viene del backend
+    data: currencyMode.value === 'MXN' ? props.charts.income.data_mxn : props.charts.income.data_usd
 }]);
 
 const incomeOptions = computed(() => ({
@@ -58,13 +84,25 @@ const incomeOptions = computed(() => ({
         axisTicks: { show: false }
     },
     yaxis: {
-        labels: { formatter: (val) => `$${val >= 1000 ? val/1000 + 'k' : val}` }
+        labels: { formatter: (val) => {
+            // Formato corto para eje Y (e.g. $10k)
+            if (val >= 1000000) return (val/1000000).toFixed(1) + 'M';
+            if (val >= 1000) return (val/1000).toFixed(0) + 'k';
+            return val;
+        }}
     },
     grid: { borderColor: '#f1f1f1', strokeDashArray: 4 },
-    tooltip: { y: { formatter: (val) => formatCurrency(val) } }
+    tooltip: { 
+        y: { 
+            formatter: (val) => new Intl.NumberFormat('es-MX', { 
+                style: 'currency', 
+                currency: currencyMode.value 
+            }).format(val) 
+        } 
+    }
 }));
 
-// 2. Estado de Presupuestos (Donut Chart)
+// 2. Estado de Presupuestos (Donut Chart) - No cambia con moneda, solo cantidad
 const statusSeries = computed(() => Object.values(props.charts.status));
 
 const statusOptions = computed(() => ({
@@ -103,23 +141,38 @@ const serviceOptions = computed(() => ({
                     Tablero de control CRM
                 </h2>
                 
-                <!-- Selector de Fechas -->
-                <div class="w-full md:w-auto flex items-center gap-2">
-                    <span class="text-sm text-gray-500 hidden md:inline">Periodo:</span>
-                    <el-date-picker
-                        v-model="dateRange"
-                        type="daterange"
-                        unlink-panels
-                        range-separator="a"
-                        start-placeholder="Inicio"
-                        end-placeholder="Fin"
-                        :shortcuts="shortcuts"
-                        size="large"
-                        format="DD/MM/YYYY"
-                        value-format="YYYY-MM-DD"
-                        @change="handleDateChange"
-                        class="!w-full md:!w-[350px]"
-                    />
+                <div class="flex items-center gap-4 w-full md:w-auto">
+                    <!-- Switch de Moneda -->
+                    <div class="bg-white dark:bg-[#1e1e20] p-1 rounded-lg border border-gray-200 dark:border-[#2b2b2e] flex text-sm font-bold shadow-sm">
+                        <button 
+                            @click="currencyMode = 'MXN'"
+                            class="px-3 py-1.5 rounded transition-all"
+                            :class="currencyMode === 'MXN' ? 'bg-green-50 text-green-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                        >MXN</button>
+                        <button 
+                            @click="currencyMode = 'USD'"
+                            class="px-3 py-1.5 rounded transition-all"
+                            :class="currencyMode === 'USD' ? 'bg-green-50 text-green-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                        >USD</button>
+                    </div>
+
+                    <!-- Selector de Fechas -->
+                    <div class="flex-1 md:flex-none">
+                        <el-date-picker
+                            v-model="dateRange"
+                            type="daterange"
+                            unlink-panels
+                            range-separator="-"
+                            start-placeholder="Inicio"
+                            end-placeholder="Fin"
+                            :shortcuts="shortcuts"
+                            size="default"
+                            format="DD/MM/YYYY"
+                            value-format="YYYY-MM-DD"
+                            @change="handleDateChange"
+                            style="width: 100%; max-width: 260px;"
+                        />
+                    </div>
                 </div>
             </div>
         </template>
@@ -130,7 +183,7 @@ const serviceOptions = computed(() => ({
             <section>
                 <div class="flex items-center gap-2 mb-4">
                     <el-icon class="text-primary"><DataAnalysis /></el-icon>
-                    <h3 class="text-lg font-bold text-gray-800 dark:text-white">Rendimiento en el periodo seleccionado</h3>
+                    <h3 class="text-lg font-bold text-gray-800 dark:text-white">Rendimiento ({{ currencyMode }})</h3>
                 </div>
 
                 <!-- 1. KPIS CARDS (FILTRADOS) -->
@@ -139,8 +192,10 @@ const serviceOptions = computed(() => ({
                     <div class="bg-white dark:bg-[#1e1e20] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-[#2b2b2e]">
                         <div class="flex justify-between items-start">
                             <div>
-                                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Ingresos (Periodo)</p>
-                                <h3 class="text-2xl font-bold text-gray-800 dark:text-white mt-1">{{ formatCurrency(kpis.total_revenue) }}</h3>
+                                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Ingresos</p>
+                                <h3 class="text-2xl font-bold text-gray-800 dark:text-white mt-1">
+                                    {{ formatCurrency(getValue(kpis.total_revenue)) }}
+                                </h3>
                             </div>
                             <div class="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg text-green-600">
                                 <el-icon :size="24"><Money /></el-icon>
@@ -163,12 +218,14 @@ const serviceOptions = computed(() => ({
                         <p class="text-xs text-gray-400 mt-2">Registrados en el periodo</p>
                     </div>
 
-                    <!-- Saldo Pendiente (De lo vendido en el periodo) -->
+                    <!-- Saldo Pendiente -->
                     <div class="bg-white dark:bg-[#1e1e20] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-[#2b2b2e]">
                         <div class="flex justify-between items-start">
                             <div>
-                                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Por Cobrar (Generado)</p>
-                                <h3 class="text-2xl font-bold text-gray-800 dark:text-white mt-1">{{ formatCurrency(kpis.pending_balance) }}</h3>
+                                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Por Cobrar</p>
+                                <h3 class="text-2xl font-bold text-gray-800 dark:text-white mt-1">
+                                    {{ formatCurrency(getValue(kpis.pending_balance)) }}
+                                </h3>
                             </div>
                             <div class="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg text-orange-500">
                                 <el-icon :size="24"><Wallet /></el-icon>
@@ -197,7 +254,12 @@ const serviceOptions = computed(() => ({
                     
                     <!-- Ingresos Mensuales/Diarios -->
                     <div class="lg:col-span-2 bg-white dark:bg-[#1e1e20] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-[#2b2b2e]">
-                        <h3 class="text-lg font-bold text-gray-800 dark:text-white mb-4">Tendencia de Ingresos</h3>
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-bold text-gray-800 dark:text-white">Tendencia de Ingresos</h3>
+                            <span class="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-[#2b2b2e] text-gray-500 font-bold">
+                                {{ currencyMode }}
+                            </span>
+                        </div>
                         <div class="h-72">
                             <VueApexCharts type="bar" height="100%" :options="incomeOptions" :series="incomeSeries" />
                         </div>
@@ -217,13 +279,15 @@ const serviceOptions = computed(() => ({
                     
                     <!-- Top Clientes -->
                     <div class="bg-white dark:bg-[#1e1e20] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-[#2b2b2e]">
-                        <h3 class="text-lg font-bold text-gray-800 dark:text-white mb-4">Mejores clientes (En el periodo)</h3>
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-bold text-gray-800 dark:text-white">Mejores clientes (En el periodo)</h3>
+                        </div>
                         <div class="overflow-x-auto">
                             <table class="w-full text-sm text-left">
                                 <thead class="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-[#252529]">
                                     <tr>
                                         <th class="px-4 py-3 rounded-l-lg">Cliente</th>
-                                        <th class="px-4 py-3 text-right rounded-r-lg">Total Pagado</th>
+                                        <th class="px-4 py-3 text-right rounded-r-lg">Total ({{ currencyMode }})</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -232,7 +296,8 @@ const serviceOptions = computed(() => ({
                                             {{ index + 1 }}. {{ customer.name }}
                                         </td>
                                         <td class="px-4 py-3 text-right font-bold text-green-600 dark:text-green-400">
-                                            {{ formatCurrency(customer.total_paid) }}
+                                            <!-- Seleccionamos dinámicamente total_mxn o total_usd -->
+                                            {{ formatCurrency(currencyMode === 'MXN' ? customer.total_mxn : customer.total_usd) }}
                                         </td>
                                     </tr>
                                     <tr v-if="tables.top_customers.length === 0">
