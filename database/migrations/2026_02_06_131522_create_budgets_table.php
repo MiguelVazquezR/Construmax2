@@ -8,44 +8,45 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Tabla Principal: Presupuestos (Antes Servicios)
+        // Tabla Principal: Presupuestos
         Schema::create('budgets', function (Blueprint $table) {
             $table->id();
-            $table->string('name'); // Nombre del proyecto
-            $table->string('service_type'); // Tipo de servicio (Iluminación, Herrería, etc.)
-            
-            // Status actualizados para el flujo administrativo
-            $table->string('status')->default('Presupuesto enviado'); 
-            // Posibles: Presupuesto enviado, Facturado, Trabajo en proceso, Trabajo terminado, Pagado, Perdido
+            $table->string('name');
+            $table->string('service_type');
+            $table->string('status')->default('Presupuesto enviado');
             
             $table->text('description')->nullable();
-            $table->string('duration')->nullable(); 
-            $table->string('priority')->default('Media'); 
+            $table->string('duration')->nullable();
+            $table->string('priority')->default('Media');
+            
+            // --- NUEVOS CAMPOS DE MONEDA ---
+            $table->string('currency', 3)->default('MXN'); // MXN, USD
+            $table->decimal('exchange_rate', 10, 4)->default(1); // Valor del dólar si aplica
             
             // Relaciones
             $table->foreignId('user_id')->constrained()->comment('Responsable'); 
             $table->foreignId('customer_id')->constrained()->onDelete('cascade');
             $table->foreignId('customer_contact_id')->constrained()->onDelete('cascade');
             
-            $table->string('branch')->nullable(); // Sucursal
+            $table->string('branch')->nullable();
             
             $table->timestamps();
         });
 
-        // Tabla: Conceptos del presupuesto (Costos)
+        // Tabla: Conceptos
         Schema::create('budget_concepts', function (Blueprint $table) {
             $table->id();
             $table->foreignId('budget_id')->constrained('budgets')->onDelete('cascade');
             $table->string('concept');
-            $table->decimal('amount', 10, 2); // Monto
+            $table->decimal('amount', 12, 2); // Aumenté precisión por si son montos grandes
             $table->timestamps();
         });
 
-        // Tabla: Pagos asociados al presupuesto/proyecto
+        // Tabla: Pagos
         Schema::create('budget_payments', function (Blueprint $table) {
             $table->id();
             $table->foreignId('budget_id')->constrained('budgets')->onDelete('cascade');
-            $table->decimal('amount', 10, 2);
+            $table->decimal('amount', 12, 2);
             $table->date('payment_date');
             $table->string('reference')->nullable(); 
             $table->string('payment_method')->nullable();

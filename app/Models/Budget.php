@@ -22,10 +22,16 @@ class Budget extends Model implements HasMedia
         'description',
         'duration',
         'priority',
+        'currency',      // Nuevo
+        'exchange_rate', // Nuevo
         'user_id',
         'customer_id',
         'customer_contact_id',
         'branch',
+    ];
+
+    protected $casts = [
+        'exchange_rate' => 'decimal:4',
     ];
 
     // Relaciones
@@ -44,13 +50,11 @@ class Budget extends Model implements HasMedia
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    // Relación con Ticket (Uno a Uno)
     public function ticket(): HasOne
     {
         return $this->hasOne(Ticket::class);
     }
 
-    // Conceptos del presupuesto
     public function concepts(): HasMany
     {
         return $this->hasMany(BudgetConcept::class);
@@ -88,6 +92,15 @@ class Budget extends Model implements HasMedia
         })->when($filters['status'] ?? null, function ($query, $status) {
             if($status !== 'all') {
                 $query->where('status', $status);
+            }
+        })->when($filters['user_id'] ?? null, function ($query, $userId) {
+            // Manejamos 'all', array o valor único
+            if ($userId !== 'all' && !empty($userId)) {
+                if (is_array($userId)) {
+                    $query->whereIn('user_id', $userId);
+                } else {
+                    $query->where('user_id', $userId);
+                }
             }
         });
     }

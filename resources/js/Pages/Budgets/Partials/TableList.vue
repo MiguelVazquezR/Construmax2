@@ -1,16 +1,19 @@
 <script setup>
 import { router, Link } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { usePermissions } from '@/Composables/usePermissions';
+
+const { can } = usePermissions();
 
 const props = defineProps({
     budgets: Object,
 });
 
 // Helpers para formato
-const formatCurrency = (value) => {
+const formatCurrency = (value, currency = 'MXN') => {
     return new Intl.NumberFormat('es-MX', {
         style: 'currency',
-        currency: 'MXN',
+        currency: currency,
     }).format(value || 0);
 };
 
@@ -87,7 +90,25 @@ const deleteBudget = (budget) => {
                     </template>
                 </el-table-column>
 
-                <el-table-column label="Estado" width="160" align="center">
+                <!-- NUEVA COLUMNA: RESPONSABLE -->
+                <el-table-column label="Responsable" width="160">
+                    <template #default="scope">
+                        <div class="flex items-center gap-2">
+                            <el-avatar 
+                                :size="24" 
+                                :src="scope.row.responsible?.profile_photo_url"
+                                class="bg-gray-200 text-gray-600 text-xs"
+                            >
+                                {{ scope.row.responsible?.name?.charAt(0) }}
+                            </el-avatar>
+                            <span class="text-xs text-gray-600 dark:text-gray-400 truncate">
+                                {{ scope.row.responsible?.name }}
+                            </span>
+                        </div>
+                    </template>
+                </el-table-column>
+
+                <el-table-column label="Estado" width="140" align="center">
                     <template #default="scope">
                         <el-tag :type="getStatusColor(scope.row.status)" size="small" effect="light" class="w-full text-center">
                             {{ scope.row.status }}
@@ -95,16 +116,21 @@ const deleteBudget = (budget) => {
                     </template>
                 </el-table-column>
 
-                <el-table-column label="Total Costo" width="140" align="right">
+                <el-table-column label="Total costo" width="160" align="right">
                     <template #default="scope">
-                         <!-- AQUÍ ESTÁ EL CAMBIO: concepts_sum_amount -->
-                         <span class="font-mono text-sm font-semibold text-gray-700 dark:text-gray-300">
-                             {{ formatCurrency(scope.row.concepts_sum_amount || 0) }}
-                         </span>
+                         <div class="flex flex-col items-end leading-tight">
+                            <span class="font-mono text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                {{ formatCurrency(scope.row.concepts_sum_amount || 0, scope.row.currency) }}
+                            </span>
+                            <!-- Conversión a MXN si es USD -->
+                            <span v-if="scope.row.currency === 'USD'" class="text-[10px] text-gray-400">
+                                ≈ {{ formatCurrency((scope.row.concepts_sum_amount || 0) * scope.row.exchange_rate, 'MXN') }}
+                            </span>
+                         </div>
                     </template>
                 </el-table-column>
 
-                <el-table-column label="Acciones" width="100" align="center" fixed="right">
+                <el-table-column label="Acciones" width="90" align="center" fixed="right">
                     <template #default="scope">
                         <div @click.stop>
                             <el-dropdown trigger="click">
@@ -116,10 +142,10 @@ const deleteBudget = (budget) => {
                                         <Link :href="route('budgets.show', scope.row.id)">
                                             <el-dropdown-item icon="View">Ver detalles</el-dropdown-item>
                                         </Link>
-                                        <Link :href="route('budgets.edit', scope.row.id)">
+                                        <Link v-if="can('budgets.edit')" :href="route('budgets.edit', scope.row.id)">
                                             <el-dropdown-item icon="Edit">Editar</el-dropdown-item>
                                         </Link>
-                                        <el-dropdown-item divided icon="Delete" class="text-red-500" @click="deleteBudget(scope.row)">
+                                        <el-dropdown-item v-if="can('budgets.delete')" divided icon="Delete" class="text-red-500" @click="deleteBudget(scope.row)">
                                             Eliminar
                                         </el-dropdown-item>
                                     </el-dropdown-menu>
@@ -139,15 +165,26 @@ const deleteBudget = (budget) => {
                     <el-tag :type="getStatusColor(item.status)" size="small">{{ item.status }}</el-tag>
                 </div>
                 <h3 class="font-bold text-gray-800 dark:text-gray-200 text-sm mb-1">{{ item.name }}</h3>
-                <p class="text-xs text-gray-500 mb-3 flex items-center gap-1">
-                    <el-icon><OfficeBuilding /></el-icon> {{ item.customer?.name }}
-                </p>
                 
-                <div class="flex justify-between items-center mb-2">
+                <div class="flex flex-col gap-1 mb-3">
+                    <p class="text-xs text-gray-500 flex items-center gap-1">
+                        <el-icon><OfficeBuilding /></el-icon> {{ item.customer?.name }}
+                    </p>
+                    <p class="text-xs text-gray-500 flex items-center gap-1">
+                        <el-icon><User /></el-icon> {{ item.responsible?.name }}
+                    </p>
+                </div>
+                
+                <div class="flex justify-between items-center mb-2 bg-gray-50 dark:bg-[#27272a] p-2 rounded">
                     <span class="text-xs text-gray-400">Costo total:</span>
-                    <span class="font-mono text-sm font-semibold text-gray-700 dark:text-gray-300">
-                        {{ formatCurrency(item.concepts_sum_amount || 0) }}
-                    </span>
+                    <div class="text-right">
+                        <div class="font-mono text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            {{ formatCurrency(item.concepts_sum_amount || 0, item.currency) }}
+                        </div>
+                        <div v-if="item.currency === 'USD'" class="text-[10px] text-gray-400">
+                            ≈ {{ formatCurrency((item.concepts_sum_amount || 0) * item.exchange_rate, 'MXN') }}
+                        </div>
+                    </div>
                 </div>
 
                 <div class="flex justify-between items-center pt-2 border-t border-gray-50 dark:border-gray-800">

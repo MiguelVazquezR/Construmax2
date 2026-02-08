@@ -1,8 +1,14 @@
 <script setup>
-import { computed } from 'vue';
+import { ref, computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { usePermissions } from '@/Composables/usePermissions';
+
+// Iconos de Element Plus (Asegúrate de tenerlos importados globalmente o aquí)
+import { 
+    Calendar, Plus, DocumentAdd, User, Setting, 
+    Clock, Tools, TrendCharts, List, Warning, Money 
+} from '@element-plus/icons-vue';
 
 const props = defineProps({
     my_day: Object,
@@ -12,15 +18,32 @@ const props = defineProps({
 const { can } = usePermissions();
 const user = usePage().props.auth.user;
 
+// Estado para controlar la moneda visualizada (MXN por defecto)
+const currencyMode = ref('MXN');
+
 const currentDate = new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
 
 const formatTime = (dateStr) => {
     return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
-const formatCurrency = (val) => {
-    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(val || 0);
+// Formateador dinámico según la moneda seleccionada
+const formatCurrency = (val, currency = 'MXN') => {
+    return new Intl.NumberFormat('es-MX', { 
+        style: 'currency', 
+        currency: currency, 
+        maximumFractionDigits: 2 
+    }).format(val || 0);
 };
+
+// Computed para obtener el valor de ventas correcto según el toggle
+const currentSalesDisplay = computed(() => {
+    if (!props.kpis.crm) return 0;
+    
+    return currencyMode.value === 'MXN' 
+        ? props.kpis.crm.sales_month_mxn 
+        : props.kpis.crm.sales_month_usd;
+});
 </script>
 
 <template>
@@ -151,11 +174,31 @@ const formatCurrency = (val) => {
                     
                     <!-- KPI VENTAS (Solo Permiso CRM) -->
                     <div v-if="can('crm.analytics')" class="bg-gradient-to-br from-white to-gray-50 dark:from-[#1e1e20] dark:to-[#252529] rounded-lg shadow-sm border border-gray-200 dark:border-[#2b2b2e] p-5">
-                        <div class="flex justify-between items-center mb-4">
-                            <h4 class="font-bold text-gray-600 dark:text-gray-300 text-sm uppercase">Ventas del mes</h4>
-                            <el-icon class="text-green-500"><TrendCharts /></el-icon>
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 class="font-bold text-gray-600 dark:text-gray-300 text-sm uppercase">Ventas del mes</h4>
+                                <p class="text-xs text-gray-400">Total cobrado</p>
+                            </div>
+                            <!-- Switch de Moneda -->
+                            <div class="bg-gray-100 dark:bg-[#3f3f46] p-1 rounded-lg flex text-xs font-bold">
+                                <button 
+                                    @click="currencyMode = 'MXN'"
+                                    class="px-2 py-1 rounded transition-colors"
+                                    :class="currencyMode === 'MXN' ? 'bg-white dark:bg-[#1e1e20] shadow text-green-600' : 'text-gray-400 hover:text-gray-600'"
+                                >MXN</button>
+                                <button 
+                                    @click="currencyMode = 'USD'"
+                                    class="px-2 py-1 rounded transition-colors"
+                                    :class="currencyMode === 'USD' ? 'bg-white dark:bg-[#1e1e20] shadow text-green-600' : 'text-gray-400 hover:text-gray-600'"
+                                >USD</button>
+                            </div>
                         </div>
-                        <p class="text-3xl font-bold text-gray-800 dark:text-white">{{ formatCurrency(kpis.crm?.sales_month) }}</p>
+
+                        <!-- Monto Dinámico -->
+                        <p class="text-3xl font-bold text-gray-800 dark:text-white transition-all duration-300">
+                            {{ formatCurrency(currentSalesDisplay, currencyMode) }}
+                        </p>
+                        
                         <div class="mt-4 flex gap-4 text-xs">
                             <div>
                                 <span class="block font-bold text-gray-700 dark:text-gray-300">{{ kpis.crm?.customers_month }}</span>

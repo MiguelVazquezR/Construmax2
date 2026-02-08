@@ -12,15 +12,25 @@ const { can } = usePermissions();
 const props = defineProps({
     budgets: Object,
     filters: Object,
+    users: Array, // Nueva prop recibida del controlador
 });
 
 // Estado de la vista: 'list' | 'kanban'
-// Recuperamos del localStorage para recordar la preferencia del usuario
 const viewMode = ref(localStorage.getItem('budget_view_mode') || 'list');
 
 const search = ref(props.filters.search || '');
 const statusFilter = ref(props.filters.status || 'all');
 const perPage = ref(parseInt(props.filters.perPage) || 10);
+
+// Lógica de inicialización del filtro de usuarios
+// Si viene 'all' o vacío, el array es vacío (se ven todos).
+// Si viene un valor/array, lo convertimos a array de números para el el-select.
+const transformUserId = (val) => {
+    if (!val || val === 'all') return [];
+    if (Array.isArray(val)) return val.map(Number);
+    return [Number(val)];
+};
+const userFilter = ref(transformUserId(props.filters.user_id));
 
 const statuses = [
     'Borrador', 
@@ -43,7 +53,10 @@ const fetchData = debounce(() => {
     router.get(route('budgets.index'), { 
         search: search.value, 
         status: statusFilter.value,
-        perPage: perPage.value 
+        perPage: perPage.value,
+        // Si el array está vacío, enviamos 'all' explícitamente para que el Backend 
+        // sepa que queremos ver TODO y no aplique el filtro por defecto (Usuario Autenticado)
+        user_id: userFilter.value.length > 0 ? userFilter.value : 'all',
     }, {
         preserveState: true,
         preserveScroll: true,
@@ -51,7 +64,7 @@ const fetchData = debounce(() => {
     });
 }, 300);
 
-watch([search, statusFilter, perPage], fetchData);
+watch([search, statusFilter, perPage, userFilter], fetchData);
 </script>
 
 <template>
@@ -71,8 +84,28 @@ watch([search, statusFilter, perPage], fetchData);
                         />
                     </div>
                     
+                    <!-- NUEVO: Filtro de Responsable -->
+                    <div class="w-full sm:w-60">
+                         <el-select 
+                            v-model="userFilter" 
+                            placeholder="Responsable(s)" 
+                            multiple 
+                            collapse-tags 
+                            collapse-tags-tooltip
+                            clearable
+                            class="w-full"
+                        >
+                            <el-option 
+                                v-for="user in users" 
+                                :key="user.id" 
+                                :label="user.name" 
+                                :value="user.id" 
+                            />
+                        </el-select>
+                    </div>
+
                     <div class="w-full sm:w-48">
-                        <el-select v-model="statusFilter" placeholder="Filtrar estado" clearable>
+                        <el-select v-model="statusFilter" placeholder="Filtrar estado" clearable class="w-full">
                             <el-option label="Todos los estados" value="all" />
                             <el-option v-for="st in statuses" :key="st" :label="st" :value="st" />
                         </el-select>
@@ -102,7 +135,7 @@ watch([search, statusFilter, perPage], fetchData);
                         </button>
                     </div>
 
-                    <div class="h-6 w-px bg-gray-200 dark:bg-gray-700 mx-1"></div>
+                    <div class="h-6 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden sm:block"></div>
 
                     <el-select v-model="perPage" placeholder="Ver" style="width: 100px" class="hidden sm:block">
                         <el-option label="10 / pág" :value="10" />

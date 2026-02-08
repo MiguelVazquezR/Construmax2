@@ -17,4 +17,12 @@ class BudgetPayment extends Model implements HasMedia
     protected $casts = [
         'payment_date' => 'date',
     ];
+
+    /**
+     * Relación con el Presupuesto al que pertenece el pago.
+     */
+    public function budget()
+    {
+        return $this->belongsTo(Budget::class);
+    }
 }

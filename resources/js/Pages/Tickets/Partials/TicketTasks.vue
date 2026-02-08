@@ -2,23 +2,49 @@
 import { ref } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { 
+    Check, 
+    Share, 
+    CopyDocument, 
+    ChatDotSquare, 
+    Edit, 
+    Delete, 
+    VideoPlay, 
+    Calendar, 
+    ZoomIn, 
+    Camera,
+    Plus 
+} from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
 const { can } = usePermissions();
 
+// Definición de props explícita para evitar errores de parseo
 const props = defineProps({
-    ticket: Object,
-    users: Array,
+    ticket: {
+        type: Object,
+        required: true
+    },
+    users: {
+        type: Array,
+        default: () => []
+    }
 });
 
 // --- UTILS ---
 const formatDateLong = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
-    const day = date.toLocaleDateString('es-ES', { day: '2-digit' });
-    const month = date.toLocaleDateString('es-ES', { month: 'long' });
-    const year = date.getFullYear();
-    return `${day} ${month}, ${year}`;
+    
+    // Formato: 25 oct 2023, 04:30 p.m.
+    return date.toLocaleString('es-ES', { 
+        day: '2-digit', 
+        month: 'short', 
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+    });
 };
 
 const isOverdue = (dateString) => {
@@ -36,7 +62,7 @@ const taskForm = useForm({
     name: '',
     description: '',
     user_id: '',
-    start_date: '', // Nuevo campo
+    start_date: '', 
     due_date: '',
 });
 
@@ -55,7 +81,7 @@ const openEditModal = (task) => {
     taskForm.name = task.name;
     taskForm.description = task.description;
     taskForm.user_id = task.user_id;
-    taskForm.start_date = task.start_date; // Cargar fecha inicio
+    taskForm.start_date = task.start_date; 
     taskForm.due_date = task.due_date;
     
     showTaskModal.value = true;
@@ -99,6 +125,22 @@ const deleteTask = (task) => {
             onSuccess: () => ElMessage.success('Tarea eliminada')
         });
     }).catch(() => {});
+};
+
+// --- COMPARTIR ---
+const copyToClipboard = async (url) => {
+    try {
+        await navigator.clipboard.writeText(url);
+        ElMessage.success('Enlace copiado al portapapeles');
+    } catch (err) {
+        ElMessage.error('No se pudo copiar el enlace');
+    }
+};
+
+const shareWhatsApp = (task) => {
+    const text = `Hola ${task.assignee?.name || ''}, se te ha asignado la tarea: "${task.name}".\n\nInstrucciones: ${task.description || 'Sin descripción'}.\n\nAccede aquí para reportar avances: ${task.share_url}`;
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
 };
 
 // --- EVIDENCIAS ---
@@ -158,7 +200,7 @@ const showImage = (url) => {
                     </div>
 
                     <div class="flex-1">
-                        <div class="flex justify-between items-start">
+                        <div class="flex flex-col sm:flex-row justify-between items-start gap-2">
                             <h4 
                                 class="font-bold text-gray-800 dark:text-gray-200 text-base"
                                 :class="{ 'line-through text-gray-500': task.status === 'Completada' }"
@@ -166,6 +208,17 @@ const showImage = (url) => {
                                 {{ task.name }}
                             </h4>
                             <div class="flex items-center gap-1">
+                                <!-- Botón Compartir -->
+                                <el-popover placement="bottom" :width="200" trigger="click">
+                                    <template #reference>
+                                        <el-button type="info" icon="Share" circle size="small" plain />
+                                    </template>
+                                    <div class="flex flex-col gap-2">
+                                        <el-button size="small" icon="CopyDocument" @click="copyToClipboard(task.share_url)">Copiar enlace</el-button>
+                                        <el-button size="small" color="#25D366" class="!text-white" icon="ChatDotSquare" @click="shareWhatsApp(task)">Enviar WhatsApp</el-button>
+                                    </div>
+                                </el-popover>
+
                                 <el-button v-if="can('tickets.tasks.edit')" type="primary" icon="Edit" circle size="small" plain @click="openEditModal(task)" />
                                 <el-button v-if="can('tickets.tasks.delete')" type="danger" icon="Delete" circle size="small" plain @click="deleteTask(task)" />
                             </div>
@@ -177,22 +230,22 @@ const showImage = (url) => {
 
                         <div class="flex flex-wrap items-center gap-4 text-xs mt-2 pb-2 border-b border-gray-100 dark:border-[#3f3f46]">
                             <div v-if="task.assignee" class="flex items-center gap-1.5 bg-gray-100 dark:bg-[#3f3f46] px-2 py-1 rounded-full text-gray-600 dark:text-gray-300">
-                                <el-avatar :size="16" class="!text-[10px] bg-white text-gray-500 border border-gray-200">
+                                <el-avatar :size="16" :src="task.assignee.profile_photo_url" class="bg-white text-gray-500 border border-gray-200">
                                     {{ task.assignee.name.charAt(0) }}
                                 </el-avatar>
                                 <span class="font-medium">{{ task.assignee.name }}</span>
                             </div>
                             
-                            <!-- Fechas -->
-                            <div class="flex items-center gap-3">
+                            <!-- Fechas con formato 12H -->
+                            <div class="flex items-center gap-3 flex-wrap">
                                 <div v-if="task.start_date" class="flex items-center gap-1 text-gray-500">
                                     <el-icon><VideoPlay /></el-icon>
-                                    <span>Inicia: {{ formatDateLong(task.start_date) }}</span>
+                                    <span>{{ formatDateLong(task.start_date) }}</span>
                                 </div>
                                 <div v-if="task.due_date" class="flex items-center gap-1">
                                     <el-icon :class="isOverdue(task.due_date) && task.status !== 'Completada' ? 'text-red-500' : 'text-gray-400'"><Calendar /></el-icon>
                                     <span :class="{'text-red-600 font-bold': isOverdue(task.due_date) && task.status !== 'Completada', 'text-gray-500': !isOverdue(task.due_date) || task.status === 'Completada'}">
-                                        Vence: {{ formatDateLong(task.due_date) }}
+                                        {{ formatDateLong(task.due_date) }}
                                     </span>
                                 </div>
                             </div>
@@ -252,7 +305,8 @@ const showImage = (url) => {
                             type="datetime" 
                             class="!w-full" 
                             placeholder="Seleccionar"
-                            format="DD/MM/YYYY HH:mm"
+                            format="DD/MM/YYYY hh:mm A"
+                            value-format="YYYY-MM-DD HH:mm:ss"
                         />
                     </el-form-item>
                     <el-form-item label="Fecha Límite (Fin)">
@@ -261,7 +315,8 @@ const showImage = (url) => {
                             type="datetime" 
                             class="!w-full" 
                             placeholder="Seleccionar"
-                            format="DD/MM/YYYY HH:mm"
+                            format="DD/MM/YYYY hh:mm A"
+                            value-format="YYYY-MM-DD HH:mm:ss"
                         />
                     </el-form-item>
                 </div>

@@ -13,7 +13,18 @@ const props = defineProps({
 
 // --- UTILS ---
 const formatCurrency = (value) => {
-    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(value || 0);
+    return new Intl.NumberFormat('es-MX', { 
+        style: 'currency', 
+        currency: props.budget.currency || 'MXN' 
+    }).format(value || 0);
+};
+
+// Helper específico para mostrar conversiones a MXN (cuando es USD)
+const formatMXN = (value) => {
+    return new Intl.NumberFormat('es-MX', { 
+        style: 'currency', 
+        currency: 'MXN' 
+    }).format(value || 0);
 };
 
 const formatDate = (dateString) => {
@@ -34,6 +45,46 @@ const getStatusColor = (status) => {
         'Perdido': 'danger'
     };
     return map[status] || 'info';
+};
+
+const getTicketStatusType = (status) => {
+    const map = {
+        'Programado': 'info',
+        'En proceso': 'warning',
+        'En espera': 'warning',
+        'Revisión': 'primary',
+        'Completado': 'success',
+        'Cancelado': 'danger'
+    };
+    return map[status] || 'info';
+};
+
+// --- AUTOMATIZACIÓN DE TICKET ---
+const generatingTicket = ref(false);
+
+const generateTicket = () => {
+    ElMessageBox.confirm(
+        'Se generará un Ticket de servicio automáticamente copiando la información del presupuesto. La fecha de inicio será hoy y el término estimado en 2 semanas.',
+        '¿Generar ticket automático?',
+        {
+            confirmButtonText: 'Sí, generar ticket',
+            cancelButtonText: 'Cancelar',
+            type: 'info',
+            icon: 'Tools'
+        }
+    ).then(() => {
+        generatingTicket.value = true;
+        router.post(route('tickets.store-from-budget', props.budget.id), {}, {
+            onSuccess: () => {
+                ElMessage.success('Ticket generado correctamente');
+                generatingTicket.value = false;
+            },
+            onError: () => {
+                ElMessage.error('No se pudo generar el ticket');
+                generatingTicket.value = false;
+            }
+        });
+    }).catch(() => {});
 };
 
 // --- GESTIÓN DE PAGOS ---
@@ -184,7 +235,16 @@ const openPreview = (file) => {
                 </div>
                 <div class="text-right w-full md:w-auto">
                     <p class="text-xs text-gray-400 uppercase tracking-wide">Monto Total</p>
-                    <p class="text-3xl font-bold text-gray-800 dark:text-gray-100">{{ formatCurrency(budget.total_cost) }}</p>
+                    <p class="text-3xl font-bold text-gray-800 dark:text-gray-100">
+                        {{ formatCurrency(budget.total_cost) }} 
+                        <span class="text-lg text-gray-400 font-normal">{{ budget.currency }}</span>
+                    </p>
+                    
+                    <!-- Conversión visual si es USD -->
+                    <p v-if="budget.currency === 'USD'" class="text-xs text-gray-500 mt-1">
+                        ≈ {{ formatMXN(budget.total_cost * budget.exchange_rate) }} 
+                        <span class="opacity-70">(TC: {{ budget.exchange_rate }})</span>
+                    </p>
                 </div>
             </div>
 
@@ -237,7 +297,7 @@ const openPreview = (file) => {
                         </div>
                     </div>
 
-                    <!-- ARCHIVOS ADJUNTOS (Requerimiento 2) -->
+                    <!-- ARCHIVOS ADJUNTOS -->
                     <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
                         <div class="p-4 bg-gray-50 dark:bg-[#252529] border-b border-gray-100 dark:border-[#2b2b2e] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                             <h3 class="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
@@ -305,6 +365,72 @@ const openPreview = (file) => {
 
                 <!-- COLUMNA DERECHA (1/3): Cliente y Pagos -->
                 <div class="lg:col-span-1 space-y-6">
+
+                    <!-- SECCIÓN NUEVA: TICKET / ORDEN DE SERVICIO -->
+                    <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6 relative overflow-hidden">
+                        <div class="absolute top-0 right-0 p-4 opacity-5">
+                            <el-icon :size="100"><Tools /></el-icon>
+                        </div>
+                        <h3 class="font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2 relative z-10">
+                            <el-icon><Tools /></el-icon> Orden de servicio
+                        </h3>
+
+                        <div v-if="budget.ticket" class="relative z-10">
+                            <div class="flex justify-between items-start mb-3">
+                                <span class="text-xs text-gray-500">Folio Ticket</span>
+                                <span class="font-mono text-sm font-bold text-gray-800 dark:text-gray-200">#{{ budget.ticket.id }}</span>
+                            </div>
+                            
+                            <div class="flex justify-between items-center mb-4">
+                                <span class="text-xs text-gray-500">Estatus operativo</span>
+                                <el-tag size="small" :type="getTicketStatusType(budget.ticket.status)">
+                                    {{ budget.ticket.status }}
+                                </el-tag>
+                            </div>
+
+                            <div class="mb-5">
+                                <div class="flex justify-between text-xs mb-1">
+                                    <span class="text-gray-500">Progreso tareas</span>
+                                    <span class="font-bold text-gray-700 dark:text-gray-300">{{ budget.ticket.progress || 0 }}%</span>
+                                </div>
+                                <el-progress 
+                                    :percentage="budget.ticket.progress || 0" 
+                                    :stroke-width="8" 
+                                    :show-text="false" 
+                                    :status="budget.ticket.status === 'Completado' ? 'success' : ''"
+                                />
+                            </div>
+
+                            <div v-if="can('tickets.index')" class="mt-2">
+                                <Link :href="route('tickets.show', budget.ticket.id)">
+                                    <el-button type="primary" plain class="w-full" icon="Right">
+                                        Ver seguimiento
+                                    </el-button>
+                                </Link>
+                            </div>
+                            <div v-else class="mt-2 p-2 bg-gray-50 dark:bg-[#252529] rounded text-xs text-center text-gray-500 border border-gray-100 dark:border-[#3f3f46]">
+                                <el-icon class="mr-1"><Lock /></el-icon> Detalle restringido
+                            </div>
+                        </div>
+
+                        <!-- LÓGICA DE CREACIÓN AUTOMÁTICA -->
+                        <div v-else class="relative z-10">
+                            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                                Este proyecto no tiene una orden de servicio (Ticket) activa. Se creará automáticamente con la información actual.
+                            </p>
+                            
+                            <el-button 
+                                type="primary" 
+                                color="#f26c17" 
+                                class="w-full" 
+                                icon="Plus" 
+                                @click="generateTicket"
+                                :loading="generatingTicket"
+                            >
+                                Generar ticket automático
+                            </el-button>
+                        </div>
+                    </div>
                     
                     <!-- INFO CLIENTE -->
                     <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
@@ -337,6 +463,18 @@ const openPreview = (file) => {
 
                         <!-- Resumen Financiero -->
                         <div class="space-y-4 mb-6">
+                            
+                            <!-- INFO MONEDA -->
+                            <div class="flex justify-between items-center pb-2 border-b border-gray-50 dark:border-gray-800">
+                                <span class="text-xs text-gray-500">Moneda</span>
+                                <div class="text-right">
+                                    <span class="font-bold text-gray-800 dark:text-white text-sm block">{{ budget.currency }}</span>
+                                    <span v-if="budget.currency === 'USD'" class="text-[10px] text-gray-400 block">
+                                        TC: ${{ budget.exchange_rate }}
+                                    </span>
+                                </div>
+                            </div>
+
                             <div class="flex justify-between items-center">
                                 <span class="text-sm text-gray-500">Total Proyecto</span>
                                 <span class="font-bold text-gray-800 dark:text-white">{{ formatCurrency(budget.total_cost) }}</span>
@@ -418,11 +556,13 @@ const openPreview = (file) => {
                 <el-form-item label="Monto">
                     <el-input-number 
                         v-model="paymentForm.amount" 
-                        :min="0.01" 
+                        :min="0.00" 
                         :max="budget.balance_due" 
                         :precision="2"
                         class="!w-full"
-                    />
+                    >
+                         <template #prefix>{{ budget.currency === 'USD' ? '$' : '$' }}</template>
+                    </el-input-number>
                 </el-form-item>
                 
                 <div class="grid grid-cols-2 gap-4">
@@ -449,8 +589,8 @@ const openPreview = (file) => {
                     <el-input v-model="paymentForm.reference" placeholder="Ej. Folio bancario" />
                 </el-form-item>
 
-                <!-- Campo Comprobante (Requerimiento 3) -->
-                <el-form-item label="Comprobante (Opcional)">
+                <!-- Campo Comprobante -->
+                <el-form-item label="Comprobante (opcional)">
                     <el-upload
                         ref="paymentUploadRef"
                         class="w-full"
@@ -469,7 +609,7 @@ const openPreview = (file) => {
                 <span class="dialog-footer">
                     <el-button @click="showPaymentModal = false">Cancelar</el-button>
                     <el-button type="primary" color="#f26c17" @click="submitPayment" :loading="paymentForm.processing">
-                        Guardar Pago
+                        Guardar pago
                     </el-button>
                 </span>
             </template>

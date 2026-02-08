@@ -4,12 +4,15 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB; // Agregado para usar DB facade si es necesario
 use Inertia\Inertia;
 use Carbon\Carbon;
 use App\Models\Calendar;
 use App\Models\Ticket;
 use App\Models\Budget;
 use App\Models\Customer;
+// Asegúrate de importar el modelo de pagos si existe, o usar DB table
+use App\Models\BudgetPayment; 
 
 class DashboardController extends Controller
 {
@@ -45,13 +48,39 @@ class DashboardController extends Controller
         
         // Si puede ver analíticas CRM (Ventas)
         if ($user->can('crm.analytics')) {
+            // Obtenemos los pagos del mes para calcular totales multi-moneda
+            // Asumimos que la tabla budget_payments tiene columnas 'amount', 'currency' ('MXN', 'USD') y 'exchange_rate'
+            $monthlyPayments = DB::table('budget_payments')
+                ->whereMonth('payment_date', $today->month)
+                ->whereYear('payment_date', $today->year) // Importante filtrar año también
+                ->get();
+
+            $totalMXN = 0;
+            $totalUSD = 0;
+
+            foreach ($monthlyPayments as $payment) {
+                $amount = $payment->amount;
+                // Si no hay tipo de cambio registrado, asumimos 1 (evitar error división)
+                // Ojo: Deberías tener validación al guardar el pago para que exchange_rate nunca sea 0
+                $rate = $payment->exchange_rate > 0 ? $payment->exchange_rate : 1; 
+
+                if ($payment->currency === 'USD') {
+                    // El pago fue en Dólares
+                    $totalUSD += $amount;           // Suma directa a bolsa USD
+                    $totalMXN += $amount * $rate;   // Conversión a pesos
+                } else {
+                    // El pago fue en Pesos (MXN)
+                    $totalMXN += $amount;           // Suma directa a bolsa MXN
+                    $totalUSD += $amount / $rate;   // Conversión aproximada a dólares
+                }
+            }
+
             $kpis['crm'] = [
                 'customers_month' => Customer::whereMonth('created_at', $today->month)->count(),
                 'budgets_pending' => Budget::whereIn('status', ['Presupuesto enviado', 'Trabajo en proceso'])->count(),
-                'sales_month' => Budget::where('status', 'Pagado')
-                    ->join('budget_payments', 'budgets.id', '=', 'budget_payments.budget_id')
-                    ->whereMonth('budget_payments.payment_date', $today->month)
-                    ->sum('budget_payments.amount'),
+                // Enviamos ambos totales a la vista
+                'sales_month_mxn' => $totalMXN,
+                'sales_month_usd' => $totalUSD,
             ];
         }
 

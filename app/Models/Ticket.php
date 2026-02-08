@@ -73,12 +73,17 @@ class Ticket extends Model implements HasMedia
     }
 
     /**
-     * Automatización de Estatus
-     * Se llama desde el controlador de tareas al modificar avances
+     * Automatización de Estatus Inteligente
+     * - Si no hay tareas -> Programado
+     * - Si hay tareas y TODAS están completas -> Completado
+     * - Si hay tareas y AL MENOS UNA está pendiente -> En proceso
+     * * Esto cubre:
+     * 1. Reabrir ticket: Estaba 'Completado', agregas tarea nueva -> Pasa a 'En proceso'.
+     * 2. Iniciar ticket: Estaba 'Programado', agregas tarea -> Pasa a 'En proceso'.
      */
     public function updateStatusBasedOnTasks()
     {
-        // Recargar tareas para tener el conteo fresco
+        // Forzamos recarga para asegurar consistencia tras crear/borrar
         $this->load('tasks');
         
         $total = $this->tasks->count();
@@ -86,22 +91,19 @@ class Ticket extends Model implements HasMedia
         $currentStatus = $this->status;
         $newStatus = $currentStatus;
 
-        if ($total > 0) {
-            if ($completed === $total) {
-                // Si TODAS están completas -> Completado
-                $newStatus = 'Completado';
-            } elseif ($completed > 0 && $currentStatus === 'Programado') {
-                // Si hay avance y estaba en "Programado" -> En proceso
-                $newStatus = 'En proceso';
-            } elseif ($completed === 0 && $currentStatus === 'Completado') {
-                // Si se desmarcaron todas -> Regresa a Programado (o En proceso si hubiera logica intermedia)
-                $newStatus = 'Programado';
-            }
-        } elseif ($total === 0 && $currentStatus === 'Completado') {
-            // Si se borraron todas las tareas -> Programado
+        if ($total === 0) {
+            // Sin tareas definidas, asumimos estado base
             $newStatus = 'Programado';
+        } elseif ($completed === $total) {
+            // Tareas existen y todas completadas
+            $newStatus = 'Completado';
+        } else {
+            // Tareas existen pero no todas están completas ($completed < $total)
+            // Esto implica que hay trabajo pendiente, por lo tanto "En proceso"
+            $newStatus = 'En proceso';
         }
 
+        // Solo actualizamos si hubo cambio para no disparar eventos innecesarios
         if ($newStatus !== $currentStatus) {
             $this->update(['status' => $newStatus]);
         }
