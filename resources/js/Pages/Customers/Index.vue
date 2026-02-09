@@ -4,6 +4,17 @@ import { router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { debounce } from 'lodash';
 import { ElMessageBox, ElMessage } from 'element-plus';
+import { 
+    Search, 
+    Plus, 
+    OfficeBuilding, 
+    MoreFilled, 
+    View, 
+    Edit, 
+    Delete,
+    Check,
+    Close 
+} from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
 const { can } = usePermissions();
@@ -41,7 +52,23 @@ const handlePageChange = (val) => {
 
 // Navegación al detalle
 const handleRowClick = (row) => {
+    // Evitamos navegar si el clic fue en un switch o acción
     router.visit(route('customers.show', row.id));
+};
+
+// NUEVA FUNCIÓN: Toggle Status
+const toggleStatus = (customer) => {
+    router.put(route('customers.toggle-status', customer.id), {}, {
+        preserveScroll: true,
+        onSuccess: () => {
+            ElMessage.success(`Cliente ${customer.is_active ? 'activado' : 'inactivado'} correctamente`);
+        },
+        onError: () => {
+            // Revertir cambio visual si falla (opcional, Inertia recarga el estado normalmente)
+            customer.is_active = !customer.is_active;
+            ElMessage.error('No se pudo actualizar el estatus');
+        }
+    });
 };
 
 // Acciones
@@ -83,7 +110,7 @@ watch(search, (val) => {
                         v-model="search"
                         placeholder="Buscar por nombre, razón social o RFC..."
                         clearable
-                        prefix-icon="Search"
+                        :prefix-icon="Search"
                         class="w-full"
                     />
                 </div>
@@ -94,7 +121,7 @@ watch(search, (val) => {
                         <el-option label="50 / pág" :value="50" />
                     </el-select>
                     <Link v-if="can('customers.create')" :href="route('customers.create')">
-                        <el-button type="primary" color="#f26c17" icon="Plus">
+                        <el-button type="primary" color="#f26c17" :icon="Plus">
                             Nuevo cliente
                         </el-button>
                     </Link>
@@ -143,11 +170,25 @@ watch(search, (val) => {
                             </template>
                         </el-table-column>
 
-                        <el-table-column label="Estado" width="100" align="center">
+                        <el-table-column label="Estado" width="120" align="center">
                             <template #default="scope">
-                                <el-tag :type="scope.row.is_active ? 'success' : 'danger'" size="small" effect="dark">
-                                    {{ scope.row.is_active ? 'Activo' : 'Inactivo' }}
-                                </el-tag>
+                                <!-- SWITCH DE ESTADO -->
+                                <div @click.stop>
+                                    <el-switch
+                                        v-if="can('customers.edit')"
+                                        v-model="scope.row.is_active"
+                                        inline-prompt
+                                        :active-icon="Check"
+                                        :inactive-icon="Close"
+                                        active-text="Activo"
+                                        inactive-text="Baja"
+                                        style="--el-switch-on-color: #13ce66; --el-switch-off-color: #ff4949"
+                                        @change="toggleStatus(scope.row)"
+                                    />
+                                    <el-tag v-else :type="scope.row.is_active ? 'success' : 'danger'" size="small" effect="dark">
+                                        {{ scope.row.is_active ? 'Activo' : 'Inactivo' }}
+                                    </el-tag>
+                                </div>
                             </template>
                         </el-table-column>
 
@@ -162,14 +203,14 @@ watch(search, (val) => {
                                         <template #dropdown>
                                             <el-dropdown-menu>
                                                 <Link :href="route('customers.show', scope.row.id)">
-                                                    <el-dropdown-item icon="View">Ver detalles</el-dropdown-item>
+                                                    <el-dropdown-item :icon="View">Ver detalles</el-dropdown-item>
                                                 </Link>
                                                 
                                                 <Link v-if="can('customers.edit')" :href="route('customers.edit', scope.row.id)">
-                                                    <el-dropdown-item icon="Edit">Editar</el-dropdown-item>
+                                                    <el-dropdown-item :icon="Edit">Editar</el-dropdown-item>
                                                 </Link>
                                                 
-                                                <el-dropdown-item v-if="can('customers.delete')" divided icon="Delete" class="text-red-500" @click="deleteCustomer(scope.row)">
+                                                <el-dropdown-item v-if="can('customers.delete')" divided :icon="Delete" class="text-red-500" @click="deleteCustomer(scope.row)">
                                                     Eliminar
                                                 </el-dropdown-item>
                                             </el-dropdown-menu>
@@ -194,9 +235,20 @@ watch(search, (val) => {
                                     <p class="text-xs text-gray-500">{{ customer.business_name }}</p>
                                 </div>
                             </div>
-                            <el-tag :type="customer.is_active ? 'success' : 'danger'" size="small" effect="dark">
-                                {{ customer.is_active ? 'Activo' : 'Baja' }}
-                            </el-tag>
+                            
+                            <!-- Switch móvil -->
+                            <div @click.stop>
+                                 <el-switch
+                                    v-if="can('customers.edit')"
+                                    v-model="customer.is_active"
+                                    size="small"
+                                    style="--el-switch-on-color: #13ce66; --el-switch-off-color: #ff4949"
+                                    @change="toggleStatus(customer)"
+                                />
+                                <el-tag v-else :type="customer.is_active ? 'success' : 'danger'" size="small" effect="dark">
+                                    {{ customer.is_active ? 'Act' : 'Baja' }}
+                                </el-tag>
+                            </div>
                         </div>
                         
                         <div class="flex flex-col gap-1 text-sm text-gray-600 dark:text-gray-400 mb-4 pt-2 border-t border-gray-50 dark:border-gray-800">
@@ -213,9 +265,9 @@ watch(search, (val) => {
                         <!-- Botones móviles -->
                         <div class="flex justify-end gap-2" @click.stop>
                             <Link :href="route('customers.edit', customer.id)">
-                                <el-button size="small" icon="Edit" circle />
+                                <el-button size="small" :icon="Edit" circle />
                             </Link>
-                            <el-button size="small" type="danger" icon="Delete" circle @click="deleteCustomer(customer)" />
+                            <el-button size="small" type="danger" :icon="Delete" circle @click="deleteCustomer(customer)" />
                         </div>
                     </div>
                 </div>
