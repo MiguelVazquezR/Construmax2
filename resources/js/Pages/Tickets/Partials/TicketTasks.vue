@@ -32,6 +32,8 @@ const props = defineProps({
 });
 
 // --- UTILS ---
+
+// Formato para mostrar en tarjetas (Texto legible)
 const formatDateLong = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
@@ -45,6 +47,22 @@ const formatDateLong = (dateString) => {
         minute: '2-digit',
         hour12: true
     });
+};
+
+// NUEVA FUNCIÓN: Formato para el input del formulario (YYYY-MM-DD HH:mm:ss)
+// Convierte la fecha UTC que viene de BD a la hora LOCAL del usuario en string
+const formatDateForInput = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 };
 
 const isOverdue = (dateString) => {
@@ -81,8 +99,11 @@ const openEditModal = (task) => {
     taskForm.name = task.name;
     taskForm.description = task.description;
     taskForm.user_id = task.user_id;
-    taskForm.start_date = task.start_date; 
-    taskForm.due_date = task.due_date;
+    
+    // CORRECCIÓN AQUÍ: Convertimos la fecha ISO a string local antes de asignarla
+    // Esto evita que el date-picker interprete mal la zona horaria al guardar
+    taskForm.start_date = formatDateForInput(task.start_date); 
+    taskForm.due_date = formatDateForInput(task.due_date);
     
     showTaskModal.value = true;
 };

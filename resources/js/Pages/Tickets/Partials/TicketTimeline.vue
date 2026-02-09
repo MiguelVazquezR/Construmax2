@@ -122,10 +122,10 @@ const ganttSeries = computed(() => {
             }
 
             // Color
-            let color = '#9ca3af'; // Pendiente
-            if (task.status === 'Completada') color = '#67c23a';
-            else if (new Date() > endDate) color = '#f56c6c'; // Vencida
-            else color = '#409eff'; // En tiempo
+            let color = '#9ca3af'; // Pendiente (Gris)
+            if (task.status === 'Completada') color = '#67c23a'; // Verde
+            else if (new Date() > endDate) color = '#f56c6c'; // Roja (Vencida)
+            else color = '#409eff'; // Azul (En tiempo)
 
             data.push({
                 x: task.name,
@@ -141,8 +141,9 @@ const ganttSeries = computed(() => {
 const ganttOptions = computed(() => ({
     chart: {
         type: 'rangeBar',
-        height: 350 + (props.ticket.tasks?.length * 30),
+        height: 350 + ((props.ticket.tasks?.length || 0) * 30),
         toolbar: { show: false },
+        zoom: { enabled: false }, // DESACTIVADO: Evita el zoom con scroll
         fontFamily: 'inherit'
     },
     plotOptions: {
@@ -154,7 +155,10 @@ const ganttOptions = computed(() => ({
     },
     xaxis: {
         type: 'datetime',
-        labels: { datetimeFormatter: { year: 'yyyy', month: 'MMM \'yy', day: 'dd MMM' } }
+        labels: { 
+            datetimeFormatter: { year: 'yyyy', month: 'MMM \'yy', day: 'dd MMM' },
+            datetimeUTC: false
+        }
     },
     grid: {
         borderColor: '#f3f4f6',
@@ -162,13 +166,18 @@ const ganttOptions = computed(() => ({
         xaxis: { lines: { show: true } }
     },
     tooltip: {
-        x: { format: 'dd MMM HH:mm' } // Formato más preciso
+        x: { format: 'dd MMM HH:mm' } 
     }
 }));
 
 const formatDate = (date) => {
     return new Date(date).toLocaleString('es-MX', { 
-        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' 
+        day: '2-digit', 
+        month: 'short', 
+        year: 'numeric',
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true 
     });
 };
 </script>
@@ -235,12 +244,60 @@ const formatDate = (date) => {
                     :options="ganttOptions" 
                     :series="ganttSeries" 
                 />
+                
+                <!-- LEYENDA DE COLORES -->
+                <div class="mt-6 border-t border-gray-100 dark:border-[#3f3f46] pt-4 px-2">
+                    <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Guía de Tiempos y Colores</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-gray-600 dark:text-gray-400">
+                        
+                        <!-- Naranja -->
+                        <div class="flex items-start gap-3">
+                            <span class="w-4 h-4 rounded bg-[#f26c17] mt-0.5 flex-shrink-0"></span>
+                            <div>
+                                <strong class="text-gray-800 dark:text-gray-200 block">Ticket General</strong>
+                                <span class="text-xs">Tiempo Programado</span>
+                                <span class="text-xs block text-gray-400">(Inicio Estimado → Fin Estimado)</span>
+                            </div>
+                        </div>
+
+                        <!-- Azul -->
+                        <div class="flex items-start gap-3">
+                            <span class="w-4 h-4 rounded bg-[#409eff] mt-0.5 flex-shrink-0"></span>
+                            <div>
+                                <strong class="text-gray-800 dark:text-gray-200 block">Tarea Pendiente</strong>
+                                <span class="text-xs">Planificación Original</span>
+                                <span class="text-xs block text-gray-400">(Inicio Planificado → Vencimiento)</span>
+                            </div>
+                        </div>
+
+                        <!-- Verde -->
+                        <div class="flex items-start gap-3">
+                            <span class="w-4 h-4 rounded bg-[#67c23a] mt-0.5 flex-shrink-0"></span>
+                            <div>
+                                <strong class="text-gray-800 dark:text-gray-200 block">Tarea Completada</strong>
+                                <span class="text-xs">Tiempo Real</span>
+                                <span class="text-xs block text-gray-400">(Inicio Planificado → Cierre Real)</span>
+                            </div>
+                        </div>
+
+                        <!-- Rojo -->
+                        <div class="flex items-start gap-3">
+                            <span class="w-4 h-4 rounded bg-[#f56c6c] mt-0.5 flex-shrink-0"></span>
+                            <div>
+                                <strong class="text-gray-800 dark:text-gray-200 block">Tarea Vencida</strong>
+                                <span class="text-xs">Fuera de Tiempo</span>
+                                <span class="text-xs block text-gray-400">(Fecha actual > Vencimiento)</span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
             </div>
             <div v-else class="text-center text-gray-400 py-12 border-2 border-dashed border-gray-200 dark:border-[#3f3f46] rounded-xl">
                 <el-icon :size="48" class="mb-2"><Calendar /></el-icon>
                 <p>No hay suficientes datos de fechas para generar el diagrama.</p>
             </div>
         </div>
-
     </div>
 </template>

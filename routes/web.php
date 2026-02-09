@@ -3,6 +3,7 @@
 use App\Http\Controllers\DashboardController;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Http;
 
 // Redirección inicial
 Route::redirect('/', '/login');
@@ -17,6 +18,17 @@ Route::middleware([
     // Dashboard Principal Inteligente
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
+    // --- PROXY API TIPO DE CAMBIO (Solución CORS) ---
+    // El backend hace la petición a la API externa para evitar bloqueos del navegador
+    Route::get('/api/exchange-rate', function () {
+        try {
+            $response = Http::timeout(7)->get('https://open.er-api.com/v6/latest/USD');
+            return $response->json();
+        } catch (\Exception $e) {
+            // Retornar null o un error controlado si falla
+            return response()->json(['rates' => ['MXN' => null]], 500);
+        }
+    })->name('exchange.rate');
 });
 
 // Importar rutas modulares

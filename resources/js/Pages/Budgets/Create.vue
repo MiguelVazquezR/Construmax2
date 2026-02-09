@@ -3,6 +3,15 @@ import { ref, reactive, computed, watch } from 'vue';
 import { useForm, Link, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage } from 'element-plus';
+import { 
+    Document, 
+    Money, 
+    Loading, 
+    Delete, 
+    Plus, 
+    OfficeBuilding,
+    Back 
+} from '@element-plus/icons-vue';
 import axios from 'axios';
 
 const props = defineProps({
@@ -93,16 +102,24 @@ watch(() => form.currency, async (newCurrency) => {
 const fetchExchangeRate = async () => {
     loadingRate.value = true;
     try {
-        const response = await axios.get('https://open.er-api.com/v6/latest/USD');
-        const rate = response.data.rates.MXN;
+        // CORRECCIÓN CORS: Llamamos a nuestra propia ruta interna en lugar de la externa
+        const response = await axios.get(route('exchange.rate'));
+        
+        const rate = response.data.rates?.MXN; // Usamos optional chaining por seguridad
+        
         console.log('Tipo de cambio USD a MXN:', rate);
+        
         if (rate) {
             form.exchange_rate = rate;
             ElMessage.success(`Tipo de cambio actualizado: $${rate}`);
+        } else {
+            throw new Error('Tasa no encontrada');
         }
     } catch (error) {
         console.error(error);
-        ElMessage.warning('No se pudo obtener el tipo de cambio automáticamente. Ingrésalo manualmente.');
+        ElMessage.warning('No se pudo obtener el tipo de cambio automáticamente. Por favor ingrésalo manualmente.');
+        // Opcional: poner un valor por defecto si falla
+        // form.exchange_rate = 17.50; 
     } finally {
         loadingRate.value = false;
     }
@@ -174,7 +191,7 @@ const submit = () => {
                     Nuevo presupuesto / servicio
                 </h2>
                 <Link :href="route('budgets.index')">
-                    <el-button icon="Back" circle />
+                    <el-button :icon="Back" circle />
                 </Link>
             </div>
         </template>
@@ -267,7 +284,7 @@ const submit = () => {
                                         </el-input>
                                     </el-form-item>
 
-                                    <el-button size="small" type="primary" plain icon="Plus" @click="addConcept">
+                                    <el-button size="small" type="primary" plain :icon="Plus" @click="addConcept">
                                         Agregar
                                     </el-button>
                                 </div>
@@ -292,7 +309,7 @@ const submit = () => {
                                     </div>
                                     <el-button 
                                         type="danger" 
-                                        icon="Delete" 
+                                        :icon="Delete" 
                                         circle 
                                         plain 
                                         @click="removeConcept(index)"

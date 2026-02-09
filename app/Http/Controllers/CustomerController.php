@@ -113,13 +113,18 @@ class CustomerController extends Controller
             ]);
 
             // 2. Sincronizar Contactos
-            // Estrategia: Eliminar los actuales y recrearlos. 
-            // Es seguro en este contexto ya que los contactos no tienen relaciones complejas externas aún.
             $customer->contacts()->delete();
             $customer->contacts()->createMany($validated['contacts']);
         });
 
         return redirect()->route('customers.index')->with('success', 'Cliente actualizado exitosamente.');
+    }
+    
+    // MÉTODO NUEVO: Toggle Status
+    public function toggleStatus(Customer $customer)
+    {
+        $customer->update(['is_active' => !$customer->is_active]);
+        return back()->with('success', 'Estatus del cliente actualizado.');
     }
 
     public function destroy(Customer $customer)
