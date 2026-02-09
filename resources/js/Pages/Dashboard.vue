@@ -4,10 +4,10 @@ import { Link, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
-// Iconos de Element Plus (Asegúrate de tenerlos importados globalmente o aquí)
+// Iconos
 import { 
     Calendar, Plus, DocumentAdd, User, Setting, 
-    Clock, Tools, TrendCharts, List, Warning, Money 
+    Clock, Tools, TrendCharts, List, Warning 
 } from '@element-plus/icons-vue';
 
 const props = defineProps({
@@ -18,7 +18,7 @@ const props = defineProps({
 const { can } = usePermissions();
 const user = usePage().props.auth.user;
 
-// Estado para controlar la moneda visualizada (MXN por defecto)
+// Control del filtro de moneda
 const currencyMode = ref('MXN');
 
 const currentDate = new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -27,8 +27,8 @@ const formatTime = (dateStr) => {
     return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
-// Formateador dinámico según la moneda seleccionada
-const formatCurrency = (val, currency = 'MXN') => {
+// Formateador
+const formatCurrency = (val, currency) => {
     return new Intl.NumberFormat('es-MX', { 
         style: 'currency', 
         currency: currency, 
@@ -36,10 +36,11 @@ const formatCurrency = (val, currency = 'MXN') => {
     }).format(val || 0);
 };
 
-// Computed para obtener el valor de ventas correcto según el toggle
+// Computed para mostrar el valor correcto según el filtro seleccionado
 const currentSalesDisplay = computed(() => {
     if (!props.kpis.crm) return 0;
     
+    // Aquí mostramos DIRECTAMENTE la bolsa correspondiente
     return currencyMode.value === 'MXN' 
         ? props.kpis.crm.sales_month_mxn 
         : props.kpis.crm.sales_month_usd;
@@ -65,11 +66,10 @@ const currentSalesDisplay = computed(() => {
                 </div>
             </div>
 
-            <!-- 2. ACCESOS RÁPIDOS (Según Permisos) -->
+            <!-- 2. ACCESOS RÁPIDOS -->
             <div>
                 <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">Accesos Rápidos</h3>
                 <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                    
                     <Link v-if="can('tickets.create')" :href="route('tickets.create')" class="group">
                         <div class="bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] hover:shadow-md transition text-center">
                             <div class="w-10 h-10 mx-auto bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mb-2 group-hover:scale-110 transition">
@@ -78,7 +78,6 @@ const currentSalesDisplay = computed(() => {
                             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Nuevo ticket</span>
                         </div>
                     </Link>
-
                     <Link v-if="can('budgets.create')" :href="route('budgets.create')" class="group">
                         <div class="bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] hover:shadow-md transition text-center">
                             <div class="w-10 h-10 mx-auto bg-green-50 text-green-500 rounded-full flex items-center justify-center mb-2 group-hover:scale-110 transition">
@@ -87,7 +86,6 @@ const currentSalesDisplay = computed(() => {
                             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Presupuesto</span>
                         </div>
                     </Link>
-
                     <Link v-if="can('customers.create')" :href="route('customers.create')" class="group">
                         <div class="bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] hover:shadow-md transition text-center">
                             <div class="w-10 h-10 mx-auto bg-purple-50 text-purple-500 rounded-full flex items-center justify-center mb-2 group-hover:scale-110 transition">
@@ -96,7 +94,6 @@ const currentSalesDisplay = computed(() => {
                             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Nuevo cliente</span>
                         </div>
                     </Link>
-
                     <Link v-if="can('users.create')" :href="route('users.create')" class="group">
                         <div class="bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] hover:shadow-md transition text-center">
                             <div class="w-10 h-10 mx-auto bg-gray-50 text-gray-500 rounded-full flex items-center justify-center mb-2 group-hover:scale-110 transition">
@@ -110,9 +107,8 @@ const currentSalesDisplay = computed(() => {
 
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 
-                <!-- 3. RESUMEN PERSONAL (Columna Izquierda 2/3) -->
+                <!-- 3. RESUMEN PERSONAL -->
                 <div class="lg:col-span-2 space-y-8">
-                    
                     <!-- Mi Agenda -->
                     <div class="bg-white dark:bg-[#1e1e20] rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
                         <div class="p-4 bg-gray-50 dark:bg-[#252529] border-b border-gray-100 dark:border-[#2b2b2e] flex justify-between items-center">
@@ -138,7 +134,7 @@ const currentSalesDisplay = computed(() => {
                         </div>
                     </div>
 
-                    <!-- Mis Tickets Pendientes -->
+                    <!-- Mis Tickets -->
                     <div class="bg-white dark:bg-[#1e1e20] rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
                         <div class="p-4 bg-gray-50 dark:bg-[#252529] border-b border-gray-100 dark:border-[#2b2b2e] flex justify-between items-center">
                             <h3 class="font-bold text-gray-800 dark:text-white flex items-center gap-2">
@@ -166,20 +162,19 @@ const currentSalesDisplay = computed(() => {
                             <p v-else class="text-sm text-gray-400 text-center py-4">¡Estás al día! No tienes tickets pendientes.</p>
                         </div>
                     </div>
-
                 </div>
 
-                <!-- 4. RESUMEN GERENCIAL (Columna Derecha 1/3) -->
+                <!-- 4. RESUMEN GERENCIAL -->
                 <div class="lg:col-span-1 space-y-6">
                     
-                    <!-- KPI VENTAS (Solo Permiso CRM) -->
+                    <!-- KPI VENTAS -->
                     <div v-if="can('crm.analytics')" class="bg-gradient-to-br from-white to-gray-50 dark:from-[#1e1e20] dark:to-[#252529] rounded-lg shadow-sm border border-gray-200 dark:border-[#2b2b2e] p-5">
                         <div class="flex justify-between items-start mb-4">
                             <div>
                                 <h4 class="font-bold text-gray-600 dark:text-gray-300 text-sm uppercase">Ventas del mes</h4>
-                                <p class="text-xs text-gray-400">Total cobrado</p>
+                                <p class="text-xs text-gray-400">Total cobrado en {{ currencyMode }}</p>
                             </div>
-                            <!-- Switch de Moneda -->
+                            <!-- SWITCH DE FILTRO (MXN / USD) -->
                             <div class="bg-gray-100 dark:bg-[#3f3f46] p-1 rounded-lg flex text-xs font-bold">
                                 <button 
                                     @click="currencyMode = 'MXN'"
@@ -194,7 +189,7 @@ const currentSalesDisplay = computed(() => {
                             </div>
                         </div>
 
-                        <!-- Monto Dinámico -->
+                        <!-- Monto Dinámico (Solo suma la moneda seleccionada) -->
                         <p class="text-3xl font-bold text-gray-800 dark:text-white transition-all duration-300">
                             {{ formatCurrency(currentSalesDisplay, currencyMode) }}
                         </p>
@@ -214,7 +209,7 @@ const currentSalesDisplay = computed(() => {
                         </div>
                     </div>
 
-                    <!-- KPI OPERACIONES (Solo Permiso Tickets) -->
+                    <!-- KPI OPERACIONES -->
                     <div v-if="can('tickets.analytics')" class="bg-gradient-to-br from-white to-gray-50 dark:from-[#1e1e20] dark:to-[#252529] rounded-lg shadow-sm border border-gray-200 dark:border-[#2b2b2e] p-5">
                         <div class="flex justify-between items-center mb-4">
                             <h4 class="font-bold text-gray-600 dark:text-gray-300 text-sm uppercase">Operaciones activas</h4>
