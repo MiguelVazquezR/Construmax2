@@ -34,7 +34,7 @@ class TicketController extends Controller
 
         return Inertia::render('Tickets/Create', [
             'budgets' => $budgets,
-            'users' => User::where('is_active', true)->get(),
+            'users' => User::has('technician')->with('technician')->get(),
             'customers' => Customer::where('is_active', true)->with('contacts')->get(),
         ]);
     }
@@ -64,7 +64,6 @@ class TicketController extends Controller
             ->with('success', 'Ticket operativo generado correctamente.');
     }
 
-    // --- MÉTODO PARA CREACIÓN AUTOMÁTICA DESDE PRESUPUESTO ---
     public function storeFromBudget(Request $request, Budget $budget)
     {
         if ($budget->ticket) {
@@ -97,15 +96,22 @@ class TicketController extends Controller
         
         $ticket->append('progress');
 
-        // Generar URLs firmadas para compartir tareas públicamente
-        $ticket->tasks->transform(function ($task) {
-            $task->share_url = URL::signedRoute('tasks.public.show', ['task' => $task->id]);
+        // Generar enlace de "Orden de Trabajo" para cada tarea (agrupado visualmente en el frontend)
+        // En realidad, el enlace es por TÉCNICO, así que agregamos un atributo virtual a las tareas
+        // para que el frontend sepa cuál es el link maestro de ese técnico.
+        $ticket->tasks->transform(function ($task) use ($ticket) {
+            if ($task->user_id) {
+                $task->share_url = URL::signedRoute('tickets.public.job-order', [
+                    'ticket' => $ticket->id,
+                    'user' => $task->user_id
+                ]);
+            }
             return $task;
         });
 
         return Inertia::render('Tickets/Show', [
             'ticket' => $ticket,
-            'users' => User::where('is_active', true)->get(),
+            'users' => User::has('technician')->with('technician')->get(),
         ]);
     }
 
@@ -120,7 +126,7 @@ class TicketController extends Controller
     {
         return Inertia::render('Tickets/Edit', [
             'ticket' => $ticket->load('budget'),
-            'users' => User::where('is_active', true)->get(),
+            'users' => User::has('technician')->with('technician')->get(),
         ]);
     }
 

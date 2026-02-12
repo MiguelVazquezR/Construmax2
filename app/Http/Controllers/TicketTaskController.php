@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Ticket;
 use App\Models\TicketTask;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
 use Inertia\Inertia;
@@ -18,7 +19,7 @@ class TicketTaskController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'user_id' => 'nullable|exists:users,id',
+            'user_id' => 'required|exists:users,id',
             'start_date' => 'nullable|date',
             'due_date' => 'nullable|date',
         ]);
@@ -34,7 +35,7 @@ class TicketTaskController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'user_id' => 'nullable|exists:users,id',
+            'user_id' => 'required|exists:users,id',
             'start_date' => 'nullable|date',
             'due_date' => 'nullable|date',
         ]);
@@ -47,7 +48,7 @@ class TicketTaskController extends Controller
     {
         $ticket = $task->ticket;
         $task->delete();
-        $ticket->updateStatusBasedOnTasks(); // Recalcular progreso
+        $ticket->updateStatusBasedOnTasks(); 
         return back()->with('success', 'Tarea eliminada.');
     }
 
@@ -67,7 +68,7 @@ class TicketTaskController extends Controller
     public function storeEvidence(Request $request, TicketTask $task)
     {
         $request->validate([
-            'file' => 'required|file|image|max:10240', // 10MB max
+            'file' => 'required|file|image|max:10240', 
         ]);
 
         if ($request->hasFile('file')) {
@@ -79,27 +80,42 @@ class TicketTaskController extends Controller
 
     // --- GESTIÓN PÚBLICA (SIGNED URL) ---
 
-    public function publicShow(Request $request, TicketTask $task)
+    // NUEVO MÉTODO: Muestra todas las tareas asignadas al técnico en este ticket
+    public function publicJobOrder(Request $request, Ticket $ticket, User $user)
     {
-        // Cargar relaciones
-        $task->load(['media', 'assignee', 'ticket.budget.customer']);
+        // Cargar datos del ticket y cliente
+        $ticket->load(['budget.customer', 'budget.contact']);
 
-        // Transformar media para incluir URL firmada de borrado
-        // Esto es crucial para permitir borrar SOLO las imágenes de esta tarea
-        $task->media->transform(function ($media) {
-            $media->delete_url = URL::signedRoute('tasks.public.evidence.destroy', ['media' => $media->id]);
-            $media->url = $media->getUrl(); // Asegurar que la URL pública esté disponible
-            return $media;
-        });
+        // Obtener tareas SOLO asignadas a este usuario, ordenadas cronológicamente
+        $tasks = $ticket->tasks()
+            ->where('user_id', $user->id)
+            ->with(['media'])
+            ->orderBy('start_date', 'asc') // Orden cronológico vital para la secuencia
+            ->get();
 
-        return Inertia::render('Tickets/PublicTask', [
-            'task' => $task,
-            'ticket' => $task->ticket,
-            // Pasamos las URLs de acción manteniendo la firma
-            'urls' => [
+        // Transformar tareas para incluir URLs de acción firmadas individualmente
+        $tasks->transform(function ($task) {
+            
+            // URLs para las evidencias existentes
+            $task->media->transform(function ($media) {
+                $media->delete_url = URL::signedRoute('tasks.public.evidence.destroy', ['media' => $media->id]);
+                $media->url = $media->getUrl();
+                return $media;
+            });
+
+            // URLs de acción para la tarea
+            $task->urls = [
                 'toggle' => URL::signedRoute('tasks.public.toggle', ['task' => $task->id]),
                 'evidence' => URL::signedRoute('tasks.public.evidence', ['task' => $task->id]),
-            ]
+            ];
+
+            return $task;
+        });
+
+        return Inertia::render('Tickets/PublicTask', [ // Reutilizamos el nombre de archivo, pero la vista cambiará
+            'ticket' => $ticket,
+            'technician' => $user,
+            'tasks' => $tasks,
         ]);
     }
 
@@ -124,7 +140,6 @@ class TicketTaskController extends Controller
 
     public function publicDestroyEvidence(Request $request, $mediaId)
     {
-        // Al estar bajo middleware 'signed', la URL es segura y temporal
         $media = Media::findOrFail($mediaId);
         $media->delete();
         

@@ -174,7 +174,7 @@ watch(search, (val) => {
                                         :key="index" 
                                         size="small" 
                                         effect="light"
-                                        class="!border-none bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                                        class="!border-none !bg-gray-100 !text-gray-600 dark:bg-gray-700 dark:text-gray-300"
                                     >
                                         {{ spec }}
                                     </el-tag>
@@ -187,12 +187,13 @@ watch(search, (val) => {
                         </el-table-column>
 
                         <!-- Calificación -->
-                        <el-table-column label="Rating" width="140">
+                        <el-table-column label="Rating" width="180">
                             <template #default="scope">
                                 <el-rate
                                     v-model="scope.row.rating_avg"
                                     disabled
                                     show-score
+                                    size="small"
                                     text-color="#ff9900"
                                     score-template="{value}"
                                 />

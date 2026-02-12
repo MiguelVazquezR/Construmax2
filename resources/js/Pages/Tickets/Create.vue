@@ -144,7 +144,7 @@ const submitQuickBudget = () => {
     <AppLayout title="Nuevo ticket de servicio">
         <template #header>
             <div class="flex items-center justify-between">
-                <h2 class="font-semibold text-xl text-gray-800 dark:text-white leading-tight">
+                <h2 class="font-semibold text-gray-800 dark:text-white leading-tight">
                     Nuevo ticket de servicio
                 </h2>
                 <Link :href="route('tickets.index')">

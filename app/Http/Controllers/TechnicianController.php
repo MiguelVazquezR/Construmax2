@@ -4,11 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\Technician;
 use App\Models\User;
+use App\Models\Ticket; // Importante importar Ticket
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Inertia\Inertia;
 use Illuminate\Validation\Rule;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class TechnicianController extends Controller
 {
@@ -34,12 +36,9 @@ class TechnicianController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            // Datos User
             'name' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:users',
             'photo' => 'nullable|image|max:2048',
-            
-            // Datos Technician (CORREGIDO: phone aquí)
             'phone' => 'required|string|max:20', 
             'secondary_phone' => 'nullable|string|max:20',
             'is_internal' => 'boolean',
@@ -50,20 +49,17 @@ class TechnicianController extends Controller
             'coverage_radius_km' => 'required|integer|min:1',
             'specialties' => 'nullable|array',
             'specialties.*' => 'string',
-            
             'legal_name' => 'nullable|string',
             'rfc' => 'nullable|string|max:20',
             'bank_name' => 'nullable|string',
             'bank_account' => 'nullable|string',
             'clabe' => 'nullable|string',
-            
             'internal_notes' => 'nullable|string',
             'tax_file' => 'nullable|file|mimes:pdf,jpg,png|max:5120',
             'rating_avg' => 'nullable|numeric|min:0|max:5',
         ]);
 
         DB::transaction(function () use ($validated, $request) {
-            // 2. Crear Usuario (Solo credenciales básicas)
             $user = User::create([
                 'name' => $validated['name'],
                 'email' => $validated['email'],
@@ -75,12 +71,9 @@ class TechnicianController extends Controller
                 $user->updateProfilePhoto($request->file('photo'));
             }
 
-            // $user->assignRole('Técnico');
-
-            // 3. Crear Perfil Técnico (CORREGIDO: Guardando phone aquí)
             $technician = Technician::create([
                 'user_id' => $user->id,
-                'phone' => $validated['phone'], // <--- AQUÍ
+                'phone' => $validated['phone'],
                 'secondary_phone' => $validated['secondary_phone'],
                 'is_internal' => $validated['is_internal'] ?? false,
                 'state' => $validated['state'],
@@ -93,13 +86,13 @@ class TechnicianController extends Controller
                 'rfc' => $validated['rfc'],
                 'bank_name' => $validated['bank_name'],
                 'bank_account' => $validated['bank_account'],
-            'clabe' => $validated['clabe'],
-            'status' => 'En revisión',
-            'internal_notes' => $validated['internal_notes'],
-            'rating_avg' => $validated['rating_avg'] ?? 0,
-        ]);
+                'clabe' => $validated['clabe'],
+                'status' => 'En revisión',
+                'internal_notes' => $validated['internal_notes'],
+                'rating_avg' => $validated['rating_avg'] ?? 0,
+            ]);
 
-        if ($request->hasFile('tax_file')) {
+            if ($request->hasFile('tax_file')) {
                 $technician->addMediaFromRequest('tax_file')
                     ->toMediaCollection('fiscal_documents');
             }
@@ -112,14 +105,24 @@ class TechnicianController extends Controller
     {
         $technician->load(['user', 'media']);
         
-        $tickets = $technician->tickets()
-            ->with(['budget.customer'])
-            ->orderBy('id', 'desc')
+        // CORRECCIÓN: Consulta híbrida (Responsable O Colaborador en tareas)
+        $historyQuery = Ticket::with(['budget.customer'])
+            ->where(function($query) use ($technician) {
+                // Caso 1: Es el responsable principal del ticket
+                $query->where('user_id', $technician->user_id)
+                // Caso 2: Tiene tareas asignadas en ese ticket
+                      ->orWhereHas('tasks', function($q) use ($technician) {
+                          $q->where('user_id', $technician->user_id);
+                      });
+            });
+
+        $tickets = $historyQuery->orderBy('id', 'desc')
             ->take(10)
             ->get();
             
-        $totalTickets = $technician->tickets()->count();
-        $completedTickets = $technician->tickets()->where('status', 'Completado')->count();
+        // KPIs basados en el historial completo (Responsable + Colaborador)
+        $totalTickets = $historyQuery->count();
+        $completedTickets = (clone $historyQuery)->where('status', 'Completado')->count();
         $completionRate = $totalTickets > 0 ? round(($completedTickets / $totalTickets) * 100) : 0;
 
         return Inertia::render('Technicians/Show', [
@@ -145,8 +148,6 @@ class TechnicianController extends Controller
             'name' => 'required|string|max:255',
             'email' => ['required', 'email', Rule::unique('users')->ignore($technician->user_id)],
             'photo' => 'nullable|image|max:2048',
-            
-            // Datos Technician
             'phone' => 'required|string|max:20',
             'secondary_phone' => 'nullable|string|max:20',
             'is_internal' => 'boolean',
@@ -157,7 +158,6 @@ class TechnicianController extends Controller
             'coverage_radius_km' => 'required|integer',
             'specialties' => 'nullable|array',
             'specialties.*' => 'string',
-            
             'legal_name' => 'nullable|string',
             'rfc' => 'nullable|string',
             'bank_name' => 'nullable|string',
@@ -169,7 +169,6 @@ class TechnicianController extends Controller
         ]);
 
         DB::transaction(function () use ($validated, $request, $technician) {
-            // Actualizar User
             $technician->user->update([
                 'name' => $validated['name'],
                 'email' => $validated['email'],
@@ -179,9 +178,8 @@ class TechnicianController extends Controller
                 $technician->user->updateProfilePhoto($request->file('photo'));
             }
 
-            // Actualizar Technician (CORREGIDO: phone aquí)
             $technician->update([
-                'phone' => $validated['phone'], // <--- AQUÍ
+                'phone' => $validated['phone'],
                 'secondary_phone' => $validated['secondary_phone'],
                 'is_internal' => $validated['is_internal'],
                 'state' => $validated['state'],
@@ -194,14 +192,45 @@ class TechnicianController extends Controller
                 'rfc' => $validated['rfc'],
                 'bank_name' => $validated['bank_name'],
                 'bank_account' => $validated['bank_account'],
-            'clabe' => $validated['clabe'],
-            'status' => $validated['status'],
-            'internal_notes' => $validated['internal_notes'],
-            'rating_avg' => $validated['rating_avg'] ?? $technician->rating_avg,
-        ]);
-    });
+                'clabe' => $validated['clabe'],
+                'status' => $validated['status'],
+                'internal_notes' => $validated['internal_notes'],
+                'rating_avg' => $validated['rating_avg'] ?? $technician->rating_avg,
+            ]);
+        });
 
-    return redirect()->route('technicians.show', $technician->id)->with('success', 'Perfil actualizado.');
+        return redirect()->route('technicians.show', $technician->id)->with('success', 'Perfil actualizado.');
+    }
+
+    // NUEVO MÉTODO: Actualización rápida de estatus
+    public function updateStatus(Request $request, Technician $technician)
+    {
+        $validated = $request->validate([
+            'status' => 'required|string|in:Activo,Inactivo,En revisión,Vetado'
+        ]);
+
+        $technician->update(['status' => $validated['status']]);
+
+        return back()->with('success', 'Estatus del técnico actualizado.');
+    }
+
+    public function updateRating(Request $request, Technician $technician)
+    {
+        $validated = $request->validate([
+            'rating' => 'required|numeric|min:0|max:5'
+        ]);
+
+        $technician->update(['rating_avg' => $validated['rating']]);
+
+        return back()->with('success', 'Calificación actualizada.');
+    }
+
+    public function deleteMedia(Technician $technician, $mediaId)
+    {
+        $media = $technician->media()->findOrFail($mediaId);
+        $media->delete();
+
+        return back()->with('success', 'Documento eliminado.');
     }
 
     public function destroy(Technician $technician)

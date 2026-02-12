@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, reactive, computed } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { 
@@ -13,13 +13,14 @@ import {
     Calendar, 
     ZoomIn, 
     Camera,
-    Plus 
+    Plus,
+    UserFilled,
+    Link as IconLink
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
 const { can } = usePermissions();
 
-// Definición de props explícita para evitar errores de parseo
 const props = defineProps({
     ticket: {
         type: Object,
@@ -31,14 +32,42 @@ const props = defineProps({
     }
 });
 
+// --- COMPUTED: TÉCNICOS ASIGNADOS ---
+// Agrupamos las tareas por usuario para mostrar los botones de compartir una sola vez por técnico
+const assignedTechnicians = computed(() => {
+    const techs = new Map();
+
+    props.ticket.tasks.forEach(task => {
+        if (task.assignee && task.user_id) {
+            if (!techs.has(task.user_id)) {
+                // Buscamos info extra del técnico (como el teléfono) en el prop 'users'
+                // ya que task.assignee solo trae datos básicos del User
+                const userFullInfo = props.users.find(u => u.id === task.user_id);
+                const phone = userFullInfo?.technician?.phone || '';
+
+                techs.set(task.user_id, {
+                    id: task.user_id,
+                    name: task.assignee.name,
+                    profile_photo_url: task.assignee.profile_photo_url,
+                    share_url: task.share_url, // URL firmada de la Orden de Trabajo (viene del backend)
+                    phone: phone,
+                    task_count: 1
+                });
+            } else {
+                const existing = techs.get(task.user_id);
+                existing.task_count++;
+            }
+        }
+    });
+
+    return Array.from(techs.values());
+});
+
 // --- UTILS ---
 
-// Formato para mostrar en tarjetas (Texto legible)
 const formatDateLong = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
-    
-    // Formato: 25 oct 2023, 04:30 p.m.
     return date.toLocaleString('es-ES', { 
         day: '2-digit', 
         month: 'short', 
@@ -49,19 +78,15 @@ const formatDateLong = (dateString) => {
     });
 };
 
-// NUEVA FUNCIÓN: Formato para el input del formulario (YYYY-MM-DD HH:mm:ss)
-// Convierte la fecha UTC que viene de BD a la hora LOCAL del usuario en string
 const formatDateForInput = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
-    
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const hours = String(date.getHours()).padStart(2, '0');
     const minutes = String(date.getMinutes()).padStart(2, '0');
     const seconds = String(date.getSeconds()).padStart(2, '0');
-    
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 };
 
@@ -71,9 +96,28 @@ const isOverdue = (dateString) => {
     return due < now;
 };
 
+const getTechnicianLabel = (user) => {
+    let label = user.name;
+    if (user.technician) {
+        label += user.technician.is_internal ? ' (Interno)' : ' (Externo)';
+    }
+    return label;
+};
+
 // --- GESTIÓN DE TAREAS ---
 const showTaskModal = ref(false);
 const isEditing = ref(false);
+const formRef = ref();
+
+const rules = reactive({
+    name: [
+        { required: true, message: 'El nombre de la actividad es obligatorio', trigger: 'blur' },
+        { min: 3, message: 'Debe tener al menos 3 caracteres', trigger: 'blur' }
+    ],
+    user_id: [
+        { required: true, message: 'Debes asignar un técnico responsable', trigger: 'change' }
+    ]
+});
 
 const taskForm = useForm({
     id: null,
@@ -89,50 +133,49 @@ const openCreateModal = () => {
     taskForm.reset();
     taskForm.clearErrors();
     showTaskModal.value = true;
+    setTimeout(() => { if (formRef.value) formRef.value.clearValidate(); }, 50);
 };
 
 const openEditModal = (task) => {
     isEditing.value = true;
     taskForm.clearErrors();
-    
     taskForm.id = task.id;
     taskForm.name = task.name;
     taskForm.description = task.description;
     taskForm.user_id = task.user_id;
-    
-    // CORRECCIÓN AQUÍ: Convertimos la fecha ISO a string local antes de asignarla
-    // Esto evita que el date-picker interprete mal la zona horaria al guardar
     taskForm.start_date = formatDateForInput(task.start_date); 
     taskForm.due_date = formatDateForInput(task.due_date);
-    
     showTaskModal.value = true;
+    setTimeout(() => { if (formRef.value) formRef.value.clearValidate(); }, 50);
 };
 
 const submitTask = () => {
-    if (isEditing.value) {
-        taskForm.put(route('tickets.tasks.update', taskForm.id), {
-            onSuccess: () => {
-                showTaskModal.value = false;
-                taskForm.reset();
-                ElMessage.success('Tarea actualizada correctamente');
+    if (!formRef.value) return;
+    formRef.value.validate((valid) => {
+        if (valid) {
+            if (isEditing.value) {
+                taskForm.put(route('tickets.tasks.update', taskForm.id), {
+                    onSuccess: () => {
+                        showTaskModal.value = false;
+                        taskForm.reset();
+                        ElMessage.success('Tarea actualizada correctamente');
+                    }
+                });
+            } else {
+                taskForm.post(route('tickets.tasks.store', props.ticket.id), {
+                    onSuccess: () => {
+                        showTaskModal.value = false;
+                        taskForm.reset();
+                        ElMessage.success('Tarea agregada');
+                    }
+                });
             }
-        });
-    } else {
-        taskForm.post(route('tickets.tasks.store', props.ticket.id), {
-            onSuccess: () => {
-                showTaskModal.value = false;
-                taskForm.reset();
-                ElMessage.success('Tarea agregada');
-            }
-        });
-    }
+        }
+    });
 };
 
 const toggleTask = (task) => {
-    router.put(route('tickets.tasks.toggle', task.id), {}, {
-        preserveScroll: true,
-        onSuccess: () => { }
-    });
+    router.put(route('tickets.tasks.toggle', task.id), {}, { preserveScroll: true });
 };
 
 const deleteTask = (task) => {
@@ -140,41 +183,43 @@ const deleteTask = (task) => {
         confirmButtonText: 'Eliminar',
         cancelButtonText: 'Cancelar',
         type: 'warning' 
-    })
-    .then(() => {
+    }).then(() => {
         router.delete(route('tickets.tasks.destroy', task.id), {
             onSuccess: () => ElMessage.success('Tarea eliminada')
         });
     }).catch(() => {});
 };
 
-// --- COMPARTIR ---
+// --- COMPARTIR (NIVEL TÉCNICO) ---
 const copyToClipboard = async (url) => {
     try {
         await navigator.clipboard.writeText(url);
-        ElMessage.success('Enlace copiado al portapapeles');
+        ElMessage.success('Enlace de Orden de Trabajo copiado');
     } catch (err) {
         ElMessage.error('No se pudo copiar el enlace');
     }
 };
 
-const shareWhatsApp = (task) => {
-    const text = `Hola ${task.assignee?.name || ''}, se te ha asignado la tarea: "${task.name}".\n\nInstrucciones: ${task.description || 'Sin descripción'}.\n\nAccede aquí para reportar avances: ${task.share_url}`;
-    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+const shareWhatsApp = (tech) => {
+    // Si tenemos el teléfono del técnico, lo usamos. Si no, abrimos whatsapp general.
+    const phone = tech.phone ? tech.phone.replace(/\D/g, '') : '';
+    
+    const text = `Hola ${tech.name}, aquí tienes tu Orden de Trabajo Digital para el ticket #${props.ticket.id}.\n\nPor favor revisa tus actividades y reporta avances aquí: ${tech.share_url}`;
+    
+    const url = phone 
+        ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
+        : `https://wa.me/?text=${encodeURIComponent(text)}`;
+        
     window.open(url, '_blank');
 };
 
 // --- EVIDENCIAS ---
 const evidenceForm = useForm({ file: null });
-
 const handleEvidenceUpload = (file, task) => {
     evidenceForm.file = file.raw;
     evidenceForm.post(route('tickets.tasks.evidence.store', task.id), {
         preserveScroll: true,
-        onSuccess: () => {
-            ElMessage.success('Evidencia subida');
-            evidenceForm.reset();
-        },
+        onSuccess: () => { ElMessage.success('Evidencia subida'); evidenceForm.reset(); },
         onError: () => ElMessage.error('Error al subir imagen')
     });
 };
@@ -182,7 +227,6 @@ const handleEvidenceUpload = (file, task) => {
 // --- PREVISUALIZACIÓN ---
 const previewVisible = ref(false);
 const previewImage = ref('');
-
 const showImage = (url) => {
     previewImage.value = url;
     previewVisible.value = true;
@@ -202,6 +246,59 @@ const showImage = (url) => {
             </el-button>
         </div>
 
+        <!-- SECCIÓN: COMPARTIR ORDENES DE TRABAJO (Técnicos) -->
+        <div v-if="assignedTechnicians.length > 0" class="mb-8">
+            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                <el-icon><Share /></el-icon> Compartir Ordenes de Trabajo
+            </h4>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <el-popover
+                    v-for="tech in assignedTechnicians"
+                    :key="tech.id"
+                    placement="bottom"
+                    :width="280"
+                    trigger="click"
+                >
+                    <template #reference>
+                        <div class="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 rounded-lg cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors group">
+                            <div class="relative">
+                                <el-avatar :src="tech.profile_photo_url" :size="40" class="border-2 border-white dark:border-gray-800 shadow-sm">
+                                    {{ tech.name.charAt(0) }}
+                                </el-avatar>
+                                <div class="absolute -bottom-0 -right-1 bg-green-500 rounded-full size-5 flex items-center justify-center border-2 border-white dark:border-gray-800">
+                                    <el-icon class="text-white text-[9px]"><Link /></el-icon>
+                                </div>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-bold text-gray-800 dark:text-gray-200 truncate">{{ tech.name }}</p>
+                                <p class="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                                    {{ tech.task_count }} {{ tech.task_count === 1 ? 'tarea asignada' : 'tareas asignadas' }}
+                                </p>
+                            </div>
+                        </div>
+                    </template>
+                    
+                    <!-- Contenido del Popover -->
+                    <div class="text-center">
+                        <p class="text-sm font-bold text-gray-800 mb-1">Compartir acceso externo</p>
+                        <p class="text-xs text-gray-500 mb-3">
+                            Este enlace da acceso a la vista "Orden de Trabajo Digital" con todas sus tareas.
+                        </p>
+                        <div class="flex flex-col items-center gap-2">
+                            <el-button type="success" class="w-full" :icon="ChatDotSquare" @click="shareWhatsApp(tech)">
+                                Enviar por WhatsApp
+                            </el-button>
+                            <el-button type="info" plain class="w-full" :icon="CopyDocument" @click="copyToClipboard(tech.share_url)">
+                                Copiar enlace
+                            </el-button>
+                        </div>
+                    </div>
+                </el-popover>
+            </div>
+        </div>
+
+        <!-- LISTA DE TAREAS -->
         <div v-if="ticket.tasks.length > 0" class="space-y-4">
             <div 
                 v-for="task in ticket.tasks" 
@@ -229,17 +326,7 @@ const showImage = (url) => {
                                 {{ task.name }}
                             </h4>
                             <div class="flex items-center gap-1">
-                                <!-- Botón Compartir -->
-                                <el-popover placement="bottom" :width="200" trigger="click">
-                                    <template #reference>
-                                        <el-button type="info" icon="Share" circle size="small" plain />
-                                    </template>
-                                    <div class="flex flex-col gap-2">
-                                        <el-button size="small" icon="CopyDocument" @click="copyToClipboard(task.share_url)">Copiar enlace</el-button>
-                                        <el-button size="small" color="#25D366" class="!text-white" icon="ChatDotSquare" @click="shareWhatsApp(task)">Enviar WhatsApp</el-button>
-                                    </div>
-                                </el-popover>
-
+                                <!-- Botones de edición (Ya no hay compartir individual) -->
                                 <el-button v-if="can('tickets.tasks.edit')" type="primary" icon="Edit" circle size="small" plain @click="openEditModal(task)" />
                                 <el-button v-if="can('tickets.tasks.delete')" type="danger" icon="Delete" circle size="small" plain @click="deleteTask(task)" />
                             </div>
@@ -257,7 +344,7 @@ const showImage = (url) => {
                                 <span class="font-medium">{{ task.assignee.name }}</span>
                             </div>
                             
-                            <!-- Fechas con formato 12H -->
+                            <!-- Fechas -->
                             <div class="flex items-center gap-3 flex-wrap">
                                 <div v-if="task.start_date" class="flex items-center gap-1 text-gray-500">
                                     <el-icon><VideoPlay /></el-icon>
@@ -309,18 +396,24 @@ const showImage = (url) => {
             :title="isEditing ? 'Editar tarea' : 'Nueva tarea operativa'" 
             width="500px"
         >
-            <el-form :model="taskForm" label-position="top">
-                <el-form-item label="Actividad / Tarea">
+            <el-form 
+                ref="formRef" 
+                :model="taskForm" 
+                :rules="rules"
+                label-position="top"
+                require-asterisk-position="right"
+            >
+                <el-form-item label="Actividad / Tarea" prop="name">
                     <el-input v-model="taskForm.name" placeholder="Ej. Instalación de cableado" />
                 </el-form-item>
                 
-                <el-form-item label="Detalles">
+                <el-form-item label="Detalles" prop="description">
                     <el-input v-model="taskForm.description" type="textarea" placeholder="Instrucciones específicas..." />
                 </el-form-item>
 
                 <!-- FECHAS -->
                 <div class="grid grid-cols-2 gap-4">
-                    <el-form-item label="Fecha Inicio (Planificada)">
+                    <el-form-item label="Fecha Inicio" prop="start_date">
                         <el-date-picker 
                             v-model="taskForm.start_date" 
                             type="datetime" 
@@ -330,7 +423,7 @@ const showImage = (url) => {
                             value-format="YYYY-MM-DD HH:mm:ss"
                         />
                     </el-form-item>
-                    <el-form-item label="Fecha Límite (Fin)">
+                    <el-form-item label="Fecha Límite" prop="due_date">
                         <el-date-picker 
                             v-model="taskForm.due_date" 
                             type="datetime" 
@@ -342,9 +435,14 @@ const showImage = (url) => {
                     </el-form-item>
                 </div>
 
-                <el-form-item label="Asignar a (Opcional)">
-                    <el-select v-model="taskForm.user_id" placeholder="Técnico" class="w-full" clearable filterable>
-                        <el-option v-for="user in users" :key="user.id" :label="user.name" :value="user.id" />
+                <el-form-item label="Asignar a" prop="user_id">
+                    <el-select v-model="taskForm.user_id" placeholder="Seleccionar técnico" class="w-full" clearable filterable>
+                        <el-option 
+                            v-for="user in users" 
+                            :key="user.id" 
+                            :label="getTechnicianLabel(user)" 
+                            :value="user.id" 
+                        />
                     </el-select>
                 </el-form-item>
             </el-form>

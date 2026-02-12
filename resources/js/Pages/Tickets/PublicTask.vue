@@ -1,413 +1,347 @@
 <template>
-  <Head :title="`Ticket #${ticket.id}`" />
+  <Head :title="`Orden de Trabajo #${ticket.id}`" />
   
-  <div class="public-task-container">
-    <el-card class="box-card" shadow="hover">
-      <!-- Encabezado de la Tarea -->
-      <template #header>
-        <div class="card-header">
-          <div class="header-left">
-            <span class="task-id">
-              Ticket #{{ ticket.id }}
-            </span>
-            <span class="task-title">{{ task.name }}</span>
-          </div>
-          
-          <!-- Botón de Acción Principal (Toggle) -->
-          <div class="header-right">
-             <el-tag :type="getStatusType(task.status)" effect="dark" class="status-tag">
-                {{ task.status }}
-             </el-tag>
-          </div>
+  <div class="job-order-container">
+    
+    <!-- 1. AVISO DE SEGURIDAD (IMPORTANTE) -->
+    <el-alert
+        title="⚠️ AVISO DE SEGURIDAD INDUSTRIAL"
+        type="warning"
+        effect="dark"
+        :closable="false"
+        class="mb-6 sticky-header"
+    >
+        <div class="text-sm">
+            <p class="font-bold mb-1">REGLAS OBLIGATORIAS PARA INICIAR LABORES:</p>
+            <ul class="list-disc pl-4 space-y-1">
+                <li>Usar equipo de protección personal (EPP) completo.</li>
+                <li>Verificar riesgos eléctricos o de altura.</li>
+                <li>Reportar condiciones inseguras antes de iniciar.</li>
+            </ul>
         </div>
-      </template>
+    </el-alert>
 
-      <!-- Detalles de la Tarea -->
-      <div class="task-body">
+    <!-- HEADER DEL TICKET -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5 mb-6">
+        <div class="flex justify-between items-start mb-4">
+            <div>
+                <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Ticket #{{ ticket.id }}</span>
+                <h1 class="text-xl font-bold text-gray-900 mt-1">{{ ticket.budget?.customer?.name }}</h1>
+                <p class="text-sm text-gray-600">{{ ticket.budget?.customer?.business_name }}</p>
+            </div>
+            <el-tag effect="dark" :type="getPriorityColor(ticket.priority)">Prioridad {{ ticket.priority }}</el-tag>
+        </div>
         
-        <!-- Acciones Rápidas -->
-        <div class="action-bar mb-4">
-             <el-button 
-                :type="task.status === 'Completada' ? 'warning' : 'success'" 
-                :icon="task.status === 'Completada' ? RefreshLeft : Check"
-                :loading="toggleForm.processing"
-                @click="toggleStatus"
-                class="w-full-mobile"
-             >
-                {{ task.status === 'Completada' ? 'Reabrir Tarea' : 'Marcar como Completada' }}
-             </el-button>
-        </div>
-
-        <el-descriptions :column="1" border class="mb-4">
-          <el-descriptions-item label="Cliente">
-            {{ ticket.budget?.customer?.name || 'N/A' }}
-          </el-descriptions-item>
-          <el-descriptions-item label="Descripción">
-            <span style="white-space: pre-wrap;">{{ task.description || 'Sin descripción' }}</span>
-          </el-descriptions-item>
-          <el-descriptions-item label="Fechas">
-            Del: {{ formatDate(task.start_date) }} <br>
-            Al: {{ formatDate(task.due_date) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="Asignado a" v-if="task.assignee">
-            <el-avatar :size="24" :src="task.assignee.profile_photo_url" style="vertical-align: middle; margin-right: 5px;">
-                {{ task.assignee.name.charAt(0) }}
-            </el-avatar>
-            {{ task.assignee.name }}
-          </el-descriptions-item>
-        </el-descriptions>
-
-        <el-divider content-position="left">Evidencias Adjuntas</el-divider>
-
-        <!-- Formulario de Subida -->
-        <div class="upload-section mb-4">
-            <el-upload
-                class="upload-demo"
-                drag
-                action="#"
-                :auto-upload="true"
-                :show-file-list="false"
-                :http-request="handleUpload"
-                :disabled="uploadForm.processing"
-                accept="image/*"
-            >
-                <el-icon class="el-icon--upload"><upload-filled /></el-icon>
-                <div class="el-upload__text">
-                    Arrastra una imagen o <em>haz clic para subir</em>
+        <el-descriptions :column="1" border size="small">
+            <el-descriptions-item label="Responsable">
+                <div class="flex items-center gap-2">
+                    <el-avatar :size="20" :src="technician.profile_photo_url">{{ technician.name.charAt(0) }}</el-avatar>
+                    {{ technician.name }}
                 </div>
-                <template #tip>
-                    <div class="el-upload__tip">
-                        Archivos jpg/png menores a 10MB.
+            </el-descriptions-item>
+            <el-descriptions-item label="Instrucciones">
+                {{ ticket.instructions || 'Sin instrucciones generales.' }}
+            </el-descriptions-item>
+        </el-descriptions>
+    </div>
+
+    <!-- LISTA DE TAREAS SECUENCIALES -->
+    <div class="space-y-8 relative">
+        <!-- Línea conectora vertical -->
+        <div class="absolute left-4 top-4 bottom-4 w-0.5 bg-gray-200 z-0"></div>
+
+        <div 
+            v-for="(task, index) in tasks" 
+            :key="task.id" 
+            class="relative z-10 pl-12 transition-all duration-300"
+            :class="{ 'opacity-60 grayscale': isTaskLocked(index) }"
+        >
+            <!-- Badge Circular del Paso -->
+            <div 
+                class="absolute left-0 top-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-white shadow-sm border-2 border-white"
+                :class="getStepColorClass(task, index)"
+            >
+                <el-icon v-if="task.status === 'Completada'"><Check /></el-icon>
+                <span v-else>{{ index + 1 }}</span>
+            </div>
+
+            <!-- Tarjeta de Tarea -->
+            <el-card class="box-card" :shadow="isTaskLocked(index) ? 'never' : 'hover'">
+                <template #header>
+                    <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                        <span class="font-bold text-gray-800 leading-tight">{{ task.name }}</span>
+                        <el-tag size="small" :type="getStatusType(task.status)" class="w-fit">{{ task.status }}</el-tag>
                     </div>
                 </template>
-            </el-upload>
-            
-            <!-- Barra de progreso de subida manual si Inertia está procesando -->
-            <el-progress 
-                v-if="uploadForm.processing" 
-                :percentage="uploadForm.progress?.percentage || 50" 
-                status="success"
-                :indeterminate="true"
-                class="mt-2"
-            />
-        </div>
 
-        <!-- SECCIÓN DE EVIDENCIAS -->
-        <div class="evidence-gallery-container" v-if="task.media && task.media.length > 0">
-          <div 
-            v-for="(img, index) in task.media" 
-            :key="img.id" 
-            class="evidence-item-wrapper"
-          >
-            <!-- Contenedor relativo para posicionar el botón de borrar -->
-            <div class="thumbnail-container">
-                <el-image
-                  class="evidence-thumbnail"
-                  :src="img.original_url"
-                  :zoom-rate="1.2"
-                  :max-scale="7"
-                  :min-scale="0.2"
-                  :preview-src-list="getAllImageUrls(task.media)"
-                  :initial-index="index"
-                  fit="cover"
-                  loading="lazy"
-                  preview-teleported
-                  hide-on-click-modal
-                >
-                  <template #error>
-                    <div class="image-slot-error">
-                      <el-icon><icon-picture /></el-icon>
-                    </div>
-                  </template>
-                  <template #placeholder>
-                    <div class="image-slot-loading">...</div>
-                  </template>
-                </el-image>
+                <div class="text-sm text-gray-600 mb-4 whitespace-pre-line">
+                    {{ task.description || 'Sin detalles adicionales.' }}
+                </div>
+                
+                <div class="text-xs text-gray-500 mb-4 flex flex-col sm:flex-row gap-2 sm:gap-4">
+                    <span class="flex items-center gap-1"><el-icon><Calendar /></el-icon> {{ formatDate(task.start_date) }}</span>
+                    <span class="flex items-center gap-1"><el-icon><Timer /></el-icon> Límite: {{ formatDate(task.due_date) }}</span>
+                </div>
 
-                <!-- Botón de eliminar (Solo visible si tenemos URL de borrado) -->
-                <el-popconfirm
-                    v-if="img.delete_url"
-                    title="¿Eliminar esta evidencia?"
-                    confirm-button-text="Sí"
-                    cancel-button-text="No"
-                    @confirm="deleteEvidence(img.delete_url)"
-                >
-                    <template #reference>
-                        <div class="delete-overlay">
-                            <el-icon><Delete /></el-icon>
+                <!-- SECCIÓN DE EVIDENCIAS -->
+                <div class="bg-gray-50 rounded p-3 mb-4 border border-gray-100">
+                    <p class="text-xs font-bold text-gray-500 mb-3 uppercase flex items-center gap-1">
+                        <el-icon><Camera /></el-icon> Evidencias Fotográficas
+                    </p>
+                    
+                    <!-- Galería -->
+                    <div v-if="task.media && task.media.length > 0" class="flex flex-wrap gap-3 mb-3">
+                        <div 
+                            v-for="(img, imgIndex) in task.media" 
+                            :key="img.id" 
+                            class="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200 shadow-sm bg-white"
+                        >
+                            <el-image 
+                                :src="img.original_url" 
+                                class="w-full h-full" 
+                                fit="cover"
+                                :preview-src-list="getTaskImageUrls(task)"
+                                :initial-index="imgIndex"
+                                preview-teleported
+                                hide-on-click-modal
+                            >
+                                <template #error>
+                                    <div class="flex items-center justify-center w-full h-full bg-gray-100 text-gray-400">
+                                        <el-icon><icon-picture /></el-icon>
+                                    </div>
+                                </template>
+                            </el-image>
+
+                            <!-- Botón borrar MEJORADO -->
+                            <el-popconfirm
+                                v-if="task.status !== 'Completada'"
+                                title="¿Eliminar?"
+                                confirm-button-text="Sí"
+                                cancel-button-text="No"
+                                width="160"
+                                @confirm="deleteEvidence(img.delete_url)"
+                            >
+                                <template #reference>
+                                    <div class="absolute top-1 right-1 bg-white text-red-500 rounded-full p-1 shadow-md cursor-pointer hover:bg-red-50 transition-colors z-10 flex items-center justify-center w-6 h-6">
+                                        <el-icon :size="14"><Delete /></el-icon>
+                                    </div>
+                                </template>
+                            </el-popconfirm>
                         </div>
-                    </template>
-                </el-popconfirm>
-            </div>
-            
-            <span class="evidence-label">{{ img.file_name }}</span>
-            <span class="evidence-date">{{ formatDate(img.created_at) }}</span>
-          </div>
-        </div>
+                    </div>
+                    <div v-else class="text-xs text-gray-400 italic mb-3 ml-1">
+                        No hay fotos adjuntas.
+                    </div>
 
-        <el-empty v-else description="Sin evidencias adjuntas. Sube la primera imagen arriba." :image-size="60"></el-empty>
-        
-      </div>
-    </el-card>
+                    <!-- Upload Button -->
+                    <el-upload
+                        v-if="task.status !== 'Completada' && !isTaskLocked(index)"
+                        action="#"
+                        :auto-upload="true"
+                        :show-file-list="false"
+                        :http-request="(opts) => handleUpload(opts, task)"
+                        accept="image/*"
+                    >
+                        <el-button size="small" :icon="Camera" :loading="uploadingTaskId === task.id" plain type="primary">
+                            Adjuntar Foto
+                        </el-button>
+                    </el-upload>
+                </div>
+
+                <!-- ACCIÓN PRINCIPAL -->
+                <el-button 
+                    v-if="!isTaskLocked(index)"
+                    :type="task.status === 'Completada' ? 'warning' : 'success'" 
+                    class="w-full !py-5"
+                    :icon="task.status === 'Completada' ? RefreshLeft : Select"
+                    @click="toggleStatus(task)"
+                    :loading="togglingTaskId === task.id"
+                >
+                    {{ task.status === 'Completada' ? 'Reabrir tarea' : 'Finalizar tarea' }}
+                </el-button>
+                <div v-else class="text-xs text-orange-500 italic flex items-center gap-1 p-2 bg-orange-50 rounded border border-orange-100">
+                    <el-icon><Lock /></el-icon> Completa la tarea anterior para desbloquear.
+                </div>
+
+            </el-card>
+        </div>
+    </div>
+
+    <!-- 3. RECORDATORIO FINAL (CHECKLIST DE CIERRE) -->
+    <div class="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-5">
+        <h3 class="text-blue-800 font-bold flex items-center gap-2 mb-3">
+            <el-icon><DocumentChecked /></el-icon> REQUISITOS PARA LIBERACIÓN DE PAGO
+        </h3>
+        <ul class="text-sm text-blue-700 space-y-2 list-none">
+            <li class="flex items-start gap-2">
+                <el-icon class="mt-1"><Check /></el-icon> 
+                <span>Subir evidencias claras del <strong>Antes, Durante y Después</strong>.</span>
+            </li>
+            <li class="flex items-start gap-2">
+                <el-icon class="mt-1"><Check /></el-icon> 
+                <span>Firma de conformidad del cliente (Hoja de servicio).</span>
+            </li>
+            <li class="flex items-start gap-2">
+                <el-icon class="mt-1"><Check /></el-icon> 
+                <span>Área limpia y libre de escombro.</span>
+            </li>
+        </ul>
+        <div class="mt-4 text-xs text-blue-500 font-semibold border-t border-blue-200 pt-2">
+            * Construmax de Occidente validará estos puntos antes de procesar la estimación.
+        </div>
+    </div>
+
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { ref } from 'vue';
 import { Head, useForm, router } from '@inertiajs/vue3';
 import { 
-    Picture as IconPicture, 
     Check, 
     RefreshLeft, 
-    UploadFilled,
-    Delete
+    Camera,
+    Delete,
+    Calendar,
+    Timer,
+    Lock,
+    Select,
+    DocumentChecked,
+    Picture as IconPicture
 } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import dayjs from 'dayjs'; 
-import 'dayjs/locale/es'; // Asegúrate de tener configurado locale si lo deseas
+import 'dayjs/locale/es';
 
-// Props recibidas de Inertia (TicketTaskController@publicShow)
+// Configurar locale español globalmente para dayjs
+dayjs.locale('es');
+
 const props = defineProps({
-  task: Object,
   ticket: Object,
-  urls: Object,
+  technician: Object,
+  tasks: Array, 
 });
 
-// --- LÓGICA DE ESTADO ---
-const toggleForm = useForm({});
-const uploadForm = useForm({
-    file: null
-});
+const togglingTaskId = ref(null);
+const uploadingTaskId = ref(null);
+
+// Lógica de Bloqueo Secuencial
+const isTaskLocked = (index) => {
+    if (index === 0) return false;
+    const previousTask = props.tasks[index - 1];
+    return previousTask.status !== 'Completada';
+};
+
+// --- HELPERS ---
+
+const getStepColorClass = (task, index) => {
+    if (task.status === 'Completada') return 'bg-green-500 border-green-500';
+    if (isTaskLocked(index)) return 'bg-gray-300 border-gray-300 text-gray-500';
+    return 'bg-blue-600 border-blue-600'; 
+};
 
 const getStatusType = (status) => {
-  const map = {
-    'Pendiente': 'warning',
-    'En proceso': 'primary',
-    'Completada': 'success',
-  };
-  return map[status] || 'info';
+    const map = { 'Pendiente': 'info', 'En proceso': 'primary', 'Completada': 'success' };
+    return map[status] || 'info';
 };
 
+const getPriorityColor = (priority) => {
+    const map = { 'Alta': 'danger', 'Media': 'warning', 'Baja': 'success' };
+    return map[priority] || 'info';
+};
+
+// Formato Solicitado: "Jueves 12 febrero, 9:00 am"
 const formatDate = (date) => {
-  if (!date) return 'N/A';
-  return dayjs(date).format('DD/MM/YYYY HH:mm');
+    if (!date) return '--:--';
+    // dddd=Día nombre, D=Día numero, MMMM=Mes nombre, h:mm a=hora am/pm
+    const formatted = dayjs(date).format('dddd D MMMM, h:mm a');
+    // Capitalizar primera letra
+    return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 };
 
-const getAllImageUrls = (mediaArray) => {
-  return mediaArray.map(item => item.original_url);
+// Helper para obtener todas las URLs de imágenes de una tarea específica
+// Esto permite navegar (next/prev) entre todas las fotos de ESA tarea en el visor
+const getTaskImageUrls = (task) => {
+    if (!task.media) return [];
+    return task.media.map(m => m.original_url);
 };
 
 // --- ACCIONES ---
 
-// 1. Cambiar estado
-const toggleStatus = () => {
-    toggleForm.put(props.urls.toggle, {
+const toggleStatus = (task) => {
+    togglingTaskId.value = task.id;
+    router.put(task.urls.toggle, {}, {
         preserveScroll: true,
         onSuccess: () => {
-            ElMessage.success('Estado actualizado correctamente');
+            ElMessage.success(task.status === 'Completada' ? 'Tarea reabierta' : 'Tarea finalizada');
+            togglingTaskId.value = null;
         },
         onError: () => {
-            ElMessage.error('No se pudo actualizar el estado');
+            ElMessage.error('Error al actualizar');
+            togglingTaskId.value = null;
         }
     });
 };
 
-// 2. Subir evidencia (Usando Inertia a través de Element Upload)
-const handleUpload = (options) => {
+const handleUpload = (options, task) => {
     const { file } = options;
-    
-    // Validación básica frontend
     const isImage = file.type.startsWith('image/');
-    const isLt10M = file.size / 1024 / 1024 < 10;
+    // Aumentamos ligeramente el límite a 15MB por si acaso
+    const isLt15M = file.size / 1024 / 1024 < 15;
 
-    if (!isImage) {
-        ElMessage.error('El archivo debe ser una imagen');
-        return;
-    }
-    if (!isLt10M) {
-        ElMessage.error('La imagen debe pesar menos de 10MB');
+    if (!isImage || !isLt15M) {
+        ElMessage.error('Solo imágenes menores a 15MB');
         return;
     }
 
-    uploadForm.file = file;
+    uploadingTaskId.value = task.id;
+    const form = useForm({ file: file });
     
-    uploadForm.post(props.urls.evidence, {
+    form.post(task.urls.evidence, {
         preserveScroll: true,
         onSuccess: () => {
-            ElMessage.success('Evidencia subida correctamente');
-            uploadForm.reset();
+            ElMessage.success('Evidencia subida');
+            uploadingTaskId.value = null;
         },
-        onError: (errors) => {
-            let msg = 'Error al subir';
-            if(errors.file) msg = errors.file;
-            ElMessage.error(msg);
-        },
-        onFinish: () => {
-            // Limpia el estado de carga
+        onError: () => {
+            ElMessage.error('Error al subir imagen');
+            uploadingTaskId.value = null;
         }
     });
 };
 
-// 3. Eliminar evidencia
-const deleteEvidence = (deleteUrl) => {
-    router.delete(deleteUrl, {
+const deleteEvidence = (url) => {
+    router.delete(url, {
         preserveScroll: true,
-        onSuccess: () => ElMessage.success('Evidencia eliminada'),
-        onError: () => ElMessage.error('No se pudo eliminar la evidencia')
+        onSuccess: () => ElMessage.success('Imagen eliminada')
     });
 };
 </script>
 
 <style scoped>
-.public-task-container {
-  max-width: 800px;
-  margin: 20px auto;
-  font-family: 'Inter', sans-serif;
-  padding: 0 10px;
+.job-order-container {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 15px;
+  background-color: #f8fafc;
+  min-height: 100vh;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
+.sticky-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
-.header-left {
-  display: flex;
-  flex-direction: column;
+:deep(.el-card__header) {
+    padding: 12px 15px;
+    background-color: #fff;
+    border-bottom: 1px solid #f1f5f9;
 }
 
-.task-id {
-  font-size: 0.85rem;
-  color: #909399;
-  font-weight: 600;
-}
-
-.task-title {
-  font-size: 1.2rem;
-  font-weight: 700;
-  color: #303133;
-}
-
-.mb-4 {
-  margin-bottom: 1.5rem;
-}
-
-.mt-2 {
-    margin-top: 0.5rem;
-}
-
-/* Acciones */
-.w-full-mobile {
-    width: auto;
-}
-@media (max-width: 480px) {
-    .w-full-mobile {
-        width: 100%;
-    }
-}
-
-/* --- ESTILOS DE LA GALERÍA DE EVIDENCIAS --- */
-
-.evidence-gallery-container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 15px;
-  margin-top: 20px;
-}
-
-.evidence-item-wrapper {
-  display: flex;
-  flex-direction: column;
-  width: 130px;
-}
-
-.thumbnail-container {
-    position: relative;
-    width: 130px;
-    height: 130px;
-    border-radius: 8px;
-    overflow: hidden;
-}
-
-.evidence-thumbnail {
-  width: 100%;
-  height: 100%;
-  border-radius: 8px;
-  border: 1px solid #e4e7ed;
-  background-color: #f5f7fa;
-  cursor: zoom-in;
-  transition: transform 0.2s;
-}
-
-/* Efecto Hover para mostrar botón eliminar */
-.thumbnail-container:hover .evidence-thumbnail {
-    transform: scale(1.05);
-}
-
-.delete-overlay {
-    position: absolute;
-    top: 5px;
-    right: 5px;
-    background-color: rgba(245, 108, 108, 0.9);
-    color: white;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    opacity: 0; /* Oculto por defecto */
-    transition: opacity 0.2s;
-    z-index: 10;
-}
-
-.thumbnail-container:hover .delete-overlay {
-    opacity: 1; /* Visible al hover */
-}
-
-/* En móbiles, el hover no funciona bien, mejor mostrarlo siempre o con un botón más accesible.
-   Aquí hacemos que siempre sea un poco visible en touch screens si se desea, 
-   o confiamos en el tap. Para simplicidad, lo dejamos con hover/tap logic */
-@media (hover: none) {
-    .delete-overlay {
-        opacity: 0.8;
-        background-color: rgba(245, 108, 108, 1);
-    }
-}
-
-.evidence-label {
-  font-size: 0.75rem;
-  color: #606266;
-  margin-top: 6px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-weight: 500;
-}
-
-.evidence-date {
-    font-size: 0.65rem;
-    color: #909399;
-}
-
-/* Slots de carga y error */
-.image-slot-error, .image-slot-loading {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-  background: #f5f7fa;
-  color: #909399;
-  font-size: 20px;
-}
-
-/* Upload Style Override */
-:deep(.el-upload-dragger) {
-    padding: 20px 10px;
+:deep(.el-card__body) {
+    padding: 15px;
 }
 </style>
