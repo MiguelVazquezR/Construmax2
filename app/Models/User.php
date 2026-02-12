@@ -24,7 +24,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'is_active', // Nuevo campo
+        'is_active', 
     ];
 
     protected $hidden = [
@@ -43,7 +43,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
-            'is_active' => 'boolean', // Cast a booleano
+            'is_active' => 'boolean',
         ];
     }
 
@@ -52,7 +52,12 @@ class User extends Authenticatable
         return $this->hasOne(Employee::class);
     }
     
-    // Scope para filtrar búsquedas fácilmente
+    // --- RELACIÓN NUEVA ---
+    public function technician(): HasOne
+    {
+        return $this->hasOne(Technician::class);
+    }
+    
     public function scopeFilter($query, array $filters)
     {
         $query->when($filters['search'] ?? null, function ($query, $search) {

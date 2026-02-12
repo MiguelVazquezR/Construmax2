@@ -39,6 +39,7 @@ require __DIR__ . '/web/budgets.php';
 require __DIR__ . '/web/crm.php';
 require __DIR__ . '/web/tickets.php';
 require __DIR__ . '/web/calendar.php';
+require __DIR__ . '/web/technicians.php';
 
 // --- SOLUCIÓN PARA HOSTING SIN SYMLINK ---
 // Esta ruta intercepta las peticiones a imágenes y documentos

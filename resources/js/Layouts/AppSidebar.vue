@@ -25,6 +25,7 @@ const activeMenu = computed(() => {
 
     // Configuración
     if (route().current('users.*')) return 'users.index';
+    if (route().current('technicians.*')) return 'technicians.index';
     if (route().current('config.roles-permissions.*')) return 'config.roles-permissions.index';
 
     // Default
@@ -111,6 +112,10 @@ const activeMenu = computed(() => {
                         <el-menu-item class="!bg-dark" index="users.index">Usuarios</el-menu-item>
                     </Link>
                     
+                    <Link v-if="can('technicians.index')" :href="route('technicians.index')">
+                        <el-menu-item class="!bg-dark" index="technicians.index">Técnicos</el-menu-item>
+                    </Link>
+
                     <Link v-if="can('roles.index')" :href="route('config.roles-permissions.index')">
                         <el-menu-item class="!bg-dark" index="config.roles-permissions.index">Roles y Permisos</el-menu-item>
                     </Link>

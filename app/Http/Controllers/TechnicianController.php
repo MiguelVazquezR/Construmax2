@@ -1,0 +1,212 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Technician;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Inertia\Inertia;
+use Illuminate\Validation\Rule;
+
+class TechnicianController extends Controller
+{
+    public function index(Request $request)
+    {
+        $perPage = $request->input('perPage', 10);
+
+        return Inertia::render('Technicians/Index', [
+            'technicians' => Technician::with('user')
+                ->filter($request->only('search', 'specialty', 'state'))
+                ->orderBy('id', 'desc')
+                ->paginate($perPage)
+                ->withQueryString(),
+            'filters' => $request->only(['search', 'perPage', 'specialty', 'state']),
+        ]);
+    }
+
+    public function create()
+    {
+        return Inertia::render('Technicians/Create');
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            // Datos User
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|max:255|unique:users',
+            'photo' => 'nullable|image|max:2048',
+            
+            // Datos Technician (CORREGIDO: phone aquí)
+            'phone' => 'required|string|max:20', 
+            'secondary_phone' => 'nullable|string|max:20',
+            'is_internal' => 'boolean',
+            'state' => 'required|string',
+            'city' => 'required|string',
+            'colony' => 'nullable|string',
+            'zip_code' => 'nullable|string',
+            'coverage_radius_km' => 'required|integer|min:1',
+            'specialties' => 'nullable|array',
+            'specialties.*' => 'string',
+            
+            'legal_name' => 'nullable|string',
+            'rfc' => 'nullable|string|max:20',
+            'bank_name' => 'nullable|string',
+            'bank_account' => 'nullable|string',
+            'clabe' => 'nullable|string',
+            
+            'internal_notes' => 'nullable|string',
+            'tax_file' => 'nullable|file|mimes:pdf,jpg,png|max:5120',
+            'rating_avg' => 'nullable|numeric|min:0|max:5',
+        ]);
+
+        DB::transaction(function () use ($validated, $request) {
+            // 2. Crear Usuario (Solo credenciales básicas)
+            $user = User::create([
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+                'password' => Hash::make('TempPassword123!'),
+                'is_active' => false,
+            ]);
+
+            if ($request->hasFile('photo')) {
+                $user->updateProfilePhoto($request->file('photo'));
+            }
+
+            // $user->assignRole('Técnico');
+
+            // 3. Crear Perfil Técnico (CORREGIDO: Guardando phone aquí)
+            $technician = Technician::create([
+                'user_id' => $user->id,
+                'phone' => $validated['phone'], // <--- AQUÍ
+                'secondary_phone' => $validated['secondary_phone'],
+                'is_internal' => $validated['is_internal'] ?? false,
+                'state' => $validated['state'],
+                'city' => $validated['city'],
+                'colony' => $validated['colony'],
+                'zip_code' => $validated['zip_code'],
+                'coverage_radius_km' => $validated['coverage_radius_km'],
+                'specialties' => $validated['specialties'],
+                'legal_name' => $validated['legal_name'],
+                'rfc' => $validated['rfc'],
+                'bank_name' => $validated['bank_name'],
+                'bank_account' => $validated['bank_account'],
+            'clabe' => $validated['clabe'],
+            'status' => 'En revisión',
+            'internal_notes' => $validated['internal_notes'],
+            'rating_avg' => $validated['rating_avg'] ?? 0,
+        ]);
+
+        if ($request->hasFile('tax_file')) {
+                $technician->addMediaFromRequest('tax_file')
+                    ->toMediaCollection('fiscal_documents');
+            }
+        });
+
+        return redirect()->route('technicians.index')->with('success', 'Técnico registrado correctamente.');
+    }
+
+    public function show(Technician $technician)
+    {
+        $technician->load(['user', 'media']);
+        
+        $tickets = $technician->tickets()
+            ->with(['budget.customer'])
+            ->orderBy('id', 'desc')
+            ->take(10)
+            ->get();
+            
+        $totalTickets = $technician->tickets()->count();
+        $completedTickets = $technician->tickets()->where('status', 'Completado')->count();
+        $completionRate = $totalTickets > 0 ? round(($completedTickets / $totalTickets) * 100) : 0;
+
+        return Inertia::render('Technicians/Show', [
+            'technician' => $technician,
+            'tickets' => $tickets,
+            'kpis' => [
+                'total_tickets' => $totalTickets,
+                'completion_rate' => $completionRate,
+            ]
+        ]);
+    }
+
+    public function edit(Technician $technician)
+    {
+        return Inertia::render('Technicians/Edit', [
+            'technician' => $technician->load('user'),
+        ]);
+    }
+
+    public function update(Request $request, Technician $technician)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => ['required', 'email', Rule::unique('users')->ignore($technician->user_id)],
+            'photo' => 'nullable|image|max:2048',
+            
+            // Datos Technician
+            'phone' => 'required|string|max:20',
+            'secondary_phone' => 'nullable|string|max:20',
+            'is_internal' => 'boolean',
+            'state' => 'required|string',
+            'city' => 'required|string',
+            'colony' => 'nullable|string',
+            'zip_code' => 'nullable|string',
+            'coverage_radius_km' => 'required|integer',
+            'specialties' => 'nullable|array',
+            'specialties.*' => 'string',
+            
+            'legal_name' => 'nullable|string',
+            'rfc' => 'nullable|string',
+            'bank_name' => 'nullable|string',
+            'bank_account' => 'nullable|string',
+            'clabe' => 'nullable|string',
+            'status' => 'required|string',
+            'internal_notes' => 'nullable|string',
+            'rating_avg' => 'nullable|numeric|min:0|max:5',
+        ]);
+
+        DB::transaction(function () use ($validated, $request, $technician) {
+            // Actualizar User
+            $technician->user->update([
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+            ]);
+
+            if ($request->hasFile('photo')) {
+                $technician->user->updateProfilePhoto($request->file('photo'));
+            }
+
+            // Actualizar Technician (CORREGIDO: phone aquí)
+            $technician->update([
+                'phone' => $validated['phone'], // <--- AQUÍ
+                'secondary_phone' => $validated['secondary_phone'],
+                'is_internal' => $validated['is_internal'],
+                'state' => $validated['state'],
+                'city' => $validated['city'],
+                'colony' => $validated['colony'],
+                'zip_code' => $validated['zip_code'],
+                'coverage_radius_km' => $validated['coverage_radius_km'],
+                'specialties' => $validated['specialties'],
+                'legal_name' => $validated['legal_name'],
+                'rfc' => $validated['rfc'],
+                'bank_name' => $validated['bank_name'],
+                'bank_account' => $validated['bank_account'],
+            'clabe' => $validated['clabe'],
+            'status' => $validated['status'],
+            'internal_notes' => $validated['internal_notes'],
+            'rating_avg' => $validated['rating_avg'] ?? $technician->rating_avg,
+        ]);
+    });
+
+    return redirect()->route('technicians.show', $technician->id)->with('success', 'Perfil actualizado.');
+    }
+
+    public function destroy(Technician $technician)
+    {
+        $technician->user->delete();
+        return redirect()->route('technicians.index')->with('success', 'Técnico y usuario eliminados.');
+    }
+}
