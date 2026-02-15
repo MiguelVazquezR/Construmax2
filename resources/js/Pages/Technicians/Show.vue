@@ -16,7 +16,8 @@ import {
     Check,
     InfoFilled,
     CircleCheck,
-    List
+    List,
+    Money
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
@@ -24,12 +25,14 @@ import { usePermissions } from '@/Composables/usePermissions';
 import ProfileTab from './Partials/ProfileTab.vue';
 import HistoryTab from './Partials/HistoryTab.vue';
 import DocumentsTab from './Partials/DocumentsTab.vue';
+import PaymentsTab from './Partials/PaymentsTab.vue'; // Nuevo componente
 
 const { can } = usePermissions();
 
 const props = defineProps({
     technician: Object,
     tickets: Array,
+    payments: Array, // Recibimos los pagos
     kpis: Object
 });
 
@@ -41,6 +44,14 @@ const ratingColors = {
     2: '#F56C6C',
     3.5: '#E6A23C',
     5: '#67C23A',
+};
+
+// Formateo de moneda
+const formatCurrency = (value) => {
+    return new Intl.NumberFormat('es-MX', { 
+        style: 'currency', 
+        currency: 'MXN' 
+    }).format(value || 0);
 };
 
 // URL de Google Maps basada en la ubicación registrada
@@ -191,7 +202,7 @@ const getWhatsappUrl = (phone) => {
                     </div>
 
                     <!-- LADO DERECHO: Indicadores / KPIs con Explicaciones -->
-                    <div class="grid grid-cols-3 lg:flex lg:flex-row gap-6 p-4 lg:p-0 bg-gray-50 dark:bg-transparent rounded-lg w-full lg:w-auto">
+                    <div class="grid grid-cols-2 md:grid-cols-4 lg:flex lg:flex-row gap-6 p-4 lg:p-0 bg-gray-50 dark:bg-transparent rounded-lg w-full lg:w-auto">
                         
                         <!-- Tickets -->
                         <div class="flex flex-col items-center">
@@ -207,7 +218,7 @@ const getWhatsappUrl = (phone) => {
                         </div>
 
                         <!-- Cumplimiento -->
-                        <div class="flex flex-col items-center px-4 border-x border-gray-200 dark:border-gray-800">
+                        <div class="flex flex-col items-center px-4 border-l border-gray-200 dark:border-gray-800">
                             <div class="flex items-center gap-1 px-2 text-[10px] text-gray-400 uppercase font-black mb-1">
                                 Éxito
                                 <el-tooltip content="Porcentaje de tickets finalizados satisfactoriamente del total asignado." placement="top">
@@ -220,9 +231,22 @@ const getWhatsappUrl = (phone) => {
                                 </template>
                             </el-progress>
                         </div>
+
+                        <!-- NUEVO: Ingresos (Total Pagado) -->
+                        <div class="flex flex-col items-center px-4 border-l border-gray-200 dark:border-gray-800">
+                            <div class="flex items-center gap-1 px-2 text-[10px] text-gray-400 uppercase font-black mb-1">
+                                Pagado
+                                <el-tooltip content="Monto total histórico pagado a este técnico por servicios realizados." placement="top">
+                                    <el-icon class="cursor-help"><InfoFilled /></el-icon>
+                                </el-tooltip>
+                            </div>
+                            <div class="text-lg lg:text-xl font-black text-green-600 flex items-center gap-1">
+                                {{ formatCurrency(kpis.total_earnings) }}
+                            </div>
+                        </div>
                         
                         <!-- Rating -->
-                        <div class="flex flex-col items-center">
+                        <div class="flex flex-col items-center border-l border-gray-200 dark:border-gray-800 pl-4">
                             <div class="flex items-center gap-1 px-2 text-[10px] text-gray-400 uppercase font-black mb-1">
                                 Rating
                                 <el-tooltip content="Calificación promedio basada en su historial operativo y comportamiento interno." placement="top">
@@ -262,6 +286,13 @@ const getWhatsappUrl = (phone) => {
                     <el-tab-pane label="Historial operativo" name="history">
                         <div class="px-6">
                             <HistoryTab :tickets="tickets" :technician-id="technician.user_id" />
+                        </div>
+                    </el-tab-pane>
+
+                    <!-- NUEVA PESTAÑA -->
+                    <el-tab-pane label="Pagos y Finanzas" name="payments">
+                        <div class="px-6">
+                            <PaymentsTab :payments="payments" />
                         </div>
                     </el-tab-pane>
 

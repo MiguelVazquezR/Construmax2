@@ -13,6 +13,30 @@ class Technician extends Model implements HasMedia
     use HasFactory;
     use InteractsWithMedia; // Para Constancia Fiscal, INE, Comprobantes
 
+    // --- LISTA MAESTRA DE ESPECIALIDADES ---
+    public const SPECIALTIES = [
+        'Electricidad baja tensión',
+        'Electricidad alta tensión',
+        'Plomería / Fontanería',
+        'Aire acondicionado (HVAC)',
+        'Tablaroca y acabados',
+        'Pintura general',
+        'Impermeabilización',
+        'Albañilería',
+        'Herrería y soldadura',
+        'Vidrio y aluminio',
+        'Redes y voz/datos',
+        'Cerrajería',
+        'Limpieza industrial',
+        'Carpintería',
+        'Pisos y azulejos',
+        'Jardinería',
+        'Fumigación y plagas',
+        'Instalación de cámaras (CCTV)',
+        'Domótica',
+        'Mantenimiento de elevadores'
+    ];
+
     protected $fillable = [
         'user_id',
         'phone',
@@ -72,10 +96,32 @@ class Technician extends Model implements HasMedia
             });
         });
 
-        // Filtro por Especialidad (JSON)
+        // Filtro por Especialidad (Soporta Array Múltiple y Unicode Escapado)
         $query->when($filters['specialty'] ?? null, function ($query, $specialty) {
-            // Sintaxis para buscar dentro de array JSON en MySQL
-            $query->whereJsonContains('specialties', $specialty);
+            // Normalizamos a array para manejar selección simple o múltiple igual
+            $specialties = is_array($specialty) ? $specialty : [$specialty];
+
+            if (count($specialties) > 0) {
+                $query->where(function ($q) use ($specialties) {
+                    foreach ($specialties as $s) {
+                        // 1. Búsqueda nativa JSON (Funciona si la BD soporta JSON nativo bien configurado)
+                        $q->orWhereJsonContains('specialties', $s);
+
+                        // 2. Búsqueda de compatibilidad para Unicode Escapado (Ej: "Instalaci\u00f3n")
+                        // Esto soluciona el problema donde 'json_encode' guardó acentos como códigos unicode
+                        // y whereJsonContains no los matchea en columnas TEXT o versiones antiguas de MySQL.
+                        $unicodeEscaped = trim(json_encode($s), '"'); 
+                        
+                        // Solo agregamos la condición LIKE si hay caracteres especiales que se escaparon
+                        if ($unicodeEscaped !== $s) {
+                            // Usamos LIKE porque whereJsonContains espera el valor decodificado
+                            // Escapamos las barras invertidas para el query SQL (\\u00f3)
+                            $sqlEscaped = str_replace('\\', '\\\\', $unicodeEscaped);
+                            $q->orWhere('specialties', 'like', '%' . $sqlEscaped . '%');
+                        }
+                    }
+                });
+            }
         });
 
         // Filtro por Estado/Ubicación
@@ -89,11 +135,6 @@ class Technician extends Model implements HasMedia
     // Calcula y actualiza el promedio de calificación
     public function updateRating()
     {
-        // Aquí asumiríamos que los Tickets tienen un campo 'rating' (habría que agregarlo a Tickets)
-        // Por ahora lo dejamos preparado
-        /*
-        $avg = $this->tickets()->whereNotNull('rating')->avg('rating');
-        $this->update(['rating_avg' => $avg ?? 5.0]);
-        */
+        // Lógica futura para actualizar rating
     }
 }

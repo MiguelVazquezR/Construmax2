@@ -7,13 +7,13 @@ import { ElMessageBox, ElMessage } from 'element-plus';
 import { 
     Search, 
     Plus, 
-    Tools, 
     MoreFilled, 
     View, 
     Edit, 
     Delete,
     Location,
-    StarFilled
+    StarFilled,
+    Filter
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
@@ -22,35 +22,60 @@ const { can } = usePermissions();
 const props = defineProps({
     technicians: Object, // Paginado
     filters: Object,
+    states: Array,      // Lista de estados únicos
+    specialties: Array, // Lista de especialidades (Array simple de strings)
 });
 
+// Filtros Reactivos
 const search = ref(props.filters.search || '');
+const filterState = ref(props.filters.state || '');
+
+// Filtro Especialidad: Ahora es un array para soportar múltiples
+const filterSpecialty = ref(props.filters.specialty || []); 
+
 const perPage = ref(parseInt(props.filters.perPage) || 10);
 
-// Sincronización con el servidor
-const handleSearch = debounce((val) => {
-    router.get(route('technicians.index'), { search: val, perPage: perPage.value }, {
+// Configuración de Colores Semáforo para Rating
+const ratingColors = ref({
+    3: '#F56C6C',   // Rojo para <= 3
+    4.5: '#E6A23C', // Naranja/Amarillo para <= 4.5
+    5: '#67C23A',   // Verde para > 4.5 (hasta 5)
+});
+
+// Función centralizada para actualizar filtros
+const updateParams = () => {
+    return {
+        search: search.value,
+        state: filterState.value,
+        specialty: filterSpecialty.value, // Ahora enviamos el array
+        perPage: perPage.value
+    };
+};
+
+// Búsqueda con Debounce (solo para texto)
+const handleSearch = debounce(() => {
+    router.get(route('technicians.index'), updateParams(), {
         preserveState: true,
         replace: true,
     });
 }, 300);
 
-const handleSizeChange = (val) => {
-    perPage.value = val;
-    router.get(route('technicians.index'), { search: search.value, perPage: val }, {
+// Filtros directos (Selects y Paginación)
+const applyFilter = () => {
+    router.get(route('technicians.index'), updateParams(), {
         preserveState: true,
         preserveScroll: true,
     });
 };
 
 const handlePageChange = (val) => {
-    router.get(route('technicians.index'), { search: search.value, perPage: perPage.value, page: val }, {
+    router.get(route('technicians.index'), { ...updateParams(), page: val }, {
         preserveState: true,
         preserveScroll: true,
     });
 };
 
-// Navegación al detalle
+// Navegación
 const handleRowClick = (row) => {
     router.visit(route('technicians.show', row.id));
 };
@@ -69,17 +94,13 @@ const deleteTechnician = (technician) => {
     .then(() => {
         router.delete(route('technicians.destroy', technician.id), {
              onSuccess: () => {
-                ElMessage({
-                    type: 'success',
-                    message: 'Técnico eliminado correctamente',
-                });
+                ElMessage({ type: 'success', message: 'Técnico eliminado correctamente' });
             }
         });
     })
     .catch(() => {});
 };
 
-// Helpers Visuales
 const getStatusColor = (status) => {
     const map = {
         'Activo': 'success',
@@ -90,43 +111,78 @@ const getStatusColor = (status) => {
     return map[status] || 'info';
 };
 
-watch(search, (val) => {
-    handleSearch(val);
+// Watchers para inputs de texto
+watch(search, () => {
+    handleSearch();
 });
 </script>
 
 <template>
     <AppLayout title="Gestión de técnicos">
         <div class="space-y-4">
-            <!-- Barra de Herramientas -->
-            <div class="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e]">
-                <div class="w-full sm:w-1/3">
-                    <el-input
-                        v-model="search"
-                        placeholder="Buscar por nombre, especialidad o ciudad..."
-                        clearable
-                        :prefix-icon="Search"
-                        class="w-full"
-                    />
-                </div>
-                <div class="flex gap-2 w-full sm:w-auto justify-end">
-                    <el-select v-model="perPage" placeholder="Mostrar" style="width: 110px" @change="handleSizeChange">
-                        <el-option label="10 / pág" :value="10" />
-                        <el-option label="20 / pág" :value="20" />
-                        <el-option label="50 / pág" :value="50" />
-                    </el-select>
-                    <Link v-if="can('technicians.create')" :href="route('technicians.create')">
-                        <el-button type="primary" color="#f26c17" :icon="Plus">
-                            Nuevo técnico
-                        </el-button>
-                    </Link>
+            <!-- Barra de Herramientas y Filtros -->
+            <div class="bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e]">
+                <div class="flex flex-col lg:flex-row justify-between items-center gap-4">
+                    
+                    <!-- Filtros (Izquierda) -->
+                    <div class="flex flex-col sm:flex-row gap-3 w-full lg:w-3/4">
+                        <!-- Buscador -->
+                        <el-input
+                            v-model="search"
+                            placeholder="Buscar por nombre, RFC..."
+                            clearable
+                            :prefix-icon="Search"
+                            class="w-full sm:w-1/3"
+                        />
+                        
+                        <!-- Filtro Estado -->
+                        <el-select 
+                            v-model="filterState" 
+                            placeholder="Ubicación (Estado)" 
+                            clearable 
+                            class="w-full sm:w-1/4"
+                            @change="applyFilter"
+                        >
+                            <template #prefix><el-icon><Location /></el-icon></template>
+                            <el-option v-for="st in states" :key="st" :label="st" :value="st" />
+                        </el-select>
+
+                        <!-- Filtro Especialidad (MÚLTIPLE) -->
+                        <el-select 
+                            v-model="filterSpecialty" 
+                            placeholder="Especialidad (Múltiple)" 
+                            clearable 
+                            multiple
+                            collapse-tags
+                            collapse-tags-tooltip
+                            class="w-full sm:w-1/3"
+                            @change="applyFilter"
+                        >
+                            <template #prefix><el-icon><Filter /></el-icon></template>
+                            <el-option v-for="sp in specialties" :key="sp" :label="sp" :value="sp" />
+                        </el-select>
+                    </div>
+
+                    <!-- Acciones (Derecha) -->
+                    <div class="flex gap-2 w-full lg:w-auto justify-end">
+                        <el-select v-model="perPage" placeholder="Mostrar" style="width: 100px" @change="applyFilter">
+                            <el-option label="10" :value="10" />
+                            <el-option label="20" :value="20" />
+                            <el-option label="50" :value="50" />
+                        </el-select>
+                        <Link v-if="can('technicians.create')" :href="route('technicians.create')">
+                            <el-button type="primary" color="#f26c17" :icon="Plus">
+                                Nuevo
+                            </el-button>
+                        </Link>
+                    </div>
                 </div>
             </div>
 
-            <!-- CONTENEDOR UNIFICADO (Tabla + Paginación) -->
+            <!-- TABLA Y LISTADO -->
             <div class="bg-white dark:bg-[#1e1e20] rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
                 
-                <!-- VISTA DE ESCRITORIO (Tabla) -->
+                <!-- VISTA DE ESCRITORIO -->
                 <div class="hidden md:block">
                     <el-table 
                         :data="technicians.data" 
@@ -186,7 +242,7 @@ watch(search, (val) => {
                             </template>
                         </el-table-column>
 
-                        <!-- Calificación -->
+                        <!-- Calificación SEMÁFORO -->
                         <el-table-column label="Rating" width="180">
                             <template #default="scope">
                                 <el-rate
@@ -194,7 +250,7 @@ watch(search, (val) => {
                                     disabled
                                     show-score
                                     size="small"
-                                    text-color="#ff9900"
+                                    :colors="ratingColors" 
                                     score-template="{value}"
                                 />
                             </template>
@@ -209,7 +265,6 @@ watch(search, (val) => {
                             </template>
                         </el-table-column>
 
-                        <!-- Acciones -->
                         <el-table-column label="Acciones" width="100" align="center" fixed="right">
                             <template #default="scope">
                                 <div @click.stop>
@@ -222,11 +277,9 @@ watch(search, (val) => {
                                                 <Link :href="route('technicians.show', scope.row.id)">
                                                     <el-dropdown-item :icon="View">Ver perfil</el-dropdown-item>
                                                 </Link>
-                                                
                                                 <Link v-if="can('technicians.edit')" :href="route('technicians.edit', scope.row.id)">
                                                     <el-dropdown-item :icon="Edit">Editar</el-dropdown-item>
                                                 </Link>
-                                                
                                                 <el-dropdown-item v-if="can('technicians.delete')" divided :icon="Delete" class="text-red-500" @click="deleteTechnician(scope.row)">
                                                     Eliminar
                                                 </el-dropdown-item>
@@ -250,10 +303,13 @@ watch(search, (val) => {
                                 <div>
                                     <h3 class="font-bold text-gray-800 dark:text-gray-200 text-sm flex items-center gap-2">
                                         {{ tech.user.name }}
-                                        <el-icon v-if="tech.rating_avg >= 4.5" class="text-yellow-500" size="14"><StarFilled /></el-icon>
+                                        <!-- Estrella con color dinámico manual para móvil -->
+                                        <el-icon v-if="tech.rating_avg >= 4.5" color="#67C23A" size="14"><StarFilled /></el-icon>
+                                        <el-icon v-else-if="tech.rating_avg >= 3" color="#E6A23C" size="14"><StarFilled /></el-icon>
+                                        <el-icon v-else color="#F56C6C" size="14"><StarFilled /></el-icon>
                                     </h3>
                                     <p class="text-xs text-gray-500 flex items-center gap-1">
-                                        <el-icon><Location /></el-icon> {{ tech.city }}
+                                        <el-icon><Location /></el-icon> {{ tech.city }}, {{ tech.state }}
                                     </p>
                                 </div>
                             </div>
@@ -273,7 +329,6 @@ watch(search, (val) => {
                             </el-tag>
                         </div>
 
-                        <!-- Botones móviles -->
                         <div class="flex justify-end gap-2 pt-2 border-t border-gray-50 dark:border-gray-800" @click.stop>
                             <Link :href="route('technicians.show', tech.id)">
                                 <el-button size="small" :icon="View" circle plain />

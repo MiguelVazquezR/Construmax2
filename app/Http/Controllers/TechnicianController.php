@@ -4,7 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Technician;
 use App\Models\User;
-use App\Models\Ticket; // Importante importar Ticket
+use App\Models\Ticket;
+use App\Models\TechnicianPayment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -18,6 +19,16 @@ class TechnicianController extends Controller
     {
         $perPage = $request->input('perPage', 10);
 
+        // Obtener listas únicas para los filtros del frontend
+        $states = Technician::select('state')
+            ->distinct()
+            ->whereNotNull('state')
+            ->orderBy('state')
+            ->pluck('state');
+        
+        // Usamos la constante del Modelo para asegurar consistencia
+        $specialties = Technician::SPECIALTIES;
+
         return Inertia::render('Technicians/Index', [
             'technicians' => Technician::with('user')
                 ->filter($request->only('search', 'specialty', 'state'))
@@ -25,12 +36,17 @@ class TechnicianController extends Controller
                 ->paginate($perPage)
                 ->withQueryString(),
             'filters' => $request->only(['search', 'perPage', 'specialty', 'state']),
+            'states' => $states,
+            'specialties' => $specialties 
         ]);
     }
 
     public function create()
     {
-        return Inertia::render('Technicians/Create');
+        // Pasamos las especialidades también al formulario de creación si lo necesitas
+        return Inertia::render('Technicians/Create', [
+            'availableSpecialties' => Technician::SPECIALTIES
+        ]);
     }
 
     public function store(Request $request)
@@ -48,7 +64,7 @@ class TechnicianController extends Controller
             'zip_code' => 'nullable|string',
             'coverage_radius_km' => 'required|integer|min:1',
             'specialties' => 'nullable|array',
-            'specialties.*' => 'string',
+            'specialties.*' => 'string', // Valida que sean strings
             'legal_name' => 'nullable|string',
             'rfc' => 'nullable|string|max:20',
             'bank_name' => 'nullable|string',
@@ -105,12 +121,9 @@ class TechnicianController extends Controller
     {
         $technician->load(['user', 'media']);
         
-        // CORRECCIÓN: Consulta híbrida (Responsable O Colaborador en tareas)
-        $historyQuery = Ticket::with(['budget.customer'])
+        $historyQuery = Ticket::with(['budget.customer', 'tasks']) 
             ->where(function($query) use ($technician) {
-                // Caso 1: Es el responsable principal del ticket
                 $query->where('user_id', $technician->user_id)
-                // Caso 2: Tiene tareas asignadas en ese ticket
                       ->orWhereHas('tasks', function($q) use ($technician) {
                           $q->where('user_id', $technician->user_id);
                       });
@@ -119,18 +132,25 @@ class TechnicianController extends Controller
         $tickets = $historyQuery->orderBy('id', 'desc')
             ->take(10)
             ->get();
+
+        $payments = TechnicianPayment::where('user_id', $technician->user_id)
+            ->with(['budget.customer', 'media']) 
+            ->orderBy('payment_date', 'desc')
+            ->get();
             
-        // KPIs basados en el historial completo (Responsable + Colaborador)
         $totalTickets = $historyQuery->count();
         $completedTickets = (clone $historyQuery)->where('status', 'Completado')->count();
         $completionRate = $totalTickets > 0 ? round(($completedTickets / $totalTickets) * 100) : 0;
+        $totalEarnings = $payments->sum('amount');
 
         return Inertia::render('Technicians/Show', [
             'technician' => $technician,
             'tickets' => $tickets,
+            'payments' => $payments, 
             'kpis' => [
                 'total_tickets' => $totalTickets,
                 'completion_rate' => $completionRate,
+                'total_earnings' => $totalEarnings, 
             ]
         ]);
     }
@@ -139,6 +159,7 @@ class TechnicianController extends Controller
     {
         return Inertia::render('Technicians/Edit', [
             'technician' => $technician->load('user'),
+            'availableSpecialties' => Technician::SPECIALTIES // Pasamos lista para editar
         ]);
     }
 
@@ -202,7 +223,6 @@ class TechnicianController extends Controller
         return redirect()->route('technicians.show', $technician->id)->with('success', 'Perfil actualizado.');
     }
 
-    // NUEVO MÉTODO: Actualización rápida de estatus
     public function updateStatus(Request $request, Technician $technician)
     {
         $validated = $request->validate([

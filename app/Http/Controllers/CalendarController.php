@@ -22,12 +22,14 @@ class CalendarController extends Controller
             ->where('status', 'Pendiente')
             ->count();
 
+        // Eventos de hoy que NO están completados
         $todaysEvents = Calendar::where(function ($query) use ($userId) {
                 $query->where('user_id', $userId)
                       ->orWhereHas('participants', function ($q) use ($userId) {
                           $q->where('user_id', $userId)->where('status', 'Aceptado');
                       });
             })
+            ->where('is_completed', false) // FILTRO CRÍTICO: Solo contar pendientes
             ->where(function ($q) use ($today, $endToday) {
                 $q->whereBetween('start_time', [$today, $endToday])
                   ->orWhere(function($sub) use ($today) {
@@ -65,10 +67,9 @@ class CalendarController extends Controller
                     'title' => $event->title,
                     'type' => $event->type,
                     'description' => $event->description,
-                    // CORRECCIÓN: Convertir a string para evitar que Inertia/JSON lo convierta a UTC
-                    // Esto asegura que el cliente reciba "2026-02-07 10:00:00" tal cual
                     'start' => $event->start_time->toDateTimeString(),
                     'end' => $event->end_time->toDateTimeString(),
+                    'is_completed' => $event->is_completed, // Enviamos estado al frontend
                     'creator' => $event->creator,
                     'participants' => $event->participants,
                     'my_status' => $status,
@@ -84,8 +85,6 @@ class CalendarController extends Controller
 
     public function store(Request $request)
     {
-        // Se valida como fecha, Laravel Carbon lo parsea usando el timezone configurado en app.php
-        // Si recibimos "2026-02-07 10:00:00", Carbon lo toma como válido.
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'type' => 'required|string',
@@ -103,6 +102,7 @@ class CalendarController extends Controller
                 'start_time' => $validated['start_time'],
                 'end_time' => $validated['end_time'],
                 'description' => $validated['description'],
+                'is_completed' => false,
             ]);
 
             if (!empty($validated['participants'])) {
@@ -141,6 +141,22 @@ class CalendarController extends Controller
         });
 
         return back()->with('success', 'Evento actualizado.');
+    }
+
+    // NUEVO MÉTODO
+    public function toggleComplete(Calendar $calendar)
+    {
+        // Permitimos que el creador marque como terminado
+        // Opcional: permitir que participantes también lo hagan dependiendo de tu lógica de negocio
+        if ($calendar->user_id !== Auth::id()) {
+             // Si quieres que participantes puedan terminar tareas, elimina este if o adáptalo
+             // abort(403, 'Solo el creador puede finalizar el evento.');
+        }
+
+        $calendar->update(['is_completed' => !$calendar->is_completed]);
+        
+        $statusMsg = $calendar->is_completed ? 'Evento marcado como terminado.' : 'Evento reactivado.';
+        return back()->with('success', $statusMsg);
     }
 
     public function destroy(Calendar $calendar)

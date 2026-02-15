@@ -3,6 +3,7 @@ import { ref, reactive } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage } from 'element-plus';
+import { OfficeBuilding, User } from '@element-plus/icons-vue';
 
 const formRef = ref();
 
@@ -15,6 +16,7 @@ const form = useForm({
     payment_method: '',
     invoice_usage: '',
     currency: 'MXN',
+    payment_days: 0, // Inicializado en 0 (numérico)
     
     // Lista de Contactos (Iniciamos con uno vacío)
     contacts: [
@@ -31,6 +33,8 @@ const rules = reactive({
     payment_method: [{ required: true, message: 'Selecciona un método', trigger: 'change' }],
     invoice_usage: [{ required: true, message: 'Selecciona un uso de factura', trigger: 'change' }],
     currency: [{ required: true, message: 'Selecciona la moneda', trigger: 'change' }],
+    // Validación visual para payment_days (opcional, ya que el input number restringe)
+    payment_days: [{ type: 'number', message: 'Debe ser un número', trigger: 'change' }],
 });
 
 // Reglas para los contactos (se aplican dinámicamente)
@@ -141,6 +145,20 @@ const submit = () => {
                                     <el-option label="Facturación al contado" value="Facturación al contado" />
                                     <el-option label="Otro" value="Otro" />
                                 </el-select>
+                            </el-form-item>
+
+                            <!-- Días de crédito (NUEVO - NUMÉRICO) -->
+                            <el-form-item label="Días de crédito (Plazo de pago)" prop="payment_days" :error="form.errors.payment_days">
+                                <el-input-number 
+                                    v-model="form.payment_days" 
+                                    :min="0" 
+                                    :max="365"
+                                    placeholder="Ej. 30" 
+                                    class="!w-full"
+                                    controls-position="right"
+                                >
+                                    <template #suffix>Días</template>
+                                </el-input-number>
                             </el-form-item>
 
                             <!-- Método de Pago -->
@@ -270,4 +288,4 @@ const submit = () => {
             </el-form>
         </div>
     </AppLayout>
-</template> 
+</template>

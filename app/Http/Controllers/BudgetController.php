@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Budget;
 use App\Models\BudgetPayment;
+use App\Models\Calendar;
 use App\Models\Customer;
 use App\Models\User;
 use App\Models\TechnicianPayment;
@@ -178,7 +179,33 @@ class BudgetController extends Controller
             'status' => 'required|string',
         ]);
 
-        $budget->update(['status' => $request->status]);
+        $oldStatus = $budget->status;
+        $newStatus = $request->status;
+
+        $budget->update(['status' => $newStatus]);
+
+        // --- AUTOMATIZACIÓN CALENDARIO (COBRANZA) ---
+        // Si el estado cambia a 'Facturado', verificamos si el cliente tiene días de crédito
+        if ($newStatus === 'Facturado' && $oldStatus !== 'Facturado') {
+            $budget->load('customer');
+            $paymentDays = $budget->customer->payment_days;
+
+            if ($paymentDays && $paymentDays > 0) {
+                // Calculamos fecha de recordatorio (Hoy + días de crédito)
+                // Fijamos la hora a las 9:00 AM para que sea visible al iniciar el día
+                $reminderDate = now()->addDays($paymentDays)->setTime(9, 0, 0);
+                
+                Calendar::create([
+                    'user_id' => $budget->user_id, // Asignamos el recordatorio al responsable del presupuesto
+                    'type' => 'Recordatorio',
+                    'title' => "Cobranza: {$budget->name}",
+                    'description' => "Vencimiento de plazo de pago ({$paymentDays} días) para el cliente {$budget->customer->name}.\nPresupuesto #{$budget->id}.",
+                    'start_time' => $reminderDate,
+                    'end_time' => $reminderDate->copy()->addHour(), // Duración de 1 hora por defecto
+                    'is_completed' => false,
+                ]);
+            }
+        }
 
         return back()->with('success', 'Estatus actualizado.');
     }

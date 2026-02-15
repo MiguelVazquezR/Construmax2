@@ -30,7 +30,6 @@ class CustomerController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            // Datos del Cliente
             'name' => 'required|string|max:255',
             'business_name' => 'required|string|max:255',
             'rfc' => 'required|string|max:20|unique:customers,rfc',
@@ -38,9 +37,8 @@ class CustomerController extends Controller
             'payment_method' => 'required|string',
             'invoice_usage' => 'required|string',
             'currency' => 'required|string|in:MXN,USD',
-            
-            // Validación de Contactos (Array)
-            'contacts' => 'array|min:1', // Al menos un contacto
+            'payment_days' => 'nullable|integer|min:0|max:365', 
+            'contacts' => 'array|min:1',
             'contacts.*.name' => 'required|string|max:255',
             'contacts.*.email' => 'required|email|max:255',
             'contacts.*.phone' => 'required|string|max:20',
@@ -49,7 +47,6 @@ class CustomerController extends Controller
         ]);
 
         DB::transaction(function () use ($validated) {
-            // 1. Crear Cliente
             $customer = Customer::create([
                 'name' => $validated['name'],
                 'business_name' => $validated['business_name'],
@@ -58,10 +55,10 @@ class CustomerController extends Controller
                 'payment_method' => $validated['payment_method'],
                 'invoice_usage' => $validated['invoice_usage'],
                 'currency' => $validated['currency'],
+                'payment_days' => $validated['payment_days'] ?? 0,
                 'is_active' => true,
             ]);
 
-            // 2. Crear Contactos
             $customer->contacts()->createMany($validated['contacts']);
         });
 
@@ -70,8 +67,18 @@ class CustomerController extends Controller
 
     public function show(Customer $customer)
     {
+        // Cargamos contactos y presupuestos (ordenados por fecha e incluyendo responsable y suma de costos)
+        $customer->load([
+            'contacts', 
+            'budgets' => function ($query) {
+                $query->orderBy('id', 'desc')
+                      ->with('responsible:id,name,profile_photo_path') // Optimizamos carga de usuario
+                      ->withSum('concepts', 'amount'); // Calculamos total sin cargar todos los conceptos
+            }
+        ]);
+
         return Inertia::render('Customers/Show', [
-            'customer' => $customer->load('contacts'),
+            'customer' => $customer,
         ]);
     }
 
@@ -92,6 +99,7 @@ class CustomerController extends Controller
             'payment_method' => 'required|string',
             'invoice_usage' => 'required|string',
             'currency' => 'required|string|in:MXN,USD',
+            'payment_days' => 'nullable|integer|min:0|max:365',
             'contacts' => 'array|min:1',
             'contacts.*.name' => 'required|string|max:255',
             'contacts.*.email' => 'required|email|max:255',
@@ -101,7 +109,6 @@ class CustomerController extends Controller
         ]);
 
         DB::transaction(function () use ($validated, $customer) {
-            // 1. Actualizar Cliente
             $customer->update([
                 'name' => $validated['name'],
                 'business_name' => $validated['business_name'],
@@ -110,9 +117,9 @@ class CustomerController extends Controller
                 'payment_method' => $validated['payment_method'],
                 'invoice_usage' => $validated['invoice_usage'],
                 'currency' => $validated['currency'],
+                'payment_days' => $validated['payment_days'] ?? 0,
             ]);
 
-            // 2. Sincronizar Contactos
             $customer->contacts()->delete();
             $customer->contacts()->createMany($validated['contacts']);
         });
@@ -120,7 +127,6 @@ class CustomerController extends Controller
         return redirect()->route('customers.index')->with('success', 'Cliente actualizado exitosamente.');
     }
     
-    // MÉTODO NUEVO: Toggle Status
     public function toggleStatus(Customer $customer)
     {
         $customer->update(['is_active' => !$customer->is_active]);

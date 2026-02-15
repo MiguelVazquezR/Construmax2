@@ -18,17 +18,25 @@ class Customer extends Model
         'payment_method',
         'invoice_usage',
         'currency',
+        'payment_days', // Campo numérico
         'is_active',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'payment_days' => 'integer',
     ];
 
     // Relación: Un cliente tiene muchos contactos
     public function contacts(): HasMany
     {
         return $this->hasMany(CustomerContact::class);
+    }
+
+    // Relación: Un cliente tiene muchos presupuestos
+    public function budgets(): HasMany
+    {
+        return $this->hasMany(Budget::class);
     }
     
     // Scope para búsquedas

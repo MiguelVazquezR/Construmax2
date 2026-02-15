@@ -21,6 +21,7 @@ return new class extends Migration
             $table->string('payment_method');   // Transferencia, Efectivo, Otro
             $table->string('invoice_usage');    // Gastos en general, Otro
             $table->string('currency', 3);      // MXN, USD
+            $table->unsignedSmallInteger('payment_days')->nullable(); // Ej: 45, 30, etc.
             $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
