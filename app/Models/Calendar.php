@@ -18,11 +18,13 @@ class Calendar extends Model
         'description',
         'start_time',
         'end_time',
+        'is_completed', // Nuevo campo
     ];
 
     protected $casts = [
         'start_time' => 'datetime',
         'end_time' => 'datetime',
+        'is_completed' => 'boolean',
     ];
 
     // Creador del evento

@@ -22,8 +22,8 @@ class Budget extends Model implements HasMedia
         'description',
         'duration',
         'priority',
-        'currency',      // Nuevo
-        'exchange_rate', // Nuevo
+        'currency',      
+        'exchange_rate', 
         'user_id',
         'customer_id',
         'customer_contact_id',
@@ -64,6 +64,12 @@ class Budget extends Model implements HasMedia
     {
         return $this->hasMany(BudgetPayment::class);
     }
+    
+    // --- NUEVA RELACIÓN ---
+    public function technicianPayments(): HasMany
+    {
+        return $this->hasMany(TechnicianPayment::class);
+    }
 
     // Atributos Calculados
     public function getTotalCostAttribute()
@@ -94,7 +100,6 @@ class Budget extends Model implements HasMedia
                 $query->where('status', $status);
             }
         })->when($filters['user_id'] ?? null, function ($query, $userId) {
-            // Manejamos 'all', array o valor único
             if ($userId !== 'all' && !empty($userId)) {
                 if (is_array($userId)) {
                     $query->whereIn('user_id', $userId);

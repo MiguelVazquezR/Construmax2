@@ -20,5 +20,8 @@ Route::middleware([
     
     // Responder a invitación
     Route::put('/calendar/{calendar}/respond', [CalendarController::class, 'respond'])->name('calendar.respond');
+    
+    // NUEVA RUTA: Marcar como terminado/pendiente
+    Route::put('/calendar/{calendar}/toggle-complete', [CalendarController::class, 'toggleComplete'])->name('calendar.toggle-complete');
 
 });
