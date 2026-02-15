@@ -102,6 +102,12 @@ const rules = reactive({
     rating_avg: [{ required: true, message: 'La calificación es obligatoria', trigger: 'change' }],
 });
 
+// --- MANEJO DE FOTO DE PERFIL (CORRECCIÓN) ---
+const handlePhotoChange = (file) => {
+    form.photo = file.raw;
+    photoPreview.value = URL.createObjectURL(file.raw);
+};
+
 // Manejo de archivo (Constancia Fiscal)
 const handleTaxFileChange = (file) => {
     const isLt5M = file.size / 1024 / 1024 < 5;
