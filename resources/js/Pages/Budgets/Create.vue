@@ -293,7 +293,7 @@ const submit = () => {
                             <div class="bg-gray-50 dark:bg-[#252529] rounded-lg p-4 border border-gray-200 dark:border-[#3f3f46]">
                                 <div v-for="(item, index) in form.concepts" :key="index" class="flex flex-col sm:flex-row gap-3 mb-3 last:mb-0 items-start sm:items-center">
                                     <div class="flex-1 w-full">
-                                        <el-input v-model="item.concept" placeholder="Concepto (Ej. Materiales)" />
+                                        <el-input v-model="item.concept" placeholder="Concepto (Ej. Materiales, presupuesto de técnico, equipo de protección)" />
                                     </div>
                                     <div class="w-full sm:w-40">
                                         <el-input-number 

@@ -6,6 +6,7 @@ use App\Models\Budget;
 use App\Models\BudgetPayment;
 use App\Models\Customer;
 use App\Models\User;
+use App\Models\TechnicianPayment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -17,12 +18,8 @@ class BudgetController extends Controller
     {
         $perPage = $request->input('perPage', 10);
         
-        // Obtener filtros del request
         $filters = $request->only(['search', 'status', 'perPage', 'user_id']);
 
-        // Lógica para valor por defecto: "Mis Presupuestos"
-        // Si es una carga inicial limpia (sin parámetros), filtramos por el usuario actual.
-        // Si el frontend envía 'all' explícitamente (al limpiar filtro), no entramos aquí.
         if (!$request->has('user_id') && !$request->has('search') && !$request->has('status') && !$request->has('page')) {
             $filters['user_id'] = [auth()->id()];
         }
@@ -35,7 +32,6 @@ class BudgetController extends Controller
                 ->paginate($perPage)
                 ->withQueryString(),
             'filters' => $filters,
-            // Enviamos lista de usuarios para el filtro
             'users' => User::where('is_active', true)->orderBy('name')->get(['id', 'name']),
         ]);
     }
@@ -89,9 +85,7 @@ class BudgetController extends Controller
             $budget->concepts()->createMany($validated['concepts']);
         });
 
-        // --- RESPUESTA RÁPIDA PARA MODAL EN TICKETS ---
         if ($request->boolean('quick_create')) {
-            // Devolvemos el objeto JSON para que el frontend lo agregue a la lista sin recargar
             return response()->json([
                 'budget' => $budget?->load('customer'),
                 'message' => 'Presupuesto creado exitosamente.'
@@ -103,7 +97,20 @@ class BudgetController extends Controller
 
     public function show(Budget $budget)
     {
-        $budget->load(['customer', 'contact', 'responsible', 'concepts', 'payments.media', 'media', 'ticket']);
+        // Cargamos ticket.tasks para calcular progreso
+        // Cargamos technicianPayments para ver historial de pagos a técnicos
+        $budget->load([
+            'customer', 
+            'contact', 
+            'responsible', 
+            'concepts', 
+            'payments.media', 
+            'media', 
+            'ticket.tasks.assignee', // Necesario para identificar a los técnicos
+            'technicianPayments.media', // Historial de pagos a técnicos
+            'technicianPayments.technician' // Datos del técnico pagado
+        ]);
+        
         $budget->append(['total_cost', 'total_paid', 'balance_due']);
 
         return Inertia::render('Budgets/Show', [
@@ -165,7 +172,6 @@ class BudgetController extends Controller
         return redirect()->route('budgets.index')->with('success', 'Presupuesto actualizado correctamente.');
     }
 
-    // --- NUEVO MÉTODO PARA KANBAN ---
     public function updateStatus(Request $request, Budget $budget)
     {
         $request->validate([
@@ -233,5 +239,41 @@ class BudgetController extends Controller
     {
         Media::findOrFail($mediaId)->delete();
         return back()->with('success', 'Archivo eliminado.');
+    }
+
+    // --- NUEVOS MÉTODOS: PAGOS A TÉCNICOS ---
+
+    public function storeTechnicianPayment(Request $request, Budget $budget)
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|exists:users,id',
+            'amount' => 'required|numeric|min:0.01',
+            'payment_date' => 'required|date',
+            'payment_method' => 'required|string',
+            'reference' => 'nullable|string',
+            'notes' => 'nullable|string',
+            'proof' => 'required|file|max:5120', // Comprobante obligatorio como solicitaste
+        ]);
+
+        $payment = $budget->technicianPayments()->create([
+            'user_id' => $validated['user_id'],
+            'amount' => $validated['amount'],
+            'payment_date' => $validated['payment_date'],
+            'payment_method' => $validated['payment_method'],
+            'reference' => $validated['reference'],
+            'notes' => $validated['notes'],
+        ]);
+
+        if ($request->hasFile('proof')) {
+            $payment->addMediaFromRequest('proof')->toMediaCollection('tech_payment_proofs');
+        }
+
+        return back()->with('success', 'Pago a técnico registrado exitosamente.');
+    }
+
+    public function destroyTechnicianPayment(TechnicianPayment $payment)
+    {
+        $payment->delete();
+        return back()->with('success', 'Pago a técnico eliminado.');
     }
 }
