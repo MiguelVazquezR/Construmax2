@@ -16,11 +16,46 @@ class TicketController extends Controller
     public function index(Request $request)
     {
         $perPage = $request->input('perPage', 10);
+        $sort = $request->input('sort', 'delay'); // Por defecto ordenamos por "Atraso/Urgencia"
+
+        $query = Ticket::with(['budget.customer', 'responsible', 'tasks.assignee']);
+
+        // Filtros de búsqueda y estado
+        if ($request->has('search')) {
+            $search = $request->input('search');
+            $query->where(function($q) use ($search) {
+                $q->where('id', 'like', "%{$search}%")
+                  ->orWhereHas('budget', function($b) use ($search) {
+                      $b->where('service_type', 'like', "%{$search}%")
+                        ->orWhereHas('customer', function($c) use ($search) {
+                            $c->where('name', 'like', "%{$search}%");
+                        });
+                  })
+                  ->orWhereHas('responsible', function($u) use ($search) {
+                      $u->where('name', 'like', "%{$search}%");
+                  });
+            });
+        }
+
+        if ($request->has('status') && $request->input('status') !== 'all') {
+            $query->where('status', $request->input('status'));
+        }
+
+        // --- LÓGICA DE ORDENAMIENTO ---
+        if ($sort === 'start_date') {
+            // Ordenar por fecha de inicio (Lo más nuevo primero)
+            $query->orderBy('scheduled_start', 'desc');
+        } else {
+            // Ordenar por "Atraso" (Urgencia)
+            // 1. Tickets NO completados van primero
+            // 2. Dentro de los no completados, ordenamos por fecha de fin ASC (Los que vencieron hace más tiempo o vencen pronto van arriba)
+            $query->orderByRaw("CASE WHEN status = 'Completado' OR status = 'Cancelado' THEN 2 ELSE 1 END")
+                  ->orderBy('scheduled_end', 'asc');
+        }
 
         return Inertia::render('Tickets/Index', [
-            'tickets' => Ticket::with(['budget.customer', 'responsible', 'tasks'])
-                ->orderBy('id', 'desc')
-                ->paginate($perPage),
+            'tickets' => $query->paginate($perPage)->withQueryString(),
+            'filters' => $request->only(['search', 'status', 'perPage', 'sort']),
         ]);
     }
 
@@ -34,7 +69,7 @@ class TicketController extends Controller
 
         return Inertia::render('Tickets/Create', [
             'budgets' => $budgets,
-            'users' => User::where('is_active', true)->get(),
+            'users' => User::has('technician')->with('technician')->get(),
             'customers' => Customer::where('is_active', true)->with('contacts')->get(),
         ]);
     }
@@ -64,7 +99,6 @@ class TicketController extends Controller
             ->with('success', 'Ticket operativo generado correctamente.');
     }
 
-    // --- MÉTODO PARA CREACIÓN AUTOMÁTICA DESDE PRESUPUESTO ---
     public function storeFromBudget(Request $request, Budget $budget)
     {
         if ($budget->ticket) {
@@ -97,15 +131,20 @@ class TicketController extends Controller
         
         $ticket->append('progress');
 
-        // Generar URLs firmadas para compartir tareas públicamente
-        $ticket->tasks->transform(function ($task) {
-            $task->share_url = URL::signedRoute('tasks.public.show', ['task' => $task->id]);
+        // Generar enlace de "Orden de Trabajo" para cada tarea
+        $ticket->tasks->transform(function ($task) use ($ticket) {
+            if ($task->user_id) {
+                $task->share_url = URL::signedRoute('tickets.public.job-order', [
+                    'ticket' => $ticket->id,
+                    'user' => $task->user_id
+                ]);
+            }
             return $task;
         });
 
         return Inertia::render('Tickets/Show', [
             'ticket' => $ticket,
-            'users' => User::where('is_active', true)->get(),
+            'users' => User::has('technician')->with('technician')->get(),
         ]);
     }
 
@@ -120,7 +159,7 @@ class TicketController extends Controller
     {
         return Inertia::render('Tickets/Edit', [
             'ticket' => $ticket->load('budget'),
-            'users' => User::where('is_active', true)->get(),
+            'users' => User::has('technician')->with('technician')->get(),
         ]);
     }
 

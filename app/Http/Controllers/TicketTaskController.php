@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Ticket;
 use App\Models\TicketTask;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
 use Inertia\Inertia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
+use Illuminate\Validation\ValidationException;
 
 class TicketTaskController extends Controller
 {
@@ -18,15 +20,18 @@ class TicketTaskController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'user_id' => 'nullable|exists:users,id',
-            'start_date' => 'nullable|date',
-            'due_date' => 'nullable|date',
+            'user_id' => 'required|exists:users,id',
+            'start_date' => 'required|date', // Requerido para validar agenda
+            'due_date' => 'required|date|after:start_date', // Requerido y debe ser posterior al inicio
         ]);
+
+        // Validar Disponibilidad
+        $this->checkForOverlaps($validated['user_id'], $validated['start_date'], $validated['due_date']);
 
         $ticket->tasks()->create($validated);
         $ticket->updateStatusBasedOnTasks();
 
-        return back()->with('success', 'Tarea creada.');
+        return back()->with('success', 'Tarea creada y agendada correctamente.');
     }
 
     public function update(Request $request, TicketTask $task)
@@ -34,10 +39,13 @@ class TicketTaskController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'user_id' => 'nullable|exists:users,id',
-            'start_date' => 'nullable|date',
-            'due_date' => 'nullable|date',
+            'user_id' => 'required|exists:users,id',
+            'start_date' => 'required|date',
+            'due_date' => 'required|date|after:start_date',
         ]);
+
+        // Validar Disponibilidad (excluyendo la tarea actual)
+        $this->checkForOverlaps($validated['user_id'], $validated['start_date'], $validated['due_date'], $task->id);
 
         $task->update($validated);
         return back()->with('success', 'Tarea actualizada.');
@@ -47,7 +55,7 @@ class TicketTaskController extends Controller
     {
         $ticket = $task->ticket;
         $task->delete();
-        $ticket->updateStatusBasedOnTasks(); // Recalcular progreso
+        $ticket->updateStatusBasedOnTasks(); 
         return back()->with('success', 'Tarea eliminada.');
     }
 
@@ -67,7 +75,7 @@ class TicketTaskController extends Controller
     public function storeEvidence(Request $request, TicketTask $task)
     {
         $request->validate([
-            'file' => 'required|file|image|max:10240', // 10MB max
+            'file' => 'required|file|image|max:10240', 
         ]);
 
         if ($request->hasFile('file')) {
@@ -77,29 +85,68 @@ class TicketTaskController extends Controller
         return back()->with('success', 'Evidencia subida.');
     }
 
+    // --- HELPER: VALIDACIÓN DE TRASLAPE DE HORARIOS ---
+    
+    private function checkForOverlaps($userId, $start, $end, $ignoreTaskId = null)
+    {
+        // Buscamos tareas del MISMO técnico que se crucen en el tiempo
+        // Lógica de cruce: (InicioA < FinB) y (FinA > InicioB)
+        $conflict = TicketTask::where('user_id', $userId)
+            ->where(function($query) use ($start, $end) {
+                $query->where('start_date', '<', $end)
+                      ->where('due_date', '>', $start);
+            })
+            ->when($ignoreTaskId, function($query, $id) {
+                $query->where('id', '!=', $id);
+            })
+            ->with(['ticket.budget.customer']) // Cargamos datos para el mensaje de error
+            ->first();
+
+        if ($conflict) {
+            $techName = User::find($userId)->name ?? 'El técnico';
+            $startDate = $conflict->start_date->format('d M - g:ia');
+            $endDate = $conflict->due_date->format('d M - g:ia');
+            $project = $conflict->ticket->budget->name ?? 'Ticket #' . $conflict->ticket_id;
+            $customer = $conflict->ticket->budget->customer->name ?? 'N/A';
+
+            throw ValidationException::withMessages([
+                'start_date' => "Agenda ocupada: $techName ya tiene la tarea '{$conflict->name}' asignada en este horario ($startDate | $endDate) para el proyecto '$project' ($customer).",
+                'overlap' => true // Flag para el frontend
+            ]);
+        }
+    }
+
     // --- GESTIÓN PÚBLICA (SIGNED URL) ---
 
-    public function publicShow(Request $request, TicketTask $task)
+    public function publicJobOrder(Request $request, Ticket $ticket, User $user)
     {
-        // Cargar relaciones
-        $task->load(['media', 'assignee', 'ticket.budget.customer']);
+        $ticket->load(['budget.customer', 'budget.contact']);
 
-        // Transformar media para incluir URL firmada de borrado
-        // Esto es crucial para permitir borrar SOLO las imágenes de esta tarea
-        $task->media->transform(function ($media) {
-            $media->delete_url = URL::signedRoute('tasks.public.evidence.destroy', ['media' => $media->id]);
-            $media->url = $media->getUrl(); // Asegurar que la URL pública esté disponible
-            return $media;
-        });
+        $tasks = $ticket->tasks()
+            ->where('user_id', $user->id)
+            ->with(['media'])
+            ->orderBy('start_date', 'asc') 
+            ->get();
 
-        return Inertia::render('Tickets/PublicTask', [
-            'task' => $task,
-            'ticket' => $task->ticket,
-            // Pasamos las URLs de acción manteniendo la firma
-            'urls' => [
+        $tasks->transform(function ($task) {
+            $task->media->transform(function ($media) {
+                $media->delete_url = URL::signedRoute('tasks.public.evidence.destroy', ['media' => $media->id]);
+                $media->url = $media->getUrl();
+                return $media;
+            });
+
+            $task->urls = [
                 'toggle' => URL::signedRoute('tasks.public.toggle', ['task' => $task->id]),
                 'evidence' => URL::signedRoute('tasks.public.evidence', ['task' => $task->id]),
-            ]
+            ];
+
+            return $task;
+        });
+
+        return Inertia::render('Tickets/PublicTask', [ 
+            'ticket' => $ticket,
+            'technician' => $user,
+            'tasks' => $tasks,
         ]);
     }
 
@@ -124,7 +171,6 @@ class TicketTaskController extends Controller
 
     public function publicDestroyEvidence(Request $request, $mediaId)
     {
-        // Al estar bajo middleware 'signed', la URL es segura y temporal
         $media = Media::findOrFail($mediaId);
         $media->delete();
         

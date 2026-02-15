@@ -3,6 +3,7 @@ import { ref, reactive } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage } from 'element-plus';
+import { OfficeBuilding, User } from '@element-plus/icons-vue';
 
 const props = defineProps({
     customer: Object, // Incluye los contactos gracias al controlador
@@ -19,6 +20,7 @@ const form = useForm({
     payment_method: props.customer.payment_method,
     invoice_usage: props.customer.invoice_usage,
     currency: props.customer.currency,
+    payment_days: props.customer.payment_days || 0, // Campo numérico agregado
     
     // Lista de Contactos (Si no tiene, iniciamos con uno vacío)
     contacts: props.customer.contacts.length > 0 
@@ -151,6 +153,20 @@ const submit = () => {
                                     <el-option label="Facturación al contado" value="Facturación al contado" />
                                     <el-option label="Otro" value="Otro" />
                                 </el-select>
+                            </el-form-item>
+
+                            <!-- Días de crédito (NUEVO - NUMÉRICO) -->
+                            <el-form-item label="Días de crédito (Plazo de pago)" prop="payment_days" :error="form.errors.payment_days">
+                                <el-input-number 
+                                    v-model="form.payment_days" 
+                                    :min="0" 
+                                    :max="365"
+                                    placeholder="Ej. 30" 
+                                    class="!w-full"
+                                    controls-position="right"
+                                >
+                                    <template #suffix>Días</template>
+                                </el-input-number>
                             </el-form-item>
 
                             <!-- Método de Pago -->

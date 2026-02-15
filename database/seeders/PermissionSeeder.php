@@ -46,6 +46,27 @@ class PermissionSeeder extends Seeder
                 'category' => 'Usuarios',
                 'description' => 'Activar o desactivar acceso a usuarios'
             ],
+            // técnicos
+            [
+                'name' => 'technicians.index',
+                'category' => 'Técnicos',
+                'description' => 'Ver listado y detalles de técnicos'
+            ],
+            [
+                'name' => 'technicians.create',
+                'category' => 'Técnicos',
+                'description' => 'Registrar nuevos técnicos'
+            ],
+            [
+                'name' => 'technicians.edit',
+                'category' => 'Técnicos',
+                'description' => 'Editar información de técnicos existentes'
+            ],
+            [
+                'name' => 'technicians.delete',
+                'category' => 'Técnicos',
+                'description' => 'Eliminar técnicos del sistema'
+            ],
 
             // --- MÓDULO: ROLES Y PERMISOS ---
             [
