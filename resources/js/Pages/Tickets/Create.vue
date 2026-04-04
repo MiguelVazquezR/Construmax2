@@ -6,20 +6,30 @@ import { ElMessage } from 'element-plus';
 import { Tools, Back } from '@element-plus/icons-vue';
 import axios from 'axios';
 import TicketForm from './Partials/TicketForm.vue';
+import QuickTechnicianModal from './Partials/QuickTechnicianModal.vue';
 
 const props = defineProps({
-    budgets: Array, // Presupuestos existentes
-    users: Array,   // Usuarios (Supervisores/Encargados)
-    customers: Array // Clientes (para el modal rápido)
+    budgets: Array, 
+    users: Array,   
+    customers: Array 
 });
 
 const formRef = ref();
 const quickBudgetFormRef = ref();
 
+// Variable reactiva para inyectar técnicos rápidos
+const localUsers = ref([...props.users]);
+const showQuickTechModal = ref(false);
+
+const handleTechCreated = (newUser) => {
+    localUsers.value.push(newUser);
+    form.user_id = newUser.id;
+};
+
 // --- FORMULARIO PRINCIPAL (TICKET) ---
 const form = useForm({
     budget_id: '',
-    user_id: '', // Supervisor/Encargado
+    user_id: '', 
     priority: 'Media',
     scheduled_start: '',
     scheduled_end: '',
@@ -56,12 +66,9 @@ const quickForm = reactive({
     service_type: '',
     status: 'Trabajo en proceso',
     priority: 'Media',
-    
-    // CORRECCIÓN: Campos obligatorios agregados
-    user_id: usePage().props.auth.user.id, // Asignamos por defecto al creador
-    currency: 'MXN', // Moneda por defecto
-    exchange_rate: 1, // Tipo de cambio por defecto
-    
+    user_id: usePage().props.auth.user.id, 
+    currency: 'MXN', 
+    exchange_rate: 1, 
     customer_id: '',
     customer_contact_id: '',
     branch: '',
@@ -203,7 +210,8 @@ const submitQuickBudget = () => {
                         <!-- CAMPOS REUTILIZABLES -->
                         <TicketForm 
                             :form="form" 
-                            :users="users" 
+                            :users="localUsers" 
+                            @open-quick-tech="showQuickTechModal = true"
                         />
 
                         <div class="flex justify-end pt-6 border-t border-gray-100 dark:border-gray-700 mt-4">
@@ -226,9 +234,14 @@ const submitQuickBudget = () => {
             </div>
         </div>
 
+        <QuickTechnicianModal 
+            v-model="showQuickTechModal" 
+            @created="handleTechCreated" 
+        />
+
         <el-dialog
             v-model="showQuickBudgetModal"
-            title="Registro rápido de servicio"
+            title="Registro Rápido de Servicio"
             width="600px"
             destroy-on-close
         >
@@ -312,7 +325,7 @@ const submitQuickBudget = () => {
                         @click="submitQuickBudget" 
                         :loading="isCreatingBudget"
                     >
-                        Crear y seleccionar
+                        Crear y Seleccionar
                     </el-button>
                 </div>
             </template>
