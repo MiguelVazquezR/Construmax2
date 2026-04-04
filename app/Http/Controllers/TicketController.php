@@ -47,8 +47,6 @@ class TicketController extends Controller
             $query->orderBy('scheduled_start', 'desc');
         } else {
             // Ordenar por "Atraso" (Urgencia)
-            // 1. Tickets NO completados van primero
-            // 2. Dentro de los no completados, ordenamos por fecha de fin ASC (Los que vencieron hace más tiempo o vencen pronto van arriba)
             $query->orderByRaw("CASE WHEN status = 'Completado' OR status = 'Cancelado' THEN 2 ELSE 1 END")
                   ->orderBy('scheduled_end', 'asc');
         }
@@ -59,7 +57,7 @@ class TicketController extends Controller
         ]);
     }
 
-    public function create()
+     public function create()
     {
         $budgets = Budget::whereIn('status', ['Facturado', 'Trabajo en proceso', 'Pagado', 'Presupuesto enviado'])
             ->with('customer')
@@ -69,7 +67,8 @@ class TicketController extends Controller
 
         return Inertia::render('Tickets/Create', [
             'budgets' => $budgets,
-            'users' => User::has('technician')->with('technician')->get(),
+            // Enviamos TODOS los usuarios activos (excepto soporte) cargando sus relaciones
+            'users' => User::where('id', '!=', 1)->with(['employee', 'technician'])->get(),
             'customers' => Customer::where('is_active', true)->with('contacts')->get(),
         ]);
     }
@@ -144,7 +143,8 @@ class TicketController extends Controller
 
         return Inertia::render('Tickets/Show', [
             'ticket' => $ticket,
-            'users' => User::has('technician')->with('technician')->get(),
+            // Enviamos TODOS los usuarios para poder asignarlos a las tareas operativas
+            'users' => User::where('id', '!=', 1)->with(['employee', 'technician'])->get(),
         ]);
     }
 
@@ -159,7 +159,8 @@ class TicketController extends Controller
     {
         return Inertia::render('Tickets/Edit', [
             'ticket' => $ticket->load('budget'),
-            'users' => User::has('technician')->with('technician')->get(),
+            // Enviamos TODOS los usuarios
+            'users' => User::where('id', '!=', 1)->with(['employee', 'technician'])->get(),
         ]);
     }
 

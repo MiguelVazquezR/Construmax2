@@ -3,6 +3,9 @@ import { ref, reactive } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage } from 'element-plus';
+import { Tools, Back } from '@element-plus/icons-vue';
+import TicketForm from './Partials/TicketForm.vue';
+import QuickTechnicianModal from './Partials/QuickTechnicianModal.vue';
 
 const props = defineProps({
     ticket: Object,
@@ -11,16 +14,9 @@ const props = defineProps({
 
 const formRef = ref();
 
-// Listas de opciones
-const priorities = ['Baja', 'Media', 'Alta', 'Urgente'];
-const statuses = [
-    'Programado', 
-    'En proceso', 
-    'En espera', 
-    'Revisión', 
-    'Completado', 
-    'Cancelado'
-];
+// Lista local reactiva para permitir agregar técnicos al vuelo
+const localUsers = ref([...props.users]);
+const showQuickTechModal = ref(false);
 
 const form = useForm({
     user_id: props.ticket.user_id,
@@ -36,6 +32,11 @@ const rules = reactive({
     priority: [{ required: true, message: 'Requerido', trigger: 'change' }],
     status: [{ required: true, message: 'Requerido', trigger: 'change' }],
 });
+
+const handleTechCreated = (newUser) => {
+    localUsers.value.push(newUser);
+    form.user_id = newUser.id;
+};
 
 const submit = () => {
     if (!formRef.value) return;
@@ -58,7 +59,7 @@ const submit = () => {
                     Editar ticket de servicio #{{ ticket.id }}
                 </h2>
                 <Link :href="route('tickets.index')">
-                    <el-button icon="Back" circle />
+                    <el-button :icon="Back" circle />
                 </Link>
             </div>
         </template>
@@ -97,67 +98,13 @@ const submit = () => {
                             size="large"
                             @submit.prevent="submit"
                         >
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <!-- Responsable -->
-                                <el-form-item label="Técnico responsable" prop="user_id">
-                                    <el-select v-model="form.user_id" placeholder="Seleccionar técnico" class="w-full" filterable>
-                                        <el-option 
-                                            v-for="user in users" 
-                                            :key="user.id" 
-                                            :label="user.name" 
-                                            :value="user.id" 
-                                        />
-                                    </el-select>
-                                </el-form-item>
-
-                                <!-- Estado -->
-                                <el-form-item label="Estado actual" prop="status">
-                                    <el-select v-model="form.status" class="w-full">
-                                        <el-option v-for="item in statuses" :key="item" :label="item" :value="item" />
-                                    </el-select>
-                                </el-form-item>
-
-                                <!-- Prioridad -->
-                                <el-form-item label="Prioridad" prop="priority">
-                                    <el-select v-model="form.priority" class="w-full">
-                                        <el-option label="Baja" value="Baja" />
-                                        <el-option label="Media" value="Media" />
-                                        <el-option label="Alta" value="Alta" />
-                                        <el-option label="Urgente" value="Urgente" />
-                                    </el-select>
-                                </el-form-item>
-
-                                <!-- Fechas -->
-                                <el-form-item label="Programación (Inicio - Fin)">
-                                    <div class="flex gap-2 w-full">
-                                        <el-date-picker 
-                                            v-model="form.scheduled_start" 
-                                            type="date" 
-                                            placeholder="Inicio"
-                                            class="!w-full"
-                                            format="DD/MM/YYYY"
-                                            value-format="YYYY-MM-DD"
-                                        />
-                                        <el-date-picker 
-                                            v-model="form.scheduled_end" 
-                                            type="date" 
-                                            placeholder="Fin"
-                                            class="!w-full"
-                                            format="DD/MM/YYYY"
-                                            value-format="YYYY-MM-DD"
-                                        />
-                                    </div>
-                                </el-form-item>
-                            </div>
-
-                            <el-form-item label="Instrucciones especiales" prop="instructions" class="mt-2">
-                                <el-input 
-                                    v-model="form.instructions" 
-                                    type="textarea" 
-                                    :rows="5" 
-                                    placeholder="Detalles operativos, acceso, herramientas necesarias..." 
-                                />
-                            </el-form-item>
+                            <!-- CAMPOS REUTILIZABLES -->
+                            <TicketForm 
+                                :form="form" 
+                                :users="localUsers" 
+                                :is-edit="true" 
+                                @open-quick-tech="showQuickTechModal = true" 
+                            />
 
                             <div class="flex justify-end pt-6 border-t border-gray-100 dark:border-gray-700 mt-4">
                                 <Link :href="route('tickets.index')" class="mr-4">
@@ -179,5 +126,12 @@ const submit = () => {
                 </div>
             </div>
         </div>
+
+        <!-- Modal de creación rápida de técnico -->
+        <QuickTechnicianModal 
+            v-model="showQuickTechModal" 
+            @created="handleTechCreated" 
+        />
+        
     </AppLayout>
 </template>
