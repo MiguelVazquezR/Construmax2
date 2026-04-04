@@ -263,30 +263,29 @@ class TechnicianController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'phone' => 'required|string|max:20',
+            'is_internal' => 'boolean', // NUEVO CAMPO ACEPTADO
         ]);
 
         $user = null;
 
         DB::transaction(function () use ($validated, &$user) {
-            // Creamos usuario
             $user = User::create([
                 'name' => $validated['name'],
-                'email' => null, // Dejamos en null
-                'password' => Hash::make(Str::random(12)), // Random
+                'email' => null,
+                'password' => Hash::make(Str::random(12)), 
                 'is_active' => true,
             ]);
 
-            // Creamos tabla technician básica
             Technician::create([
                 'user_id' => $user->id,
                 'phone' => $validated['phone'],
-                'is_internal' => false,
-                'status' => 'Activo', // Activo para usarlo de inmediato
+                'is_internal' => $validated['is_internal'] ?? false, // APLICADO AQUÍ
+                'status' => 'Activo', 
                 'rating_avg' => 0,
                 'coverage_radius_km' => 10,
             ]);
 
-            $user->load('technician'); // Cargamos relación para devolverla al frontend
+            $user->load('technician'); 
         });
 
         return response()->json([

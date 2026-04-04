@@ -14,7 +14,8 @@ const isSubmitting = ref(false);
 
 const form = reactive({
     name: '',
-    phone: ''
+    phone: '',
+    is_internal: false, // NUEVO CAMPO
 });
 
 const rules = reactive({
@@ -31,6 +32,7 @@ const close = () => {
     emit('update:modelValue', false);
     form.name = '';
     form.phone = '';
+    form.is_internal = false;
     if (formRef.value) formRef.value.clearValidate();
 };
 
@@ -75,6 +77,15 @@ const submit = () => {
             
             <el-form-item label="Teléfono / Celular" prop="phone">
                 <el-input v-model="form.phone" placeholder="Ej. 3312345678" />
+            </el-form-item>
+
+            <el-form-item label="Tipo de colaborador">
+                <el-switch
+                    v-model="form.is_internal"
+                    active-text="Empleado interno"
+                    inactive-text="Proveedor externo"
+                    style="--el-switch-on-color: #f26c17;"
+                />
             </el-form-item>
         </el-form>
         

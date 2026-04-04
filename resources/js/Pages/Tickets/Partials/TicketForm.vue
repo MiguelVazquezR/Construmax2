@@ -16,6 +16,8 @@ const props = defineProps({
     }
 });
 
+defineEmits(['open-quick-tech']);
+
 const statuses = [
     'Programado', 
     'En proceso', 
@@ -54,6 +56,9 @@ const groupedUsers = computed(() => {
         <div class="md:col-span-2">
             <div class="flex justify-between items-center mb-1">
                 <label class="text-sm font-bold text-gray-700 dark:text-gray-300">Supervisor / encargado de obra</label>
+                <el-button type="primary" link size="small" @click="$emit('open-quick-tech')">
+                    Registro rápido de técnico
+                </el-button>
             </div>
             <p class="text-xs text-gray-500 mb-2">
                 * Este usuario es el responsable general. Los técnicos o proveedores que ejecutarán tareas específicas se asignan en la vista de detalles del ticket.
