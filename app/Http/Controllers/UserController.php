@@ -12,13 +12,15 @@ use Inertia\Inertia;
 
 class UserController extends Controller
 {
-    public function index(Request $request)
+     public function index(Request $request)
     {
         $perPage = $request->input('perPage', 10);
 
         return Inertia::render('Users/Index', [
             'users' => User::with(['employee', 'roles']) // Cargamos roles para mostrar si es necesario
                 ->where('id', '!=', 1) // Excluir al usuario soporte/superadmin
+                ->has('employee') // NUEVO: Mostrar SOLO los que tienen perfil de Empleado
+                ->doesntHave('technician') // NUEVO: Excluir a los que tienen perfil de Técnico (por doble seguridad)
                 ->filter($request->only('search'))
                 ->orderBy('id', 'desc')
                 ->paginate($perPage)

@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Inertia\Inertia;
 use Illuminate\Validation\Rule;
-use Spatie\MediaLibrary\MediaCollections\Models\Media;
+use Illuminate\Support\Str;
 
 class TechnicianController extends Controller
 {
@@ -51,20 +51,21 @@ class TechnicianController extends Controller
 
     public function store(Request $request)
     {
+        // CAMBIO: Dejamos como "required" solo name y phone (como en el quickStore)
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|max:255|unique:users',
+            'email' => 'nullable|email|max:255|unique:users', 
             'photo' => 'nullable|image|max:2048',
             'phone' => 'required|string|max:20', 
             'secondary_phone' => 'nullable|string|max:20',
             'is_internal' => 'boolean',
-            'state' => 'required|string',
-            'city' => 'required|string',
+            'state' => 'nullable|string',
+            'city' => 'nullable|string',
             'colony' => 'nullable|string',
             'zip_code' => 'nullable|string',
-            'coverage_radius_km' => 'required|integer|min:1',
+            'coverage_radius_km' => 'nullable|integer|min:1',
             'specialties' => 'nullable|array',
-            'specialties.*' => 'string', // Valida que sean strings
+            'specialties.*' => 'string',
             'legal_name' => 'nullable|string',
             'rfc' => 'nullable|string|max:20',
             'bank_name' => 'nullable|string',
@@ -78,8 +79,8 @@ class TechnicianController extends Controller
         DB::transaction(function () use ($validated, $request) {
             $user = User::create([
                 'name' => $validated['name'],
-                'email' => $validated['email'],
-                'password' => Hash::make('TempPassword123!'),
+                'email' => $validated['email'] ?? null, // CORRECCIÓN: Agregar ?? null
+                'password' => Hash::make(Str::random(12)),
                 'is_active' => false,
             ]);
 
@@ -90,21 +91,21 @@ class TechnicianController extends Controller
             $technician = Technician::create([
                 'user_id' => $user->id,
                 'phone' => $validated['phone'],
-                'secondary_phone' => $validated['secondary_phone'],
+                'secondary_phone' => $validated['secondary_phone'] ?? null, // CORRECCIONES
                 'is_internal' => $validated['is_internal'] ?? false,
-                'state' => $validated['state'],
-                'city' => $validated['city'],
-                'colony' => $validated['colony'],
-                'zip_code' => $validated['zip_code'],
-                'coverage_radius_km' => $validated['coverage_radius_km'],
-                'specialties' => $validated['specialties'],
-                'legal_name' => $validated['legal_name'],
-                'rfc' => $validated['rfc'],
-                'bank_name' => $validated['bank_name'],
-                'bank_account' => $validated['bank_account'],
-                'clabe' => $validated['clabe'],
+                'state' => $validated['state'] ?? null,
+                'city' => $validated['city'] ?? null,
+                'colony' => $validated['colony'] ?? null,
+                'zip_code' => $validated['zip_code'] ?? null,
+                'coverage_radius_km' => $validated['coverage_radius_km'] ?? 10,
+                'specialties' => $validated['specialties'] ?? [], // CORRECCIÓN CLAVE
+                'legal_name' => $validated['legal_name'] ?? null,
+                'rfc' => $validated['rfc'] ?? null,
+                'bank_name' => $validated['bank_name'] ?? null,
+                'bank_account' => $validated['bank_account'] ?? null,
+                'clabe' => $validated['clabe'] ?? null,
                 'status' => 'En revisión',
-                'internal_notes' => $validated['internal_notes'],
+                'internal_notes' => $validated['internal_notes'] ?? null,
                 'rating_avg' => $validated['rating_avg'] ?? 0,
             ]);
 
@@ -167,16 +168,16 @@ class TechnicianController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => ['required', 'email', Rule::unique('users')->ignore($technician->user_id)],
+            'email' => ['nullable', 'email', Rule::unique('users')->ignore($technician->user_id)], 
             'photo' => 'nullable|image|max:2048',
             'phone' => 'required|string|max:20',
             'secondary_phone' => 'nullable|string|max:20',
             'is_internal' => 'boolean',
-            'state' => 'required|string',
-            'city' => 'required|string',
+            'state' => 'nullable|string',
+            'city' => 'nullable|string',
             'colony' => 'nullable|string',
             'zip_code' => 'nullable|string',
-            'coverage_radius_km' => 'required|integer',
+            'coverage_radius_km' => 'nullable|integer',
             'specialties' => 'nullable|array',
             'specialties.*' => 'string',
             'legal_name' => 'nullable|string',
@@ -187,12 +188,13 @@ class TechnicianController extends Controller
             'status' => 'required|string',
             'internal_notes' => 'nullable|string',
             'rating_avg' => 'nullable|numeric|min:0|max:5',
+            'tax_file' => 'nullable|file|mimes:pdf,jpg,png|max:5120', // CORRECCIÓN 1: Faltaba validar el archivo
         ]);
 
         DB::transaction(function () use ($validated, $request, $technician) {
             $technician->user->update([
                 'name' => $validated['name'],
-                'email' => $validated['email'],
+                'email' => $validated['email'] ?? null, 
             ]);
 
             if ($request->hasFile('photo')) {
@@ -201,23 +203,33 @@ class TechnicianController extends Controller
 
             $technician->update([
                 'phone' => $validated['phone'],
-                'secondary_phone' => $validated['secondary_phone'],
-                'is_internal' => $validated['is_internal'],
-                'state' => $validated['state'],
-                'city' => $validated['city'],
-                'colony' => $validated['colony'],
-                'zip_code' => $validated['zip_code'],
-                'coverage_radius_km' => $validated['coverage_radius_km'],
-                'specialties' => $validated['specialties'],
-                'legal_name' => $validated['legal_name'],
-                'rfc' => $validated['rfc'],
-                'bank_name' => $validated['bank_name'],
-                'bank_account' => $validated['bank_account'],
-                'clabe' => $validated['clabe'],
-                'status' => $validated['status'],
-                'internal_notes' => $validated['internal_notes'],
+                'secondary_phone' => $validated['secondary_phone'] ?? null,
+                'is_internal' => $validated['is_internal'] ?? false,
+                'state' => $validated['state'] ?? null,
+                'city' => $validated['city'] ?? null,
+                'colony' => $validated['colony'] ?? null,
+                'zip_code' => $validated['zip_code'] ?? null,
+                'coverage_radius_km' => $validated['coverage_radius_km'] ?? $technician->coverage_radius_km,
+                'specialties' => $validated['specialties'] ?? [], 
+                'legal_name' => $validated['legal_name'] ?? null,
+                'rfc' => $validated['rfc'] ?? null,
+                'bank_name' => $validated['bank_name'] ?? null,
+                'bank_account' => $validated['bank_account'] ?? null,
+                'clabe' => $validated['clabe'] ?? null,
+                'status' => $validated['status'] ?? $technician->status,
+                'internal_notes' => $validated['internal_notes'] ?? null,
                 'rating_avg' => $validated['rating_avg'] ?? $technician->rating_avg,
             ]);
+
+            // CORRECCIÓN 2: Lógica para guardar la constancia fiscal si se adjuntó
+            if ($request->hasFile('tax_file')) {
+                // Borramos el documento anterior si existía para no llenar el servidor de archivos viejos
+                $technician->clearMediaCollection('fiscal_documents');
+                
+                // Guardamos el nuevo
+                $technician->addMediaFromRequest('tax_file')
+                    ->toMediaCollection('fiscal_documents');
+            }
         });
 
         return redirect()->route('technicians.show', $technician->id)->with('success', 'Perfil actualizado.');
@@ -243,6 +255,44 @@ class TechnicianController extends Controller
         $technician->update(['rating_avg' => $validated['rating']]);
 
         return back()->with('success', 'Calificación actualizada.');
+    }
+
+    // --- NUEVO MÉTODO: REGISTRO RÁPIDO DESDE TICKET ---
+    public function quickStore(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'phone' => 'required|string|max:20',
+        ]);
+
+        $user = null;
+
+        DB::transaction(function () use ($validated, &$user) {
+            // Creamos usuario
+            $user = User::create([
+                'name' => $validated['name'],
+                'email' => null, // Dejamos en null
+                'password' => Hash::make(Str::random(12)), // Random
+                'is_active' => true,
+            ]);
+
+            // Creamos tabla technician básica
+            Technician::create([
+                'user_id' => $user->id,
+                'phone' => $validated['phone'],
+                'is_internal' => false,
+                'status' => 'Activo', // Activo para usarlo de inmediato
+                'rating_avg' => 0,
+                'coverage_radius_km' => 10,
+            ]);
+
+            $user->load('technician'); // Cargamos relación para devolverla al frontend
+        });
+
+        return response()->json([
+            'user' => $user,
+            'message' => 'Técnico registrado rápidamente.'
+        ], 201);
     }
 
     public function deleteMedia(Technician $technician, $mediaId)
