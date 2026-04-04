@@ -78,7 +78,7 @@ const getStatusColor = (status) => {
 
                     <!-- Responsable -->
                     <div class="flex items-center gap-3 w-full md:w-auto bg-gray-50 dark:bg-[#252529] px-4 py-2 rounded-lg border border-gray-100 dark:border-[#3f3f46]">
-                        <span class="text-xs text-gray-400 uppercase font-bold">Técnico Responsable</span>
+                        <span class="text-xs text-gray-400 uppercase font-bold">Supervisor o encargado de obra</span>
                         <div class="flex items-center gap-2">
                             <el-avatar :size="28" class="!text-xs bg-white text-gray-600 border">
                                 {{ ticket.responsible?.name?.charAt(0) }}

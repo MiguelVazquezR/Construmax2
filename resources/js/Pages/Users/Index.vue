@@ -171,7 +171,7 @@ watch(search, (val) => {
 
                         <el-table-column label="Departamento" min-width="150">
                             <template #default="scope">
-                                {{ scope.row.employee ? scope.row.employee.department : 'N/A' }}
+                                {{ scope.row.employee?.department }}
                             </template>
                         </el-table-column>
 

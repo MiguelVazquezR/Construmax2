@@ -3,11 +3,13 @@ import { ref, reactive, computed } from 'vue';
 import { useForm, Link, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage } from 'element-plus';
+import { Tools, Back } from '@element-plus/icons-vue';
 import axios from 'axios';
+import TicketForm from './Partials/TicketForm.vue';
 
 const props = defineProps({
     budgets: Array, // Presupuestos existentes
-    users: Array,   // Usuarios técnicos
+    users: Array,   // Usuarios (Supervisores/Encargados)
     customers: Array // Clientes (para el modal rápido)
 });
 
@@ -17,7 +19,7 @@ const quickBudgetFormRef = ref();
 // --- FORMULARIO PRINCIPAL (TICKET) ---
 const form = useForm({
     budget_id: '',
-    user_id: usePage().props.auth.user.id, // Por defecto el usuario actual (aunque suele ser un técnico)
+    user_id: '', // Supervisor/Encargado
     priority: 'Media',
     scheduled_start: '',
     scheduled_end: '',
@@ -26,7 +28,7 @@ const form = useForm({
 
 const rules = reactive({
     budget_id: [{ required: true, message: 'Selecciona un presupuesto', trigger: 'change' }],
-    user_id: [{ required: true, message: 'Asigna un responsable', trigger: 'change' }],
+    user_id: [{ required: true, message: 'Asigna un encargado de obra', trigger: 'change' }],
     priority: [{ required: true, message: 'Requerido', trigger: 'change' }],
 });
 
@@ -47,23 +49,26 @@ const submit = () => {
 // --- LÓGICA DE PRESUPUESTO RÁPIDO ---
 const showQuickBudgetModal = ref(false);
 const isCreatingBudget = ref(false);
-
-// Lista local reactiva de presupuestos (para agregar el nuevo sin recargar)
 const localBudgets = ref([...props.budgets]);
 
 const quickForm = reactive({
     name: '',
     service_type: '',
-    status: 'Trabajo en proceso', // Estatus lógico para un ticket inmediato
+    status: 'Trabajo en proceso',
     priority: 'Media',
-    user_id: usePage().props.auth.user.id,
+    
+    // CORRECCIÓN: Campos obligatorios agregados
+    user_id: usePage().props.auth.user.id, // Asignamos por defecto al creador
+    currency: 'MXN', // Moneda por defecto
+    exchange_rate: 1, // Tipo de cambio por defecto
+    
     customer_id: '',
     customer_contact_id: '',
     branch: '',
     duration: '',
     description: 'Generado desde Ticket Rápido',
-    concepts: [{ concept: 'Costo inicial estimado', amount: 0 }], // Requerido por backend
-    quick_create: true // Flag importante
+    concepts: [{ concept: 'Costo inicial estimado', amount: 0 }],
+    quick_create: true
 });
 
 const quickRules = reactive({
@@ -74,7 +79,6 @@ const quickRules = reactive({
     branch: [{ required: true, message: 'Requerido', trigger: 'change' }],
 });
 
-// Listas estáticas (mismas que en Budget Module)
 const serviceTypes = [
     'Iluminación', 'Herrería', 'Acabados', 'Eléctrico', 'Aire acondicionado', 
     'Sanitario', 'Anuncios', 'Pintura', 'Carpintería', 'Vidrio', 
@@ -82,7 +86,6 @@ const serviceTypes = [
     'Impermeabilización', 'Servicios varios'
 ];
 
-// Computed para el modal rápido
 const quickFilteredContacts = computed(() => {
     if (!quickForm.customer_id) return [];
     const customer = props.customers.find(c => c.id === quickForm.customer_id);
@@ -96,14 +99,12 @@ const quickContactBranches = computed(() => {
     return contact.branches.split(',').map(b => b.trim()).filter(b => b !== '');
 });
 
-// Reset cascada modal
 const handleQuickCustomerChange = () => {
     quickForm.customer_contact_id = '';
     quickForm.branch = '';
 };
 
 const openQuickBudget = () => {
-    // Resetear formulario rápido
     quickForm.name = '';
     quickForm.service_type = '';
     quickForm.customer_id = '';
@@ -119,10 +120,7 @@ const submitQuickBudget = () => {
         if (valid) {
             isCreatingBudget.value = true;
             try {
-                // Usamos Axios para no navegar fuera
                 const response = await axios.post(route('budgets.store'), quickForm);
-                
-                // Agregar el nuevo presupuesto a la lista y seleccionarlo
                 const newBudget = response.data.budget;
                 localBudgets.value.unshift(newBudget);
                 form.budget_id = newBudget.id;
@@ -148,7 +146,7 @@ const submitQuickBudget = () => {
                     Nuevo ticket de servicio
                 </h2>
                 <Link :href="route('tickets.index')">
-                    <el-button icon="Back" circle />
+                    <el-button :icon="Back" circle />
                 </Link>
             </div>
         </template>
@@ -202,61 +200,11 @@ const submitQuickBudget = () => {
                             </el-form-item>
                         </div>
 
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <!-- Responsable -->
-                            <el-form-item label="Técnico Responsable" prop="user_id">
-                                <el-select v-model="form.user_id" placeholder="Asignar a..." class="w-full" filterable>
-                                    <el-option 
-                                        v-for="user in users" 
-                                        :key="user.id" 
-                                        :label="user.name" 
-                                        :value="user.id" 
-                                    />
-                                </el-select>
-                            </el-form-item>
-
-                            <!-- Prioridad -->
-                            <el-form-item label="Prioridad" prop="priority">
-                                <el-select v-model="form.priority" class="w-full">
-                                    <el-option label="Baja" value="Baja" />
-                                    <el-option label="Media" value="Media" />
-                                    <el-option label="Alta" value="Alta" />
-                                    <el-option label="Urgente" value="Urgente" />
-                                </el-select>
-                            </el-form-item>
-
-                            <!-- Fechas -->
-                            <el-form-item label="Inicio Programado" prop="scheduled_start">
-                                <el-date-picker 
-                                    v-model="form.scheduled_start" 
-                                    type="date" 
-                                    class="!w-full" 
-                                    placeholder="Seleccionar fecha"
-                                    format="DD/MM/YYYY"
-                                    value-format="YYYY-MM-DD"
-                                />
-                            </el-form-item>
-
-                            <el-form-item label="Fin Estimado" prop="scheduled_end">
-                                <el-date-picker 
-                                    v-model="form.scheduled_end" 
-                                    type="date" 
-                                    class="!w-full" 
-                                    placeholder="Seleccionar fecha"
-                                    format="DD/MM/YYYY"
-                                    value-format="YYYY-MM-DD"
-                                />
-                            </el-form-item>
-                        </div>
-
-                        <el-form-item label="Instrucciones especiales" prop="instructions" class="mt-2">
-                            <el-input 
-                                v-model="form.instructions" 
-                                type="textarea" 
-                                :rows="4" 
-                                placeholder="Detalles operativos, acceso, herramientas necesarias..." 
-                            />
-                        </el-form-item>
+                        <!-- CAMPOS REUTILIZABLES -->
+                        <TicketForm 
+                            :form="form" 
+                            :users="users" 
+                        />
 
                         <div class="flex justify-end pt-6 border-t border-gray-100 dark:border-gray-700 mt-4">
                             <Link :href="route('tickets.index')" class="mr-4">
@@ -278,10 +226,9 @@ const submitQuickBudget = () => {
             </div>
         </div>
 
-        <!-- MODAL PRESUPUESTO RÁPIDO -->
         <el-dialog
             v-model="showQuickBudgetModal"
-            title="Registro Rápido de Servicio"
+            title="Registro rápido de servicio"
             width="600px"
             destroy-on-close
         >
@@ -365,11 +312,10 @@ const submitQuickBudget = () => {
                         @click="submitQuickBudget" 
                         :loading="isCreatingBudget"
                     >
-                        Crear y Seleccionar
+                        Crear y seleccionar
                     </el-button>
                 </div>
             </template>
         </el-dialog>
-
     </AppLayout>
 </template>
