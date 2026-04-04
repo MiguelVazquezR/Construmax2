@@ -14,7 +14,6 @@ const props = defineProps({
 
 const formRef = ref();
 
-// Lista local reactiva para permitir agregar técnicos al vuelo
 const localUsers = ref([...props.users]);
 const showQuickTechModal = ref(false);
 
@@ -103,7 +102,7 @@ const submit = () => {
                                 :form="form" 
                                 :users="localUsers" 
                                 :is-edit="true" 
-                                @open-quick-tech="showQuickTechModal = true" 
+                                @open-quick-tech="showQuickTechModal = true"
                             />
 
                             <div class="flex justify-end pt-6 border-t border-gray-100 dark:border-gray-700 mt-4">
@@ -127,7 +126,6 @@ const submit = () => {
             </div>
         </div>
 
-        <!-- Modal de creación rápida de técnico -->
         <QuickTechnicianModal 
             v-model="showQuickTechModal" 
             @created="handleTechCreated" 
