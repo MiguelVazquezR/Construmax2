@@ -16,20 +16,20 @@ class TicketController extends Controller
     public function index(Request $request)
     {
         $perPage = $request->input('perPage', 10);
-        $sort = $request->input('sort', 'delay'); // Por defecto ordenamos por "Atraso/Urgencia"
+        $sort = $request->input('sort', 'delay'); 
 
-        $query = Ticket::with(['budget.customer', 'responsible', 'tasks.assignee']);
+        // Ahora cargamos la relación directa con customer y evitamos buscar por budget
+        $query = Ticket::with(['customer', 'responsible', 'tasks.assignee']);
 
         // Filtros de búsqueda y estado
         if ($request->has('search')) {
             $search = $request->input('search');
             $query->where(function($q) use ($search) {
                 $q->where('id', 'like', "%{$search}%")
-                  ->orWhereHas('budget', function($b) use ($search) {
-                      $b->where('service_type', 'like', "%{$search}%")
-                        ->orWhereHas('customer', function($c) use ($search) {
-                            $c->where('name', 'like', "%{$search}%");
-                        });
+                  ->orWhere('name', 'like', "%{$search}%") // Busca por nombre del proyecto
+                  ->orWhere('service_type', 'like', "%{$search}%") // Busca por tipo de servicio
+                  ->orWhereHas('customer', function($c) use ($search) {
+                      $c->where('name', 'like', "%{$search}%");
                   })
                   ->orWhereHas('responsible', function($u) use ($search) {
                       $u->where('name', 'like', "%{$search}%");
@@ -43,10 +43,8 @@ class TicketController extends Controller
 
         // --- LÓGICA DE ORDENAMIENTO ---
         if ($sort === 'start_date') {
-            // Ordenar por fecha de inicio (Lo más nuevo primero)
             $query->orderBy('scheduled_start', 'desc');
         } else {
-            // Ordenar por "Atraso" (Urgencia)
             $query->orderByRaw("CASE WHEN status = 'Completado' OR status = 'Cancelado' THEN 2 ELSE 1 END")
                   ->orderBy('scheduled_end', 'asc');
         }
@@ -59,16 +57,10 @@ class TicketController extends Controller
 
      public function create()
     {
-        $budgets = Budget::whereIn('status', ['Facturado', 'Trabajo en proceso', 'Pagado', 'Presupuesto enviado'])
-            ->with('customer')
-            ->doesntHave('ticket')
-            ->orderBy('id', 'desc')
-            ->get();
-
         return Inertia::render('Tickets/Create', [
-            'budgets' => $budgets,
             // Enviamos TODOS los usuarios activos (excepto soporte) cargando sus relaciones
             'users' => User::where('id', '!=', 1)->with(['employee', 'technician'])->get(),
+            // Para poder seleccionar al cliente desde la vista de creación de ticket
             'customers' => Customer::where('is_active', true)->with('contacts')->get(),
         ]);
     }
@@ -76,7 +68,12 @@ class TicketController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'budget_id' => 'required|exists:budgets,id|unique:tickets,budget_id',
+            'customer_id' => 'required|exists:customers,id',
+            'customer_contact_id' => 'required|exists:customer_contacts,id',
+            'branch' => 'nullable|string',
+            'name' => 'required|string|max:255',
+            'service_type' => 'required|string|max:255',
+            'duration' => 'nullable|string',
             'user_id' => 'required|exists:users,id',
             'priority' => 'required|string',
             'scheduled_start' => 'nullable|date',
@@ -84,44 +81,21 @@ class TicketController extends Controller
             'instructions' => 'nullable|string',
         ]);
 
-        $ticket = Ticket::create([
-            'budget_id' => $validated['budget_id'],
-            'user_id' => $validated['user_id'],
-            'priority' => $validated['priority'],
-            'status' => 'Programado',
-            'scheduled_start' => $validated['scheduled_start'],
-            'scheduled_end' => $validated['scheduled_end'],
-            'instructions' => $validated['instructions'],
-        ]);
+        $ticket = Ticket::create(array_merge($validated, [
+            'status' => 'Programado'
+        ]));
 
         return redirect()->route('tickets.show', $ticket->id)
             ->with('success', 'Ticket operativo generado correctamente.');
     }
 
-    public function storeFromBudget(Request $request, Budget $budget)
-    {
-        if ($budget->ticket) {
-            return back()->with('error', 'Este presupuesto ya tiene un ticket asociado.');
-        }
-
-        $ticket = Ticket::create([
-            'budget_id' => $budget->id,
-            'user_id' => $budget->user_id,
-            'priority' => $budget->priority,
-            'status' => 'Programado',
-            'scheduled_start' => now(),
-            'scheduled_end' => now()->addWeeks(2),
-            'instructions' => 'Ticket generado automáticamente a partir del Presupuesto #' . $budget->id . '. ' . $budget->name,
-        ]);
-
-        return back()->with('success', 'Ticket generado automáticamente.');
-    }
-
     public function show(Ticket $ticket)
     {
+        // Cargamos también los presupuestos generados a partir de este ticket
         $ticket->load([
-            'budget.customer', 
-            'budget.contact', 
+            'customer', 
+            'contact', 
+            'budgets', // <- Relación inversa para ver los presupuestos desde el ticket
             'responsible', 
             'tasks.assignee', 
             'tasks.media', 
@@ -158,15 +132,21 @@ class TicketController extends Controller
     public function edit(Ticket $ticket)
     {
         return Inertia::render('Tickets/Edit', [
-            'ticket' => $ticket->load('budget'),
-            // Enviamos TODOS los usuarios
+            'ticket' => $ticket->load(['customer', 'contact']),
             'users' => User::where('id', '!=', 1)->with(['employee', 'technician'])->get(),
+            'customers' => Customer::where('is_active', true)->with('contacts')->get(),
         ]);
     }
 
     public function update(Request $request, Ticket $ticket)
     {
         $validated = $request->validate([
+            'customer_id' => 'required|exists:customers,id',
+            'customer_contact_id' => 'required|exists:customer_contacts,id',
+            'branch' => 'nullable|string',
+            'name' => 'required|string|max:255',
+            'service_type' => 'required|string|max:255',
+            'duration' => 'nullable|string',
             'user_id' => 'required|exists:users,id',
             'priority' => 'required|string',
             'status' => 'required|string',

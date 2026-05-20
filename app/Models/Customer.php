@@ -49,5 +49,20 @@ class Customer extends Model
                   ->orWhere('rfc', 'like', '%'.$search.'%');
             });
         });
+
+        // NUEVO FILTRO: Por nombre de encargado/contacto
+        $query->when($filters['contact'] ?? null, function ($query, $contact) {
+            $query->whereHas('contacts', function ($q) use ($contact) {
+                $q->where('name', 'like', '%'.$contact.'%');
+            });
+        });
+
+        // NUEVO FILTRO: Por Región o Sucursal (Buscamos dentro del cast JSON)
+        $query->when($filters['region'] ?? null, function ($query, $region) {
+            $query->whereHas('contacts', function ($q) use ($region) {
+                $q->where('branches', 'like', '%"region":"%'.$region.'%"%')
+                  ->orWhere('branches', 'like', '%"unit":"%'.$region.'%"%');
+            });
+        });
     }
 }

@@ -5,7 +5,8 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import { 
     OfficeBuilding, User, Message, Phone, Location, 
-    ArrowDown, ChatDotRound, Edit, Back, Money, List, Timer
+    ArrowDown, ChatDotRound, Edit, Back, List, Timer,
+    Ticket
 } from '@element-plus/icons-vue';
 
 const { can } = usePermissions();
@@ -42,7 +43,7 @@ const getWhatsappUrl = (phone) => {
 const getStatusColor = (status) => {
     const map = {
         'Borrador': 'info',
-        'Presupuesto enviado': 'primary',
+        'Ticket enviado': 'primary', // Actualizado a Ticket
         'Facturado': 'warning',
         'Trabajo en proceso': 'primary',
         'Trabajo terminado': 'success',
@@ -52,8 +53,9 @@ const getStatusColor = (status) => {
     return map[status] || 'info';
 };
 
-const navigateToBudget = (row) => {
-    router.visit(route('budgets.show', row.id));
+// Actualizado a navigateToTicket
+const navigateToTicket = (row) => {
+    router.visit(route('tickets.show', row.id)); 
 };
 </script>
 
@@ -163,23 +165,23 @@ const navigateToBudget = (row) => {
                                 <h4 class="font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2 border-b pb-2 dark:border-gray-700">
                                     <el-icon><User /></el-icon> Contactos Asociados
                                 </h4>
-                                <div v-if="customer.contacts.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div v-if="customer.contacts.length > 0" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                     <div 
                                         v-for="contact in customer.contacts" 
                                         :key="contact.id"
-                                        class="border border-gray-200 dark:border-[#3f3f46] rounded-lg p-4 hover:shadow-md transition-shadow bg-gray-50/50 dark:bg-[#252529] relative group"
+                                        class="border border-gray-200 dark:border-[#3f3f46] rounded-lg p-5 hover:shadow-md transition-shadow bg-gray-50/50 dark:bg-[#252529] relative group flex flex-col h-full"
                                     >
-                                        <div class="flex items-start justify-between mb-2">
-                                            <div class="flex items-center gap-2">
-                                                <el-avatar :size="32" class="bg-primary text-white">{{ contact.name.charAt(0) }}</el-avatar>
+                                        <div class="flex items-start justify-between mb-4">
+                                            <div class="flex items-center gap-3">
+                                                <el-avatar :size="40" class="bg-primary text-white font-bold">{{ contact.name.charAt(0) }}</el-avatar>
                                                 <div>
-                                                    <p class="font-bold text-gray-800 dark:text-gray-200 text-sm leading-tight">{{ contact.name }}</p>
-                                                    <p class="text-xs text-primary font-medium">{{ contact.position }}</p>
+                                                    <p class="font-bold text-gray-800 dark:text-gray-200 text-base leading-tight">{{ contact.name }}</p>
+                                                    <p class="text-sm text-primary font-medium">{{ contact.position }}</p>
                                                 </div>
                                             </div>
                                         </div>
                                         
-                                        <div class="space-y-2 mt-3 text-sm">
+                                        <div class="space-y-3 mb-4 text-sm flex-grow">
                                             <p class="flex items-center text-gray-600 dark:text-gray-400 gap-2 truncate">
                                                 <el-icon><Message /></el-icon>
                                                 <a :href="`mailto:${contact.email}`" class="hover:text-primary transition-colors underline decoration-dotted">
@@ -205,12 +207,28 @@ const navigateToBudget = (row) => {
                                                     </template>
                                                 </el-dropdown>
                                             </div>
-
-                                            <p class="flex items-start text-gray-600 dark:text-gray-400 gap-2">
-                                                <el-icon class="mt-0.5"><Location /></el-icon>
-                                                <span class="text-xs">{{ contact.branches }}</span>
-                                            </p>
                                         </div>
+
+                                        <!-- SECCIÓN DE SUCURSALES (FORMATO JSON) -->
+                                        <div class="mt-auto pt-3 border-t border-gray-200 dark:border-gray-700">
+                                            <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                                                <el-icon><Location /></el-icon> Sucursales a cargo
+                                            </p>
+                                            <div class="space-y-2 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
+                                                <template v-if="Array.isArray(contact.branches)">
+                                                    <div v-for="(branch, idx) in contact.branches" :key="idx" class="bg-white dark:bg-[#1e1e20] p-2 rounded border border-gray-100 dark:border-gray-800 text-xs">
+                                                        <span class="font-bold text-gray-700 dark:text-gray-300">{{ branch.unit }}</span>
+                                                        <span class="text-gray-500 ml-1">({{ branch.region }}, {{ branch.country }})</span>
+                                                    </div>
+                                                </template>
+                                                <template v-else>
+                                                    <div class="bg-white dark:bg-[#1e1e20] p-2 rounded border border-gray-100 dark:border-gray-800 text-xs text-gray-600">
+                                                        {{ contact.branches }}
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </div>
+
                                     </div>
                                 </div>
                                 <el-empty v-else description="Sin contactos registrados" :image-size="80" />
@@ -218,24 +236,27 @@ const navigateToBudget = (row) => {
                         </div>
                     </el-tab-pane>
 
-                    <!-- PESTAÑA 2: HISTORIAL DE PRESUPUESTOS -->
-                    <el-tab-pane label="Historial de Presupuestos" name="budgets">
+                    <!-- PESTAÑA 2: HISTORIAL DE TICKETS -->
+                    <el-tab-pane label="Historial de Tickets" name="tickets"> <!-- Actualizado el nombre de la pestaña -->
                         <div class="p-4">
                             <div class="flex justify-between items-center mb-4">
                                 <h4 class="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
-                                    <el-icon><Money /></el-icon> Proyectos Recientes
+                                    <el-icon><Ticket /></el-icon> Tickets Recientes <!-- Icono actualizado a Ticket -->
                                 </h4>
-                                <Link :href="route('budgets.create')">
-                                    <el-button size="small" type="primary" plain icon="Plus">Nuevo presupuesto</el-button>
+                                <!-- Actualizadas las rutas a tickets -->
+                                <Link :href="route('tickets.create')">
+                                    <el-button size="small" type="primary" plain icon="Plus">Nuevo ticket</el-button>
                                 </Link>
                             </div>
 
+                            <!-- Asegúrate de que la relación en tu backend también se llame tickets si cambiaste el modelo, o mantenla como budgets si solo es un cambio visual -->
+                            <!-- Aquí asumo que la variable desde el controlador sigue siendo 'budgets' por ahora (como indicaste en el modelo inicialmente), pero la visualización dice 'Tickets' -->
                             <div v-if="customer.budgets && customer.budgets.length > 0">
                                 <el-table 
                                     :data="customer.budgets" 
                                     style="width: 100%" 
                                     stripe 
-                                    @row-click="navigateToBudget"
+                                    @row-click="navigateToTicket"
                                     row-class-name="cursor-pointer"
                                 >
                                     <el-table-column prop="id" label="Folio" width="80">
@@ -286,8 +307,8 @@ const navigateToBudget = (row) => {
                                     </el-table-column>
                                 </el-table>
                             </div>
-                            <el-empty v-else description="No hay presupuestos registrados para este cliente aún." :image-size="100">
-                                <Link :href="route('budgets.create')">
+                            <el-empty v-else description="No hay tickets registrados para este cliente aún." :image-size="100">
+                                <Link :href="route('tickets.create')">
                                     <el-button type="primary">Crear el primero</el-button>
                                 </Link>
                             </el-empty>
@@ -325,5 +346,20 @@ const navigateToBudget = (row) => {
     width: 100%;
     color: inherit;
     text-decoration: none;
+}
+
+/* Custom Scrollbar for branches */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #d1d5db;
+    border-radius: 10px;
+}
+:global(.dark) .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #4b5563;
 }
 </style>

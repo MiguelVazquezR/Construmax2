@@ -34,7 +34,8 @@ return new class extends Migration
             $table->string('email');
             $table->string('phone');
             $table->string('position'); // Puesto
-            $table->text('branches'); // Sucursales (Texto libre o separado por comas)
+            // CAMBIO: Cambiamos text por json para almacenar el arreglo de sucursales estructuradas
+            $table->json('branches'); 
             $table->timestamps();
         });
     }

@@ -8,18 +8,26 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Tabla Principal: Tickets de Servicio
+        // Tabla Principal: Tickets de Servicio (Entidad Central)
         Schema::create('tickets', function (Blueprint $table) {
             $table->id();
             
-            // Relación con el Presupuesto (Fuente de la verdad comercial)
-            $table->foreignId('budget_id')->constrained()->onDelete('cascade');
+            // --- DATOS DEL CLIENTE Y UBICACIÓN (Movidos desde presupuestos) ---
+            $table->foreignId('customer_id')->constrained()->onDelete('cascade');
+            $table->foreignId('customer_contact_id')->constrained()->onDelete('cascade');
+            $table->string('branch')->nullable(); // Sucursal
+            $table->string('location_type', 50); // Sucursal
             
-            // Responsable Operativo (Puede ser diferente al vendedor del presupuesto)
-            $table->foreignId('user_id')->constrained()->comment('Responsable Técnico');
+            // --- DATOS DEL PROYECTO (Movidos desde presupuestos) ---
+            $table->string('name'); // Nombre del proyecto o necesidad
+            $table->string('service_type'); // Tipo de servicio
+            $table->string('duration')->nullable(); // Duración estimada general
             
-            $table->string('status')->default('Programado'); 
-            // Status: Programado, En proceso, En espera, Revisión, Completado, Cancelado
+            // Responsable Operativo
+            $table->foreignId('user_id')->constrained()->comment('Responsable Técnico o Manager');
+            
+            $table->string('status')->default('Borrador'); 
+            // Status: Borrador, Levantamiento, Catálogo, Proceso de ejecución, Ejecutado, Facturado, Pagado
             
             $table->string('priority')->default('Media');
             

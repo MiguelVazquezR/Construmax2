@@ -14,11 +14,12 @@ class CustomerController extends Controller
         $perPage = $request->input('perPage', 10);
 
         return Inertia::render('Customers/Index', [
-            'customers' => Customer::filter($request->only('search'))
+            'customers' => Customer::with('contacts') // <-- AGREGADO: eager loading de contactos
+                ->filter($request->only(['search', 'region', 'contact'])) // <-- AGREGADO: nuevos filtros
                 ->orderBy('id', 'desc')
                 ->paginate($perPage)
                 ->withQueryString(),
-            'filters' => $request->only(['search', 'perPage']),
+            'filters' => $request->only(['search', 'perPage', 'region', 'contact']), // <-- AGREGADO: nuevos filtros
         ]);
     }
 
@@ -43,7 +44,12 @@ class CustomerController extends Controller
             'contacts.*.email' => 'required|email|max:255',
             'contacts.*.phone' => 'required|string|max:20',
             'contacts.*.position' => 'required|string|max:100',
-            'contacts.*.branches' => 'required|string|max:255',
+            
+            // CAMBIO: Validaciones para el nuevo formato de sucursales (Array de objetos)
+            'contacts.*.branches' => 'required|array|min:1',
+            'contacts.*.branches.*.country' => 'required|string|max:100',
+            'contacts.*.branches.*.region' => 'required|string|max:100',
+            'contacts.*.branches.*.unit' => 'required|string|max:255',
         ]);
 
         DB::transaction(function () use ($validated) {
@@ -59,6 +65,7 @@ class CustomerController extends Controller
                 'is_active' => true,
             ]);
 
+            // Gracias al cast 'array' en el modelo CustomerContact, esto insertará el JSON correctamente
             $customer->contacts()->createMany($validated['contacts']);
         });
 
@@ -67,13 +74,12 @@ class CustomerController extends Controller
 
     public function show(Customer $customer)
     {
-        // Cargamos contactos y presupuestos (ordenados por fecha e incluyendo responsable y suma de costos)
         $customer->load([
             'contacts', 
             'budgets' => function ($query) {
                 $query->orderBy('id', 'desc')
-                      ->with('responsible:id,name,profile_photo_path') // Optimizamos carga de usuario
-                      ->withSum('concepts', 'amount'); // Calculamos total sin cargar todos los conceptos
+                      ->with('responsible:id,name,profile_photo_path')
+                      ->withSum('concepts', 'amount');
             }
         ]);
 
@@ -105,7 +111,12 @@ class CustomerController extends Controller
             'contacts.*.email' => 'required|email|max:255',
             'contacts.*.phone' => 'required|string|max:20',
             'contacts.*.position' => 'required|string|max:100',
-            'contacts.*.branches' => 'required|string|max:255',
+            
+            // CAMBIO: Validaciones actualizadas también en el método update
+            'contacts.*.branches' => 'required|array|min:1',
+            'contacts.*.branches.*.country' => 'required|string|max:100',
+            'contacts.*.branches.*.region' => 'required|string|max:100',
+            'contacts.*.branches.*.unit' => 'required|string|max:255',
         ]);
 
         DB::transaction(function () use ($validated, $customer) {

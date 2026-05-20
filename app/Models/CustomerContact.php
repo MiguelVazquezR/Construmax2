@@ -19,6 +19,10 @@ class CustomerContact extends Model
         'branches',
     ];
 
+     protected $casts = [
+        'branches' => 'array', 
+    ];
+
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);

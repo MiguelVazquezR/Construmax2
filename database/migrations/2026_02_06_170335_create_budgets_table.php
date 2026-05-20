@@ -8,27 +8,24 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Tabla Principal: Presupuestos
+        // Tabla Principal: Presupuestos (Dependen de un Ticket)
         Schema::create('budgets', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
-            $table->string('service_type');
-            $table->string('status')->default('Presupuesto enviado');
             
-            $table->text('description')->nullable();
-            $table->string('duration')->nullable();
-            $table->string('priority')->default('Media');
+            // Relación con el Ticket (El ticket ya contiene al cliente, sucursal y nombre del proyecto)
+            $table->foreignId('ticket_id')->constrained()->onDelete('cascade');
             
-            // --- NUEVOS CAMPOS DE MONEDA ---
+            $table->string('status')->default('Borrador');
+            // Status: Borrador, Enviado al cliente, Aprobado, Rechazado
+            
+            $table->text('description')->nullable(); // Notas comerciales o alcances específicos de esta cotización
+            
+            // --- CAMPOS DE MONEDA ---
             $table->string('currency', 3)->default('MXN'); // MXN, USD
             $table->decimal('exchange_rate', 10, 4)->default(1); // Valor del dólar si aplica
             
-            // Relaciones
-            $table->foreignId('user_id')->constrained()->comment('Responsable'); 
-            $table->foreignId('customer_id')->constrained()->onDelete('cascade');
-            $table->foreignId('customer_contact_id')->constrained()->onDelete('cascade');
-            
-            $table->string('branch')->nullable();
+            // Vendedor o responsable de elaborar el presupuesto
+            $table->foreignId('user_id')->constrained()->comment('Vendedor / Responsable Comercial'); 
             
             $table->timestamps();
         });

@@ -15,7 +15,12 @@ class Ticket extends Model implements HasMedia
     use InteractsWithMedia;
 
     protected $fillable = [
-        'budget_id',
+        'customer_id',
+        'customer_contact_id',
+        'branch',
+        'name',
+        'service_type',
+        'duration',
         'user_id',
         'status',
         'priority',
@@ -32,10 +37,22 @@ class Ticket extends Model implements HasMedia
     // IMPORTANTE: Esto asegura que 'progress' se envíe siempre en el JSON
     protected $appends = ['progress'];
 
-    // Relaciones
-    public function budget(): BelongsTo
+    // --- RELACIONES NUEVAS Y ACTUALIZADAS ---
+
+    public function customer(): BelongsTo
     {
-        return $this->belongsTo(Budget::class);
+        return $this->belongsTo(Customer::class);
+    }
+
+    public function contact(): BelongsTo
+    {
+        return $this->belongsTo(CustomerContact::class, 'customer_contact_id');
+    }
+
+    public function budgets(): HasMany
+    {
+        // Ahora un Ticket puede tener múltiples presupuestos asociados (cotizaciones, revisiones)
+        return $this->hasMany(Budget::class);
     }
 
     public function responsible(): BelongsTo
@@ -48,15 +65,10 @@ class Ticket extends Model implements HasMedia
         return $this->hasMany(TicketTask::class);
     }
 
-    // Accessors
+    // --- ACCESSORS ---
     public function getCustomerNameAttribute()
     {
-        return $this->budget->customer->name ?? 'N/A';
-    }
-
-    public function getServiceTypeAttribute()
-    {
-        return $this->budget->service_type ?? 'N/A';
+        return $this->customer->name ?? 'N/A';
     }
     
     // Progreso calculado
@@ -77,9 +89,6 @@ class Ticket extends Model implements HasMedia
      * - Si no hay tareas -> Programado
      * - Si hay tareas y TODAS están completas -> Completado
      * - Si hay tareas y AL MENOS UNA está pendiente -> En proceso
-     * * Esto cubre:
-     * 1. Reabrir ticket: Estaba 'Completado', agregas tarea nueva -> Pasa a 'En proceso'.
-     * 2. Iniciar ticket: Estaba 'Programado', agregas tarea -> Pasa a 'En proceso'.
      */
     public function updateStatusBasedOnTasks()
     {
@@ -92,14 +101,10 @@ class Ticket extends Model implements HasMedia
         $newStatus = $currentStatus;
 
         if ($total === 0) {
-            // Sin tareas definidas, asumimos estado base
             $newStatus = 'Programado';
         } elseif ($completed === $total) {
-            // Tareas existen y todas completadas
             $newStatus = 'Completado';
         } else {
-            // Tareas existen pero no todas están completas ($completed < $total)
-            // Esto implica que hay trabajo pendiente, por lo tanto "En proceso"
             $newStatus = 'En proceso';
         }
 
