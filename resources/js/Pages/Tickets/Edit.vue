@@ -26,7 +26,7 @@ const form = useForm({
     service_type: props.ticket.service_type,
     duration: props.ticket.duration || '',
     user_id: props.ticket.user_id,
-    technicians: props.ticket.technicians || [], // Arreglo de ejecutores
+    technicians: props.ticket.technicians || [],
     priority: props.ticket.priority,
     status: props.ticket.status,
     scheduled_start: props.ticket.scheduled_start,

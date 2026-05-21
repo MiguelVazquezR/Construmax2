@@ -22,6 +22,7 @@ class Ticket extends Model implements HasMedia
         'service_type',
         'duration',
         'user_id',
+        'technicians',
         'status',
         'priority',
         'scheduled_start',
@@ -32,12 +33,13 @@ class Ticket extends Model implements HasMedia
     protected $casts = [
         'scheduled_start' => 'date',
         'scheduled_end' => 'date',
+        'technicians' => 'array', 
     ];
 
-    // IMPORTANTE: Esto asegura que 'progress' se envíe siempre en el JSON
-    protected $appends = ['progress'];
+    // Agregamos 'folio' para que siempre viaje en las peticiones JSON
+    protected $appends = ['progress', 'folio'];
 
-    // --- RELACIONES NUEVAS Y ACTUALIZADAS ---
+    // --- RELACIONES ---
 
     public function customer(): BelongsTo
     {
@@ -51,7 +53,6 @@ class Ticket extends Model implements HasMedia
 
     public function budgets(): HasMany
     {
-        // Ahora un Ticket puede tener múltiples presupuestos asociados (cotizaciones, revisiones)
         return $this->hasMany(Budget::class);
     }
 
@@ -71,10 +72,30 @@ class Ticket extends Model implements HasMedia
         return $this->customer->name ?? 'N/A';
     }
     
-    // Progreso calculado
+    // Folio dinámico inteligente (Ej. #34-JAL-ME)
+    public function getFolioAttribute()
+    {
+        $id = $this->id;
+        $code = "UND"; // Por si no hay datos (Undefined)
+
+        // Verificamos si tenemos el contacto y sus sucursales
+        if ($this->relationLoaded('contact') && $this->contact && is_array($this->contact->branches)) {
+            // Buscamos la sucursal específica de este ticket
+            $branchData = collect($this->contact->branches)->firstWhere('unit', $this->branch);
+            
+            if ($branchData) {
+                // Tomamos las primeras 3 letras de la región y 2 del país, quitando caracteres especiales
+                $region = strtoupper(substr(preg_replace('/[^a-zA-Z]/', '', $branchData['region'] ?? 'X'), 0, 3));
+                $country = strtoupper(substr(preg_replace('/[^a-zA-Z]/', '', $branchData['country'] ?? 'X'), 0, 2));
+                $code = "{$region}-{$country}";
+            }
+        }
+
+        return "#{$id}-{$code}";
+    }
+
     public function getProgressAttribute()
     {
-        // Usamos la relación cargada o la cargamos si no existe
         $tasks = $this->relationLoaded('tasks') ? $this->tasks : $this->tasks()->get();
         
         $total = $tasks->count();
@@ -84,15 +105,8 @@ class Ticket extends Model implements HasMedia
         return round(($completed / $total) * 100);
     }
 
-    /**
-     * Automatización de Estatus Inteligente
-     * - Si no hay tareas -> Programado
-     * - Si hay tareas y TODAS están completas -> Completado
-     * - Si hay tareas y AL MENOS UNA está pendiente -> En proceso
-     */
     public function updateStatusBasedOnTasks()
     {
-        // Forzamos recarga para asegurar consistencia tras crear/borrar
         $this->load('tasks');
         
         $total = $this->tasks->count();
@@ -101,14 +115,13 @@ class Ticket extends Model implements HasMedia
         $newStatus = $currentStatus;
 
         if ($total === 0) {
-            $newStatus = 'Programado';
+            $newStatus = 'Borrador'; // Cambiado el estatus por defecto
         } elseif ($completed === $total) {
-            $newStatus = 'Completado';
+            $newStatus = 'Ejecutado';
         } else {
-            $newStatus = 'En proceso';
+            $newStatus = 'Proceso de ejecución';
         }
 
-        // Solo actualizamos si hubo cambio para no disparar eventos innecesarios
         if ($newStatus !== $currentStatus) {
             $this->update(['status' => $newStatus]);
         }

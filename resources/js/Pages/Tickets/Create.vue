@@ -13,20 +13,14 @@ const props = defineProps({
 });
 
 const formRef = ref();
-
-// Variable reactiva para inyectar técnicos rápidos
 const localUsers = ref([...props.users]);
 const showQuickTechModal = ref(false);
 
 const handleTechCreated = (newUser) => {
     localUsers.value.push(newUser);
-    // Asignamos al usuario recién creado. Si es técnico interno/externo,
-    // podrías agregarlo a form.technicians.push(newUser.id) si lo prefieres,
-    // pero por ahora lo ponemos como encargado (user_id).
     form.user_id = newUser.id;
 };
 
-// --- FORMULARIO PRINCIPAL (TICKET) ---
 const form = useForm({
     customer_id: '',
     customer_contact_id: '',
@@ -35,7 +29,7 @@ const form = useForm({
     service_type: '',
     duration: '',
     user_id: '', 
-    technicians: [], // Arreglo para guardar a los técnicos que ejecutan
+    technicians: [], 
     priority: 'Media',
     scheduled_start: '',
     scheduled_end: '',

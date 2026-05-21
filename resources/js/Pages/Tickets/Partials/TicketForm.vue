@@ -23,7 +23,6 @@ const props = defineProps({
 
 defineEmits(['open-quick-tech']);
 
-// --- LISTA DE SERVICIOS CON CÓDIGOS NUMÉRICOS (ID) ---
 const serviceTypes = [
     { id: 1, name: 'Iluminación' },
     { id: 2, name: 'Herrería' },
@@ -44,15 +43,15 @@ const serviceTypes = [
 ];
 
 const statuses = [
-    'Programado', 
-    'En proceso', 
-    'En espera', 
-    'Revisión', 
-    'Completado', 
-    'Cancelado'
+    'Borrador', 
+    'Levantamiento', 
+    'Catálogo', 
+    'Proceso de ejecución', 
+    'Ejecutado', 
+    'Facturado', 
+    'Pagado'
 ];
 
-// --- LÓGICA DINÁMICA PARA CLIENTES Y SUCURSALES ---
 const filteredContacts = computed(() => {
     if (!props.form.customer_id) return [];
     const customer = props.customers.find(c => c.id === props.form.customer_id);
@@ -65,14 +64,12 @@ const contactBranches = computed(() => {
     
     if (!contact || !contact.branches) return [];
     
-    // Soportar el nuevo formato JSON para mostrar detalles enriquecidos
     if (Array.isArray(contact.branches)) {
         return contact.branches.map(b => ({
             label: `${b.unit} (${b.region}, ${b.country})`,
             value: b.unit
         }));
     } else if (typeof contact.branches === 'string') {
-        // Fallback para datos viejos
         return contact.branches.split(',').map(b => {
             const trimmed = b.trim();
             return { label: trimmed, value: trimmed };
@@ -93,7 +90,6 @@ const handleContactChange = () => {
     }
 };
 
-// --- LÓGICA DE USUARIOS Y TÉCNICOS ---
 const groupedUsers = computed(() => {
     return [
         {
@@ -107,7 +103,6 @@ const groupedUsers = computed(() => {
     ].filter(group => group.options.length > 0);
 });
 
-// Lista plana de técnicos para el multi-select de ejecutores
 const technicianUsers = computed(() => {
     return props.users.filter(u => u.technician);
 });
@@ -270,7 +265,6 @@ const technicianUsers = computed(() => {
                 </el-form-item>
             </div>
 
-            <!-- INSTRUCCIONES ESPECIALES -->
             <el-form-item label="Instrucciones operativas específicas" prop="instructions" :error="form.errors.instructions" class="mt-4">
                 <el-input 
                     v-model="form.instructions" 

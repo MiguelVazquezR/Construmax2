@@ -16,7 +16,6 @@ return new class extends Migration
             $table->foreignId('customer_id')->constrained()->onDelete('cascade');
             $table->foreignId('customer_contact_id')->constrained()->onDelete('cascade');
             $table->string('branch')->nullable(); // Sucursal
-            $table->string('location_type', 50); // Sucursal
             
             // --- DATOS DEL PROYECTO (Movidos desde presupuestos) ---
             $table->string('name'); // Nombre del proyecto o necesidad

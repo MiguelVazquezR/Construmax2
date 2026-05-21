@@ -170,42 +170,63 @@ watch([search, region, contact], () => {
                         <!-- Columna Expandible para Sucursales y Contactos -->
                         <el-table-column type="expand">
                             <template #default="scope">
-                                <div class="m-6 p-4 bg-gray-50 dark:bg-[#252529] border border-gray-200 dark:border-gray-800 rounded-lg cursor-default" @click.stop>
+                                <div class="m-6 p-5 bg-gray-50/80 dark:bg-[#252529] border border-gray-200 dark:border-gray-800 rounded-xl cursor-default" @click.stop>
                                     <h4 class="text-sm font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2">
                                         <el-icon class="text-primary"><User /></el-icon> 
                                         Contactos y sucursales asignadas
                                     </h4>
                                     
-                                    <div v-if="scope.row.contacts && scope.row.contacts.length > 0" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                    <div v-if="scope.row.contacts && scope.row.contacts.length > 0" class="grid grid-cols-1 lg:grid-cols-2 gap-5">
                                         <div 
                                             v-for="(contacto, idx) in scope.row.contacts" 
                                             :key="idx" 
-                                            class="p-4 bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-gray-700 rounded shadow-sm"
+                                            class="p-5 bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm"
                                         >
-                                            <div class="flex justify-between items-start mb-2">
+                                            <div class="flex justify-between items-start mb-4">
                                                 <div>
                                                     <p class="font-bold text-sm text-gray-900 dark:text-white">{{ contacto.name }}</p>
-                                                    <p class="text-xs text-primary">{{ contacto.position }}</p>
+                                                    <p class="text-xs font-medium text-primary">{{ contacto.position }}</p>
                                                 </div>
-                                                <div class="text-right text-xs text-gray-500">
+                                                <div class="text-right text-xs text-gray-500 space-y-0.5">
                                                     <p>{{ contacto.phone }}</p>
                                                     <p>{{ contacto.email }}</p>
                                                 </div>
                                             </div>
                                             
-                                            <div class="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 space-y-2">
-                                                <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+                                            <div class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 space-y-3">
+                                                <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
                                                     Sucursales a cargo:
                                                 </p>
-                                                <div v-for="(sucursal, bIdx) in (Array.isArray(contacto.branches) ? contacto.branches : [])" :key="bIdx" class="flex items-center gap-2 text-xs bg-gray-50 dark:bg-[#252529] p-2 rounded">
-                                                    <el-icon class="text-orange-500"><Location /></el-icon>
-                                                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ sucursal.unit }}</span>
-                                                    <span class="text-gray-400">({{ sucursal.region }}, {{ sucursal.country }})</span>
+                                                
+                                                <div 
+                                                    v-for="(sucursal, bIdx) in (Array.isArray(contacto.branches) ? contacto.branches : [])" 
+                                                    :key="bIdx" 
+                                                    class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs bg-gray-50 dark:bg-[#2b2b2e] p-3 rounded-lg border border-gray-100 dark:border-gray-700 hover:bg-orange-50/50 dark:hover:bg-[#2a2a2d] transition-colors"
+                                                >
+                                                    <div class="flex items-center gap-3">
+                                                        <div class="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 p-1.5 rounded-md shrink-0">
+                                                            <el-icon :size="16"><Location /></el-icon>
+                                                        </div>
+                                                        <div class="flex flex-col gap-0.5">
+                                                            <span class="font-bold text-gray-800 dark:text-gray-200 text-sm">
+                                                                {{ sucursal.branch_name || 'Sin nombre definido' }}
+                                                            </span>
+                                                            <span class="text-gray-500 dark:text-gray-400">
+                                                                <span class="font-medium text-gray-600 dark:text-gray-300">Unidad:</span> {{ sucursal.unit }}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div class="flex flex-col sm:items-end pl-10 sm:pl-0 text-gray-500 dark:text-gray-400">
+                                                        <span class="font-medium">{{ sucursal.region }}</span>
+                                                        <span>{{ sucursal.country }}</span>
+                                                    </div>
                                                 </div>
+                                                
                                                 <!-- Fallback por si la data es un string viejo -->
-                                                <div v-if="typeof contacto.branches === 'string'" class="text-xs bg-gray-50 dark:bg-[#252529] p-2 rounded">
-                                                    <el-icon class="text-orange-500 mr-1"><Location /></el-icon>
-                                                    {{ contacto.branches }}
+                                                <div v-if="typeof contacto.branches === 'string'" class="text-xs bg-gray-50 dark:bg-[#2b2b2e] p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                                                    <el-icon class="text-orange-500 mr-2 align-middle"><Location /></el-icon>
+                                                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ contacto.branches }}</span>
                                                 </div>
                                             </div>
                                         </div>

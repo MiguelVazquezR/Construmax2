@@ -11,12 +11,11 @@ import { usePermissions } from '@/Composables/usePermissions';
 const { can } = usePermissions();
 
 const props = defineProps({
-    tickets: Object, // Paginado
+    tickets: Object, 
 });
 
 const emit = defineEmits(['page-change']);
 
-// --- HELPERS DE FECHA Y ESTADO ---
 const formatDate = (dateString) => {
     if (!dateString) return '--';
     return new Date(dateString).toLocaleDateString('es-MX', {
@@ -63,7 +62,6 @@ const getPriorityIcon = (priority) => {
     return Minus;
 };
 
-// --- CÁLCULO DE SALUD (SEMÁFORO) ---
 const getHealthStatus = (ticket) => {
     if (ticket.status === 'Ejecutado' || ticket.status === 'Facturado' || ticket.status === 'Pagado' || ticket.status === 'Cancelado') {
         return { color: 'success', text: 'Finalizado', icon: Check };
@@ -78,23 +76,18 @@ const getHealthStatus = (ticket) => {
     const now = new Date();
     const progress = ticket.progress || 0;
 
-    // 1. YA VENCIÓ
     if (now > end && progress < 100) {
         return { color: 'danger', text: 'Vencido', icon: Warning };
     }
 
-    // 2. AÚN NO EMPIEZA
     if (now < start) {
         return { color: 'info', text: 'Programado', icon: Timer };
     }
 
-    // 3. EN TIEMPO (Cálculo de ritmo)
     const totalDuration = end - start;
     const elapsed = now - start;
-    
     let timePercentage = elapsed / totalDuration;
     timePercentage = Math.min(Math.max(timePercentage, 0), 1);
-
     const progressPercentage = progress / 100;
 
     if (progressPercentage < (timePercentage - 0.15)) {
@@ -106,26 +99,19 @@ const getHealthStatus = (ticket) => {
     }
 };
 
-// --- HELPER PARA TÉCNICOS ---
 const getAssignedTechnicians = (ticket) => {
     const techs = new Map();
-    
     if (ticket.responsible) {
         techs.set(ticket.responsible.id, ticket.responsible);
     }
-
     if (ticket.tasks && ticket.tasks.length > 0) {
         ticket.tasks.forEach(task => {
-            if (task.assignee) {
-                techs.set(task.assignee.id, task.assignee);
-            }
+            if (task.assignee) techs.set(task.assignee.id, task.assignee);
         });
     }
-
     return Array.from(techs.values());
 };
 
-// --- ACCIONES ---
 const handleRowClick = (row) => {
     router.visit(route('tickets.show', row.id));
 };
@@ -161,11 +147,13 @@ const deleteTicket = (ticket) => {
                 @row-click="handleRowClick"
                 row-class-name="cursor-pointer hover:bg-gray-50 dark:hover:bg-[#27272a] transition-colors"
             >
-                <!-- Folio / Prioridad -->
-                <el-table-column label="Folio" width="100">
+                <!-- Folio (Dinámico) / Prioridad -->
+                <el-table-column label="Folio" width="120">
                     <template #default="scope">
                         <div class="flex flex-col items-center">
-                            <span class="font-mono text-gray-500 font-bold text-xs">#{{ scope.row.id }}</span>
+                            <span class="font-mono text-gray-700 dark:text-gray-300 font-bold text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
+                                {{ scope.row.folio }}
+                            </span>
                             <el-tag 
                                 :type="getPriorityBadge(scope.row.priority)" 
                                 size="small" 
@@ -178,7 +166,6 @@ const deleteTicket = (ticket) => {
                     </template>
                 </el-table-column>
 
-                <!-- Encargado -->
                 <el-table-column label="Encargado" width="160">
                     <template #default="scope">
                         <div class="flex items-center gap-2">
@@ -195,7 +182,6 @@ const deleteTicket = (ticket) => {
                     </template>
                 </el-table-column>
 
-                <!-- Técnicos Asignados (Equipo) -->
                 <el-table-column label="Equipo" min-width="120">
                     <template #default="scope">
                         <div class="flex -space-x-2 overflow-hidden py-1">
@@ -220,7 +206,6 @@ const deleteTicket = (ticket) => {
                     </template>
                 </el-table-column>
 
-                <!-- Servicio / Cliente -->
                 <el-table-column label="Proyecto" min-width="220">
                     <template #default="scope">
                         <div>
@@ -235,7 +220,6 @@ const deleteTicket = (ticket) => {
                     </template>
                 </el-table-column>
 
-                <!-- Fechas -->
                 <el-table-column label="Fechas" width="140">
                     <template #default="scope">
                         <div class="text-xs">
@@ -251,7 +235,6 @@ const deleteTicket = (ticket) => {
                     </template>
                 </el-table-column>
 
-                <!-- Semáforo / Salud -->
                 <el-table-column label="Salud" width="120" align="center">
                     <template #default="scope">
                         <div class="flex flex-col items-center">
@@ -267,7 +250,6 @@ const deleteTicket = (ticket) => {
                     </template>
                 </el-table-column>
 
-                <!-- Progreso -->
                 <el-table-column label="Progreso" width="100">
                     <template #default="scope">
                         <div class="flex flex-col items-center">
@@ -283,7 +265,6 @@ const deleteTicket = (ticket) => {
                     </template>
                 </el-table-column>
 
-                <!-- Estatus -->
                 <el-table-column label="Estado" width="110" align="center">
                     <template #default="scope">
                         <el-tag :type="getStatusColor(scope.row.status)" size="small" effect="light" class="w-full border-none">
@@ -328,7 +309,9 @@ const deleteTicket = (ticket) => {
 
                 <div class="flex justify-between items-start mb-2 pl-3">
                     <div class="flex items-center gap-2">
-                        <span class="text-xs font-mono font-bold text-gray-500">#{{ ticket.id }}</span>
+                        <span class="font-mono text-gray-700 dark:text-gray-300 font-bold text-xs bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">
+                            {{ ticket.folio }}
+                        </span>
                         <el-tag :type="getHealthStatus(ticket).color" size="small" effect="dark" class="!border-none !h-5 !text-[10px]">
                             {{ getHealthStatus(ticket).text }}
                         </el-tag>
@@ -369,7 +352,6 @@ const deleteTicket = (ticket) => {
             </div>
         </div>
 
-        <!-- Paginación -->
         <div class="flex flex-col sm:flex-row justify-between items-center p-4 bg-gray-50 dark:bg-[#252529] border-t border-gray-100 dark:border-[#2b2b2e]">
             <div class="text-xs text-gray-500 mb-3 sm:mb-0">
                 Mostrando {{ tickets.from }} a {{ tickets.to }} de {{ tickets.total }} registros

@@ -22,15 +22,17 @@ const initContacts = () => {
     if (props.isEdit && props.customer?.contacts?.length > 0) {
         return props.customer.contacts.map(c => {
             let parsedBranches = [];
-            // Verificamos si branches ya es un array (por el cast del modelo)
             if (Array.isArray(c.branches)) {
-                parsedBranches = c.branches.length > 0 ? c.branches : [{ country: 'México', region: '', unit: '' }];
+                parsedBranches = c.branches.length > 0 ? c.branches.map(b => ({
+                    ...b,
+                    branch_name: b.branch_name || ''
+                })) : [{ country: 'México', region: '', unit: '', branch_name: '' }];
             } else {
-                // Fallback por si hay datos viejos (texto simple) en la base de datos
                 parsedBranches = [{ 
                     country: 'México', 
                     region: '', 
-                    unit: typeof c.branches === 'string' ? c.branches : '' 
+                    unit: typeof c.branches === 'string' ? c.branches : '',
+                    branch_name: ''
                 }];
             }
             return {
@@ -43,13 +45,12 @@ const initContacts = () => {
         });
     }
     
-    // Por defecto para nuevo cliente
     return [{ 
         name: '', 
         email: '', 
         phone: '', 
         position: '', 
-        branches: [{ country: 'México', region: '', unit: '' }] 
+        branches: [{ country: 'México', region: '', unit: '', branch_name: '' }] 
     }];
 };
 
@@ -89,7 +90,7 @@ const contactRules = {
 const addContact = () => {
     form.contacts.push({ 
         name: '', email: '', phone: '', position: '', 
-        branches: [{ country: 'México', region: '', unit: '' }] 
+        branches: [{ country: 'México', region: '', unit: '', branch_name: '' }] 
     });
 };
 
@@ -103,7 +104,7 @@ const removeContact = (index) => {
 
 // Métodos para Sucursales (dentro de un contacto)
 const addBranch = (contactIndex) => {
-    form.contacts[contactIndex].branches.push({ country: 'México', region: '', unit: '' });
+    form.contacts[contactIndex].branches.push({ country: 'México', region: '', unit: '', branch_name: '' });
 };
 
 const removeBranch = (contactIndex, branchIndex) => {
@@ -275,40 +276,13 @@ const submit = () => {
                                 </el-button>
                             </div>
 
-                            <div class="space-y-3">
+                            <div class="space-y-4">
                                 <div 
                                     v-for="(branch, bIndex) in contact.branches" 
                                     :key="bIndex"
-                                    class="flex flex-col sm:flex-row gap-3 items-start sm:items-center"
+                                    class="relative flex flex-col gap-3 p-4 bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-gray-600 rounded-lg"
                                 >
-                                    <el-form-item 
-                                        label="País" 
-                                        :prop="'contacts.' + index + '.branches.' + bIndex + '.country'" 
-                                        :rules="contactRules.required"
-                                        class="w-full sm:w-1/4 mb-0"
-                                    >
-                                        <el-input v-model="branch.country" placeholder="Ej. México" />
-                                    </el-form-item>
-
-                                    <el-form-item 
-                                        label="Región / Estado" 
-                                        :prop="'contacts.' + index + '.branches.' + bIndex + '.region'" 
-                                        :rules="contactRules.required"
-                                        class="w-full sm:w-1/4 mb-0"
-                                    >
-                                        <el-input v-model="branch.region" placeholder="Ej. Jalisco" />
-                                    </el-form-item>
-
-                                    <el-form-item 
-                                        label="Unidad / Sucursal" 
-                                        :prop="'contacts.' + index + '.branches.' + bIndex + '.unit'" 
-                                        :rules="contactRules.required"
-                                        class="w-full sm:w-2/4 mb-0"
-                                    >
-                                        <el-input v-model="branch.unit" placeholder="Ej. Matriz Zapopan" />
-                                    </el-form-item>
-
-                                    <div class="pt-6"> <!-- Spacer para alinear con los inputs -->
+                                    <div class="absolute top-2 right-2">
                                         <el-button 
                                             type="danger" 
                                             link 
@@ -317,6 +291,44 @@ const submit = () => {
                                             v-if="contact.branches.length > 1"
                                             title="Remover sucursal"
                                         />
+                                    </div>
+
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full pr-8">
+                                        <el-form-item 
+                                            label="País" 
+                                            :prop="'contacts.' + index + '.branches.' + bIndex + '.country'" 
+                                            :rules="contactRules.required"
+                                            class="mb-0"
+                                        >
+                                            <el-input v-model="branch.country" placeholder="Ej. México" />
+                                        </el-form-item>
+
+                                        <el-form-item 
+                                            label="Región / Estado" 
+                                            :prop="'contacts.' + index + '.branches.' + bIndex + '.region'" 
+                                            :rules="contactRules.required"
+                                            class="mb-0"
+                                        >
+                                            <el-input v-model="branch.region" placeholder="Ej. Jalisco" />
+                                        </el-form-item>
+
+                                        <el-form-item 
+                                            label="Unidad" 
+                                            :prop="'contacts.' + index + '.branches.' + bIndex + '.unit'" 
+                                            :rules="contactRules.required"
+                                            class="mb-0"
+                                        >
+                                            <el-input v-model="branch.unit" placeholder="Ej. UN-01" />
+                                        </el-form-item>
+
+                                        <el-form-item 
+                                            label="Nombre de Sucursal" 
+                                            :prop="'contacts.' + index + '.branches.' + bIndex + '.branch_name'" 
+                                            :rules="contactRules.required"
+                                            class="mb-0"
+                                        >
+                                            <el-input v-model="branch.branch_name" placeholder="Ej. Matriz Zapopan" />
+                                        </el-form-item>
                                     </div>
                                 </div>
                             </div>

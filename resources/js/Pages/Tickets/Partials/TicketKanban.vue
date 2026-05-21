@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { ElMessage } from 'element-plus';
-import { OfficeBuilding, Warning, InfoFilled, Minus, Timer, Check } from '@element-plus/icons-vue';
+import { OfficeBuilding, Timer } from '@element-plus/icons-vue';
 
 const props = defineProps({
     tickets: Object,
@@ -10,23 +10,20 @@ const props = defineProps({
 
 const emit = defineEmits(['page-change']);
 
-// Estado local para manejo optimista del DnD
 const localTickets = ref([]);
 
-// Sincronizar props con estado local
 watch(() => props.tickets.data, (newVal) => {
     localTickets.value = JSON.parse(JSON.stringify(newVal));
 }, { immediate: true });
 
-// Columnas específicas de la operación (Tickets)
 const columns = [
-    { id: 'Borrador', label: 'Borrador', color: '#9ca3af' }, // Gris
-    { id: 'Levantamiento', label: 'Levantamiento', color: '#0d9488' }, // Teal
-    { id: 'Catálogo', label: 'Catálogo', color: '#3b82f6' }, // Azul
-    { id: 'Proceso de ejecución', label: 'Ejecución', color: '#f59e0b' }, // Naranja
-    { id: 'Ejecutado', label: 'Ejecutado', color: '#10b981' }, // Verde
-    { id: 'Facturado', label: 'Facturado', color: '#eab308' }, // Amarillo
-    { id: 'Pagado', label: 'Pagado', color: '#34d399' }, // Esmeralda
+    { id: 'Borrador', label: 'Borrador', color: '#9ca3af' },
+    { id: 'Levantamiento', label: 'Levantamiento', color: '#0d9488' },
+    { id: 'Catálogo', label: 'Catálogo', color: '#3b82f6' },
+    { id: 'Proceso de ejecución', label: 'Ejecución', color: '#f59e0b' },
+    { id: 'Ejecutado', label: 'Ejecutado', color: '#10b981' },
+    { id: 'Facturado', label: 'Facturado', color: '#eab308' },
+    { id: 'Pagado', label: 'Pagado', color: '#34d399' },
 ];
 
 const groupedTickets = computed(() => {
@@ -37,7 +34,6 @@ const groupedTickets = computed(() => {
         if (groups[ticket.status]) {
             groups[ticket.status].push(ticket);
         } else {
-            // Fallback por si hay un estado viejo en BD
             if (!groups['Borrador']) groups['Borrador'] = [];
             groups['Borrador'].push(ticket);
         }
@@ -45,7 +41,6 @@ const groupedTickets = computed(() => {
     return groups;
 });
 
-// --- LÓGICA DRAG AND DROP ---
 const draggedItem = ref(null);
 
 const onDragStart = (e, ticket) => {
@@ -70,13 +65,11 @@ const onDrop = (e, targetStatus) => {
 };
 
 const updateStatus = (ticketId, newStatus) => {
-    // 1. Actualización Optimista (Frontend)
     const index = localTickets.value.findIndex(t => t.id === ticketId);
     if (index !== -1) {
         localTickets.value[index].status = newStatus;
     }
 
-    // 2. Actualización Backend
     router.put(route('tickets.update-status', ticketId), {
         status: newStatus
     }, {
@@ -89,7 +82,6 @@ const updateStatus = (ticketId, newStatus) => {
     });
 };
 
-// --- UTILS ---
 const handleCardClick = (id) => {
     router.visit(route('tickets.show', id));
 };
@@ -103,9 +95,7 @@ const formatDate = (dateString) => {
 
 const getAssignedTechnicians = (ticket) => {
     const techs = new Map();
-    if (ticket.responsible) {
-        techs.set(ticket.responsible.id, ticket.responsible);
-    }
+    if (ticket.responsible) techs.set(ticket.responsible.id, ticket.responsible);
     if (ticket.tasks && ticket.tasks.length > 0) {
         ticket.tasks.forEach(task => {
             if (task.assignee) techs.set(task.assignee.id, task.assignee);
@@ -117,18 +107,15 @@ const getAssignedTechnicians = (ticket) => {
 const getHealthStatusColor = (ticket) => {
     if (['Ejecutado', 'Facturado', 'Pagado'].includes(ticket.status)) return 'bg-green-500';
     if (!ticket.scheduled_start || !ticket.scheduled_end) return 'bg-gray-400';
-
     const end = new Date(ticket.scheduled_end);
     const now = new Date();
-    
-    if (now > end && ticket.progress < 100) return 'bg-red-500'; // Vencido
-    return 'bg-blue-500'; // A tiempo o programado
+    if (now > end && ticket.progress < 100) return 'bg-red-500';
+    return 'bg-blue-500'; 
 };
 </script>
 
 <template>
     <div class="h-full flex flex-col bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e]">
-        <!-- Tablero con scroll horizontal estilizado -->
         <div class="flex-1 overflow-x-auto pb-4 custom-scrollbar-x">
             <div class="flex gap-4 min-w-[1600px] px-1">
                 
@@ -142,10 +129,7 @@ const getHealthStatusColor = (ticket) => {
                     <!-- Cabecera -->
                     <div class="flex justify-between items-center mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
                         <div class="flex items-center gap-2">
-                            <span 
-                                class="w-3 h-3 rounded-full border-2"
-                                :style="{ backgroundColor: col.color, borderColor: col.color }"
-                            ></span>
+                            <span class="w-3 h-3 rounded-full border-2" :style="{ backgroundColor: col.color, borderColor: col.color }"></span>
                             <h3 class="font-bold text-gray-700 dark:text-gray-200 text-sm">{{ col.label }}</h3>
                         </div>
                         <span class="bg-white dark:bg-[#27272a] text-xs font-bold px-2 py-0.5 rounded-full text-gray-500 shadow-sm border border-gray-100 dark:border-gray-700">
@@ -164,12 +148,12 @@ const getHealthStatusColor = (ticket) => {
                             class="bg-white dark:bg-[#252529] p-3 rounded-lg shadow-sm border-l-4 hover:shadow-md hover:-translate-y-0.5 transition-all cursor-move group relative"
                             :style="{ borderLeftColor: col.color }"
                         >
-                            <!-- Mini Indicador de Salud Lateral -->
                             <div class="absolute right-0 top-2 bottom-2 w-1 rounded-l-md" :class="getHealthStatusColor(ticket)"></div>
 
-                            <!-- ID y Prioridad -->
                             <div class="flex justify-between items-start mb-2 pr-2">
-                                <span class="text-[10px] font-mono text-gray-400">#{{ ticket.id }}</span>
+                                <span class="text-xs font-mono font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
+                                    {{ ticket.folio }}
+                                </span>
                                 <span 
                                     class="text-[10px] px-1.5 py-0.5 rounded font-medium"
                                     :class="ticket.priority === 'Urgente' || ticket.priority === 'Alta' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600 dark:bg-[#3f3f46] dark:text-gray-300'"
@@ -178,21 +162,16 @@ const getHealthStatusColor = (ticket) => {
                                 </span>
                             </div>
                             
-                            <!-- Título -->
                             <h4 class="font-bold text-gray-800 dark:text-gray-200 text-sm leading-tight mb-1 group-hover:text-primary transition-colors pr-2">
                                 {{ ticket.name || ticket.service_type || 'Servicio' }}
                             </h4>
                             
-                            <!-- Cliente -->
                             <div class="text-xs text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-1 pr-2">
                                 <el-icon :size="12"><OfficeBuilding /></el-icon>
                                 <span class="truncate">{{ ticket.customer?.name }}</span>
                             </div>
 
-                            <!-- Footer: Equipo y Fechas -->
                             <div class="flex justify-between items-end border-t border-gray-100 dark:border-[#3f3f46] pt-2 mt-2 pr-2">
-                                
-                                <!-- Equipo -->
                                 <div class="flex -space-x-1">
                                     <el-avatar 
                                         v-for="tech in getAssignedTechnicians(ticket).slice(0, 3)" 
@@ -208,7 +187,6 @@ const getHealthStatusColor = (ticket) => {
                                     </div>
                                 </div>
                                 
-                                <!-- Fechas / Progreso -->
                                 <div class="text-right flex flex-col items-end">
                                     <span class="text-[10px] text-gray-400 flex items-center gap-1">
                                         <el-icon><Timer /></el-icon> {{ formatDate(ticket.scheduled_end) }}
@@ -220,7 +198,6 @@ const getHealthStatusColor = (ticket) => {
                             </div>
                         </div>
 
-                        <!-- Estado vacío -->
                         <div v-if="!groupedTickets[col.id]?.length" class="h-full flex flex-col items-center justify-center opacity-40 min-h-[100px] border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg">
                             <p class="text-xs text-gray-400">Arrastra aquí</p>
                         </div>
@@ -230,7 +207,6 @@ const getHealthStatusColor = (ticket) => {
             </div>
         </div>
 
-        <!-- Paginación -->
         <div class="flex justify-center mt-2 pt-3 border-t border-gray-100 dark:border-[#2b2b2e]">
              <el-pagination
                 :current-page="tickets.current_page"

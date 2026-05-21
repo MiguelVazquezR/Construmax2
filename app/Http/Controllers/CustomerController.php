@@ -14,12 +14,12 @@ class CustomerController extends Controller
         $perPage = $request->input('perPage', 10);
 
         return Inertia::render('Customers/Index', [
-            'customers' => Customer::with('contacts') // <-- AGREGADO: eager loading de contactos
-                ->filter($request->only(['search', 'region', 'contact'])) // <-- AGREGADO: nuevos filtros
+            'customers' => Customer::with('contacts')
+                ->filter($request->only(['search', 'region', 'contact']))
                 ->orderBy('id', 'desc')
                 ->paginate($perPage)
                 ->withQueryString(),
-            'filters' => $request->only(['search', 'perPage', 'region', 'contact']), // <-- AGREGADO: nuevos filtros
+            'filters' => $request->only(['search', 'perPage', 'region', 'contact']),
         ]);
     }
 
@@ -45,11 +45,11 @@ class CustomerController extends Controller
             'contacts.*.phone' => 'required|string|max:20',
             'contacts.*.position' => 'required|string|max:100',
             
-            // CAMBIO: Validaciones para el nuevo formato de sucursales (Array de objetos)
             'contacts.*.branches' => 'required|array|min:1',
             'contacts.*.branches.*.country' => 'required|string|max:100',
             'contacts.*.branches.*.region' => 'required|string|max:100',
             'contacts.*.branches.*.unit' => 'required|string|max:255',
+            'contacts.*.branches.*.branch_name' => 'required|string|max:255',
         ]);
 
         DB::transaction(function () use ($validated) {
@@ -65,7 +65,6 @@ class CustomerController extends Controller
                 'is_active' => true,
             ]);
 
-            // Gracias al cast 'array' en el modelo CustomerContact, esto insertará el JSON correctamente
             $customer->contacts()->createMany($validated['contacts']);
         });
 
@@ -112,11 +111,11 @@ class CustomerController extends Controller
             'contacts.*.phone' => 'required|string|max:20',
             'contacts.*.position' => 'required|string|max:100',
             
-            // CAMBIO: Validaciones actualizadas también en el método update
             'contacts.*.branches' => 'required|array|min:1',
             'contacts.*.branches.*.country' => 'required|string|max:100',
             'contacts.*.branches.*.region' => 'required|string|max:100',
             'contacts.*.branches.*.unit' => 'required|string|max:255',
+            'contacts.*.branches.*.branch_name' => 'required|string|max:255',
         ]);
 
         DB::transaction(function () use ($validated, $customer) {
