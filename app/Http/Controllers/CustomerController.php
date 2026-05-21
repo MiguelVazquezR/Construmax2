@@ -14,12 +14,12 @@ class CustomerController extends Controller
         $perPage = $request->input('perPage', 10);
 
         return Inertia::render('Customers/Index', [
-            'customers' => Customer::with('contacts')
-                ->filter($request->only(['search', 'region', 'contact']))
+            'customers' => Customer::with(['contacts.branches', 'branches'])
+                ->filter($request->only(['search', 'region', 'contact'])) 
                 ->orderBy('id', 'desc')
                 ->paginate($perPage)
                 ->withQueryString(),
-            'filters' => $request->only(['search', 'perPage', 'region', 'contact']),
+            'filters' => $request->only(['search', 'perPage', 'region', 'contact']), 
         ]);
     }
 
@@ -39,17 +39,20 @@ class CustomerController extends Controller
             'invoice_usage' => 'required|string',
             'currency' => 'required|string|in:MXN,USD',
             'payment_days' => 'nullable|integer|min:0|max:365', 
-            'contacts' => 'array|min:1',
+            
+            'branches' => 'required|array|min:1',
+            'branches.*.country' => 'required|string|max:100',
+            'branches.*.region' => 'required|string|max:100',
+            'branches.*.unit' => 'required|string|max:255',
+            'branches.*.branch_name' => 'required|string|max:255',
+
+            'contacts' => 'required|array|min:1',
             'contacts.*.name' => 'required|string|max:255',
             'contacts.*.email' => 'required|email|max:255',
             'contacts.*.phone' => 'required|string|max:20',
             'contacts.*.position' => 'required|string|max:100',
-            
-            'contacts.*.branches' => 'required|array|min:1',
-            'contacts.*.branches.*.country' => 'required|string|max:100',
-            'contacts.*.branches.*.region' => 'required|string|max:100',
-            'contacts.*.branches.*.unit' => 'required|string|max:255',
-            'contacts.*.branches.*.branch_name' => 'required|string|max:255',
+            'contacts.*.branch_indices' => 'required|array|min:1',
+            'contacts.*.branch_indices.*' => 'integer',
         ]);
 
         DB::transaction(function () use ($validated) {
@@ -65,7 +68,23 @@ class CustomerController extends Controller
                 'is_active' => true,
             ]);
 
-            $customer->contacts()->createMany($validated['contacts']);
+            $createdBranches = [];
+            foreach ($validated['branches'] as $index => $branchData) {
+                $createdBranches[$index] = $customer->branches()->create($branchData);
+            }
+
+            foreach ($validated['contacts'] as $contactData) {
+                $branchIndices = $contactData['branch_indices'];
+                unset($contactData['branch_indices']);
+
+                $contact = $customer->contacts()->create($contactData);
+
+                $branchIds = collect($branchIndices)->map(function ($idx) use ($createdBranches) {
+                    return $createdBranches[$idx]->id ?? null;
+                })->filter()->toArray();
+
+                $contact->branches()->attach($branchIds);
+            }
         });
 
         return redirect()->route('customers.index')->with('success', 'Cliente registrado exitosamente.');
@@ -74,11 +93,11 @@ class CustomerController extends Controller
     public function show(Customer $customer)
     {
         $customer->load([
-            'contacts', 
-            'budgets' => function ($query) {
+            'branches',
+            'contacts.branches', 
+            'tickets' => function ($query) {
                 $query->orderBy('id', 'desc')
-                      ->with('responsible:id,name,profile_photo_path')
-                      ->withSum('concepts', 'amount');
+                      ->with('responsible:id,name,profile_photo_path');
             }
         ]);
 
@@ -90,7 +109,7 @@ class CustomerController extends Controller
     public function edit(Customer $customer)
     {
         return Inertia::render('Customers/Edit', [
-            'customer' => $customer->load('contacts'),
+            'customer' => $customer->load(['branches', 'contacts.branches']),
         ]);
     }
 
@@ -105,17 +124,20 @@ class CustomerController extends Controller
             'invoice_usage' => 'required|string',
             'currency' => 'required|string|in:MXN,USD',
             'payment_days' => 'nullable|integer|min:0|max:365',
-            'contacts' => 'array|min:1',
+            
+            'branches' => 'required|array|min:1',
+            'branches.*.country' => 'required|string|max:100',
+            'branches.*.region' => 'required|string|max:100',
+            'branches.*.unit' => 'required|string|max:255',
+            'branches.*.branch_name' => 'required|string|max:255',
+
+            'contacts' => 'required|array|min:1',
             'contacts.*.name' => 'required|string|max:255',
             'contacts.*.email' => 'required|email|max:255',
             'contacts.*.phone' => 'required|string|max:20',
             'contacts.*.position' => 'required|string|max:100',
-            
-            'contacts.*.branches' => 'required|array|min:1',
-            'contacts.*.branches.*.country' => 'required|string|max:100',
-            'contacts.*.branches.*.region' => 'required|string|max:100',
-            'contacts.*.branches.*.unit' => 'required|string|max:255',
-            'contacts.*.branches.*.branch_name' => 'required|string|max:255',
+            'contacts.*.branch_indices' => 'required|array|min:1',
+            'contacts.*.branch_indices.*' => 'integer',
         ]);
 
         DB::transaction(function () use ($validated, $customer) {
@@ -131,7 +153,25 @@ class CustomerController extends Controller
             ]);
 
             $customer->contacts()->delete();
-            $customer->contacts()->createMany($validated['contacts']);
+            $customer->branches()->delete();
+
+            $createdBranches = [];
+            foreach ($validated['branches'] as $index => $branchData) {
+                $createdBranches[$index] = $customer->branches()->create($branchData);
+            }
+
+            foreach ($validated['contacts'] as $contactData) {
+                $branchIndices = $contactData['branch_indices'];
+                unset($contactData['branch_indices']);
+
+                $contact = $customer->contacts()->create($contactData);
+
+                $branchIds = collect($branchIndices)->map(function ($idx) use ($createdBranches) {
+                    return $createdBranches[$idx]->id ?? null;
+                })->filter()->toArray();
+
+                $contact->branches()->attach($branchIds);
+            }
         });
 
         return redirect()->route('customers.index')->with('success', 'Cliente actualizado exitosamente.');

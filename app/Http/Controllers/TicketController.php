@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Models\Customer;
+use App\Models\TaskTemplate;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\URL;
@@ -17,47 +18,91 @@ class TicketController extends Controller
         $perPage = $request->input('perPage', 20);
         $sort = $request->input('sort', 'delay'); 
 
-        // IMPORTANTE: Cargamos 'contact' para que el Accessor del Folio pueda armarse
-        $query = Ticket::with(['customer', 'contact', 'responsible', 'tasks.assignee']);
+        $query = Ticket::with(['customer', 'contact', 'tasks.assignee']);
 
-        if ($request->has('search')) {
-            $search = $request->input('search');
-            $query->where(function($q) use ($search) {
-                $q->where('id', 'like', "%{$search}%")
-                  ->orWhere('name', 'like', "%{$search}%")
-                  ->orWhere('service_type', 'like', "%{$search}%")
-                  ->orWhereHas('customer', function($c) use ($search) {
-                      $c->where('name', 'like', "%{$search}%");
-                  })
-                  ->orWhereHas('responsible', function($u) use ($search) {
-                      $u->where('name', 'like', "%{$search}%");
+        // BÚSQUEDA POR FOLIO (Extrae inteligentemente el ID)
+        if ($request->filled('folio')) {
+            $folio = $request->input('folio');
+            preg_match('/\d+/', $folio, $matches);
+            if (!empty($matches[0])) {
+                $query->where('id', $matches[0]);
+            }
+        }
+
+        // FILTROS AVANZADOS
+        if ($request->filled('customer')) {
+            $query->where('customer_id', $request->input('customer'));
+        }
+
+        if ($request->filled('region')) {
+            $region = $request->input('region');
+            
+            // Convertimos las vocales en comodines para hacer una búsqueda difusa y que 
+            // coincida perfectamente con secuencias unicode (ej. M\u00e9xico) o sin acentos.
+            $fuzzyRegion = preg_replace('/[aeiouáéíóúüAEIOUÁÉÍÓÚÜ]/u', '%', $region);
+            
+            $query->where(function($q) use ($region, $fuzzyRegion) {
+                $q->where('branch', 'like', "%{$region}%")
+                  ->orWhere('branch', 'like', "%{$fuzzyRegion}%")
+                  ->orWhereHas('contact', function($c) use ($region, $fuzzyRegion) {
+                      $c->where('branches', 'like', "%{$region}%")
+                        ->orWhere('branches', 'like', "%{$fuzzyRegion}%");
                   });
             });
         }
 
-        if ($request->has('status') && $request->input('status') !== 'all') {
+        if ($request->filled('priority')) {
+            $query->where('priority', $request->input('priority'));
+        }
+
+        if ($request->filled('technician')) {
+            $techId = $request->input('technician');
+            $query->where(function($q) use ($techId) {
+                // Buscamos si está asignado al ticket general o en alguna tarea
+                $q->whereJsonContains('technicians', (string)$techId)
+                  ->orWhereJsonContains('technicians', (int)$techId)
+                  ->orWhereHas('tasks', function($t) use ($techId) {
+                      $t->where('user_id', $techId);
+                  });
+            });
+        }
+
+        if ($request->filled('status') && $request->input('status') !== 'all') {
             $query->where('status', $request->input('status'));
         }
 
+        // ORDENAMIENTO
         if ($sort === 'start_date') {
             $query->orderBy('scheduled_start', 'desc');
         } else {
-            // Ordenar por estatus completados al final
             $query->orderByRaw("CASE WHEN status IN ('Ejecutado', 'Facturado', 'Pagado', 'Cancelado') THEN 2 ELSE 1 END")
                   ->orderBy('scheduled_end', 'asc');
         }
 
         return Inertia::render('Tickets/Index', [
             'tickets' => $query->paginate($perPage)->withQueryString(),
-            'filters' => $request->only(['search', 'status', 'perPage', 'sort']),
+            'customers' => Customer::where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'technicians' => User::whereHas('technician')->orderBy('name')->get(['id', 'name']),
+            // Se define el array explícitamente para asegurar que se formatea como JSON Object en JS
+            'filters' => [
+                'folio' => $request->input('folio'),
+                'customer' => $request->input('customer'),
+                'region' => $request->input('region'),
+                'priority' => $request->input('priority'),
+                'technician' => $request->input('technician'),
+                'status' => $request->input('status', 'all'),
+                'perPage' => $perPage,
+                'sort' => $sort,
+            ],
         ]);
     }
 
-     public function create()
+    public function create()
     {
         return Inertia::render('Tickets/Create', [
             'users' => User::where('id', '!=', 1)->with(['employee', 'technician'])->get(),
             'customers' => Customer::where('is_active', true)->with('contacts')->get(),
+            'templates' => TaskTemplate::where('is_active', true)->with('items')->get(),
         ]);
     }
 
@@ -70,18 +115,22 @@ class TicketController extends Controller
             'name' => 'required|string|max:255',
             'service_type' => 'required|string|max:255',
             'duration' => 'nullable|string',
-            'user_id' => 'required|exists:users,id',
-            'technicians' => 'nullable|array',
+            'technicians' => 'required|array|min:1',
             'technicians.*' => 'exists:users,id',
             'priority' => 'required|string',
             'scheduled_start' => 'nullable|date',
             'scheduled_end' => 'nullable|date|after_or_equal:scheduled_start',
             'instructions' => 'nullable|string',
+            'task_template_id' => 'nullable|exists:task_templates,id',
         ]);
 
         $ticket = Ticket::create(array_merge($validated, [
-            'status' => 'Borrador' // Creado siempre en Borrador
+            'status' => 'Borrador'
         ]));
+
+        if (!empty($validated['task_template_id'])) {
+            $ticket->generateTasksFromTemplate($validated['task_template_id'], $validated['technicians']);
+        }
 
         return redirect()->route('tickets.show', $ticket->id)
             ->with('success', 'Ticket operativo generado correctamente.');
@@ -93,13 +142,12 @@ class TicketController extends Controller
             'customer', 
             'contact', 
             'budgets', 
-            'responsible', 
             'tasks.assignee', 
             'tasks.media', 
             'media'
         ]);
         
-        $ticket->append('progress', 'folio'); // Aseguramos que el folio viaje al frontend
+        $ticket->append('progress', 'folio'); 
 
         $ticket->tasks->transform(function ($task) use ($ticket) {
             if ($task->user_id) {
@@ -130,6 +178,7 @@ class TicketController extends Controller
             'ticket' => $ticket->load(['customer', 'contact']),
             'users' => User::where('id', '!=', 1)->with(['employee', 'technician'])->get(),
             'customers' => Customer::where('is_active', true)->with('contacts')->get(),
+            'templates' => TaskTemplate::where('is_active', true)->with('items')->get(),
         ]);
     }
 
@@ -142,8 +191,7 @@ class TicketController extends Controller
             'name' => 'required|string|max:255',
             'service_type' => 'required|string|max:255',
             'duration' => 'nullable|string',
-            'user_id' => 'required|exists:users,id',
-            'technicians' => 'nullable|array',
+            'technicians' => 'required|array|min:1',
             'technicians.*' => 'exists:users,id',
             'priority' => 'required|string',
             'status' => 'required|string',
@@ -163,7 +211,6 @@ class TicketController extends Controller
         return redirect()->route('tickets.index')->with('success', 'Ticket eliminado.');
     }
 
-    // --- EVIDENCIAS GENERALES ---
     public function storeEvidence(Request $request, Ticket $ticket)
     {
         $request->validate([

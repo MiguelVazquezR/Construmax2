@@ -7,18 +7,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
-class CustomerContact extends Model
+class CustomerBranch extends Model
 {
     use HasFactory;
 
-    protected $table = 'customer_contacts';
+    protected $table = 'customer_branches';
 
     protected $fillable = [
         'customer_id',
-        'name',
-        'email',
-        'phone',
-        'position',
+        'country',
+        'region',
+        'unit',
+        'branch_name',
     ];
 
     public function customer(): BelongsTo
@@ -26,8 +26,8 @@ class CustomerContact extends Model
         return $this->belongsTo(Customer::class);
     }
 
-    public function branches(): BelongsToMany
+    public function contacts(): BelongsToMany
     {
-        return $this->belongsToMany(CustomerBranch::class, 'customer_branch_contact', 'customer_contact_id', 'customer_branch_id');
+        return $this->belongsToMany(CustomerContact::class, 'customer_branch_contact', 'customer_branch_id', 'customer_contact_id');
     }
 }

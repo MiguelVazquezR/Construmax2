@@ -9,7 +9,8 @@ import QuickTechnicianModal from './Partials/QuickTechnicianModal.vue';
 
 const props = defineProps({
     users: Array,   
-    customers: Array 
+    customers: Array,
+    templates: Array, // <-- AGREGADO: Plantillas de tareas
 });
 
 const formRef = ref();
@@ -18,7 +19,10 @@ const showQuickTechModal = ref(false);
 
 const handleTechCreated = (newUser) => {
     localUsers.value.push(newUser);
-    form.user_id = newUser.id;
+    // Asignamos al nuevo técnico directamente al arreglo de technicians
+    if (!form.technicians.includes(newUser.id)) {
+        form.technicians.push(newUser.id);
+    }
 };
 
 const form = useForm({
@@ -28,8 +32,8 @@ const form = useForm({
     name: '',
     service_type: '',
     duration: '',
-    user_id: '', 
     technicians: [], 
+    task_template_id: '', // <-- AGREGADO: Plantilla seleccionada
     priority: 'Media',
     scheduled_start: '',
     scheduled_end: '',
@@ -41,7 +45,7 @@ const rules = reactive({
     customer_contact_id: [{ required: true, message: 'Selecciona un contacto', trigger: 'change' }],
     name: [{ required: true, message: 'El nombre del proyecto es obligatorio', trigger: 'blur' }],
     service_type: [{ required: true, message: 'Selecciona el tipo de servicio', trigger: 'change' }],
-    user_id: [{ required: true, message: 'Asigna un supervisor/encargado', trigger: 'change' }],
+    technicians: [{ required: true, message: 'Asigna al menos un técnico ejecutor', trigger: 'change' }], // <-- REEMPLAZADO user_id
     priority: [{ required: true, message: 'Requerido', trigger: 'change' }],
 });
 
@@ -51,7 +55,7 @@ const submit = () => {
     formRef.value.validate((valid) => {
         if (valid) {
             form.post(route('tickets.store'), {
-                onSuccess: () => ElMessage.success('Ticket creado correctamente')
+                onSuccess: () => ElMessage.success('Ticket creado y tareas generadas correctamente')
             });
         } else {
             ElMessage.error('Por favor completa los campos obligatorios');
@@ -87,6 +91,7 @@ const submit = () => {
                     :form="form" 
                     :users="localUsers" 
                     :customers="customers"
+                    :templates="templates"
                     @open-quick-tech="showQuickTechModal = true"
                 />
 

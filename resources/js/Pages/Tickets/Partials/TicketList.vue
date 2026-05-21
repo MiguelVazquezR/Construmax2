@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { 
     MoreFilled, View, Edit, Delete, 
     OfficeBuilding, Warning, InfoFilled, Minus,
-    Timer, Check
+    Timer, Check, Location
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
@@ -36,30 +36,15 @@ const getStatusColor = (status) => {
     return map[status] || 'info';
 };
 
-const getPriorityColor = (priority) => {
+// Clases CSS personalizadas para hacer la prioridad más llamativa
+const getPriorityClasses = (priority) => {
     const map = {
-        'Baja': 'text-gray-400',
-        'Media': 'text-orange-500 font-bold',
-        'Alta': 'text-red-500 font-bold',
-        'Urgente': 'text-purple-600 font-black'
+        'Baja': 'bg-gray-100 text-gray-500 border border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700',
+        'Media': 'bg-orange-100 text-orange-600 border border-orange-200 dark:bg-orange-900/40 dark:text-orange-400 dark:border-orange-800',
+        'Alta': 'bg-red-500 text-white font-bold shadow-sm',
+        'Urgente': 'bg-red-600 text-white font-black shadow-md animate-pulse ring-2 ring-red-300 dark:ring-red-900'
     };
-    return map[priority] || 'text-gray-400';
-};
-
-const getPriorityBadge = (priority) => {
-    const map = {
-        'Baja': 'info',
-        'Media': 'warning',
-        'Alta': 'danger',
-        'Urgente': 'danger'
-    };
-    return map[priority] || 'info';
-};
-
-const getPriorityIcon = (priority) => {
-    if (priority === 'Alta' || priority === 'Urgente') return Warning;
-    if (priority === 'Media') return InfoFilled;
-    return Minus;
+    return map[priority] || map['Media'];
 };
 
 const getHealthStatus = (ticket) => {
@@ -101,15 +86,36 @@ const getHealthStatus = (ticket) => {
 
 const getAssignedTechnicians = (ticket) => {
     const techs = new Map();
-    if (ticket.responsible) {
-        techs.set(ticket.responsible.id, ticket.responsible);
-    }
     if (ticket.tasks && ticket.tasks.length > 0) {
         ticket.tasks.forEach(task => {
             if (task.assignee) techs.set(task.assignee.id, task.assignee);
         });
     }
     return Array.from(techs.values());
+};
+
+// Función para obtener la cadena completa de la sucursal (Nombre, Unidad, Región, País)
+const getBranchDetails = (ticket) => {
+    if (!ticket.contact || !ticket.contact.branches) return ticket.branch || 'Sucursal no especificada';
+
+    let branches = ticket.contact.branches;
+    if (typeof branches === 'string') {
+        try {
+            branches = JSON.parse(branches);
+        } catch (e) {
+            return ticket.branch;
+        }
+    }
+
+    if (Array.isArray(branches)) {
+        const branchObj = branches.find(b => b.unit === ticket.branch);
+        if (branchObj) {
+            const bName = branchObj.branch_name ? `${branchObj.branch_name} - ` : '';
+            return `${bName}${branchObj.unit} (${branchObj.region}, ${branchObj.country})`;
+        }
+    }
+    
+    return ticket.branch;
 };
 
 const handleRowClick = (row) => {
@@ -147,42 +153,23 @@ const deleteTicket = (ticket) => {
                 @row-click="handleRowClick"
                 row-class-name="cursor-pointer hover:bg-gray-50 dark:hover:bg-[#27272a] transition-colors"
             >
-                <!-- Folio (Dinámico) / Prioridad -->
-                <el-table-column label="Folio" width="120">
+                <!-- Folio (Dinámico) / Prioridad Llamativa -->
+                <el-table-column label="Folio / Prioridad" width="130">
                     <template #default="scope">
-                        <div class="flex flex-col items-center">
-                            <span class="font-mono text-gray-700 dark:text-gray-300 font-bold text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
+                        <div class="flex flex-col items-center gap-2">
+                            <span class="font-mono text-gray-700 dark:text-gray-300 font-bold text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded w-full text-center">
                                 {{ scope.row.folio }}
                             </span>
-                            <el-tag 
-                                :type="getPriorityBadge(scope.row.priority)" 
-                                size="small" 
-                                effect="plain"
-                                class="mt-1 !text-[10px] !h-5 !px-1 w-full text-center"
+                            <span 
+                                :class="['text-[10px] uppercase px-2 py-0.5 rounded-full text-center w-full', getPriorityClasses(scope.row.priority)]"
                             >
                                 {{ scope.row.priority }}
-                            </el-tag>
+                            </span>
                         </div>
                     </template>
                 </el-table-column>
 
-                <el-table-column label="Encargado" width="160">
-                    <template #default="scope">
-                        <div class="flex items-center gap-2">
-                            <el-avatar :size="28" :src="scope.row.responsible?.profile_photo_url" class="bg-gray-200 border-2 border-white shadow-sm">
-                                {{ scope.row.responsible?.name?.charAt(0) }}
-                            </el-avatar>
-                            <div class="flex flex-col min-w-0">
-                                <span class="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">
-                                    {{ scope.row.responsible?.name }}
-                                </span>
-                                <span class="text-[10px] text-gray-400">Responsable</span>
-                            </div>
-                        </div>
-                    </template>
-                </el-table-column>
-
-                <el-table-column label="Equipo" min-width="120">
+                <el-table-column label="Equipo (Tareas)" min-width="140">
                     <template #default="scope">
                         <div class="flex -space-x-2 overflow-hidden py-1">
                             <el-tooltip 
@@ -199,22 +186,33 @@ const deleteTicket = (ticket) => {
                                     {{ tech.name.charAt(0) }}
                                 </el-avatar>
                             </el-tooltip>
-                            <div v-if="getAssignedTechnicians(scope.row).length > 4" class="flex items-center justify-center w-6 h-6 rounded-full border-2 border-white bg-gray-200 text-[9px] text-gray-600 font-bold z-10">
+                            <div v-if="getAssignedTechnicians(scope.row).length === 0" class="text-xs text-gray-400 italic">
+                                Sin asignar
+                            </div>
+                            <div v-else-if="getAssignedTechnicians(scope.row).length > 4" class="flex items-center justify-center w-6 h-6 rounded-full border-2 border-white bg-gray-200 text-[9px] text-gray-600 font-bold z-10">
                                 +{{ getAssignedTechnicians(scope.row).length - 4 }}
                             </div>
                         </div>
                     </template>
                 </el-table-column>
 
-                <el-table-column label="Proyecto" min-width="220">
+                <el-table-column label="Proyecto y Sitio" min-width="260">
                     <template #default="scope">
                         <div>
                             <p class="font-bold text-gray-800 dark:text-gray-200 text-sm truncate" :title="scope.row.name || scope.row.service_type">
                                 {{ scope.row.name || scope.row.service_type || 'Servicio general' }}
                             </p>
-                            <div class="flex items-center gap-1 text-xs text-gray-500">
-                                <el-icon><OfficeBuilding /></el-icon>
-                                <span class="truncate">{{ scope.row.customer?.name }}</span>
+                            <div class="flex flex-col gap-0.5 mt-1">
+                                <div class="flex items-center gap-1 text-xs text-gray-500">
+                                    <el-icon><OfficeBuilding /></el-icon>
+                                    <span class="truncate font-medium">{{ scope.row.customer?.name }}</span>
+                                </div>
+                                <div class="flex items-center gap-1 text-[11px] text-gray-500" v-if="scope.row.branch">
+                                    <el-icon><Location /></el-icon>
+                                    <span class="truncate" :title="getBranchDetails(scope.row)">
+                                        {{ getBranchDetails(scope.row) }}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </template>
@@ -316,19 +314,27 @@ const deleteTicket = (ticket) => {
                             {{ getHealthStatus(ticket).text }}
                         </el-tag>
                     </div>
-                    <el-icon :class="getPriorityColor(ticket.priority)" :size="16">
-                        <component :is="getPriorityIcon(ticket.priority)" />
-                    </el-icon>
+                    <span 
+                        :class="['text-[10px] uppercase px-2 py-0.5 rounded-full font-bold', getPriorityClasses(ticket.priority)]"
+                    >
+                        {{ ticket.priority }}
+                    </span>
                 </div>
 
                 <div class="pl-3 mb-3">
                     <h3 class="font-bold text-gray-800 dark:text-gray-200 text-sm mb-1 leading-tight">
                         {{ ticket.name || ticket.service_type || 'Servicio general' }}
                     </h3>
-                    <p class="text-xs text-gray-500 flex items-center gap-1">
-                        <el-icon><OfficeBuilding /></el-icon> 
-                        {{ ticket.customer?.name }}
-                    </p>
+                    <div class="flex flex-col gap-0.5">
+                        <p class="text-xs text-gray-500 flex items-center gap-1 font-medium">
+                            <el-icon><OfficeBuilding /></el-icon> 
+                            {{ ticket.customer?.name }}
+                        </p>
+                        <p class="text-[11px] text-gray-400 flex items-center gap-1" v-if="ticket.branch">
+                            <el-icon><Location /></el-icon> 
+                            <span class="truncate">{{ getBranchDetails(ticket) }}</span>
+                        </p>
+                    </div>
                 </div>
 
                 <div class="flex justify-between items-center pl-3">
@@ -342,6 +348,9 @@ const deleteTicket = (ticket) => {
                         >
                             {{ tech.name.charAt(0) }}
                         </el-avatar>
+                        <span v-if="getAssignedTechnicians(ticket).length === 0" class="text-[10px] text-gray-400 italic bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
+                            Sin asignar
+                        </span>
                     </div>
                     
                     <div class="text-right">

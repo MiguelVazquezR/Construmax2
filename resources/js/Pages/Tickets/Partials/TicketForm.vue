@@ -1,6 +1,8 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import { router } from '@inertiajs/vue3';
 import { OfficeBuilding, Document, UserFilled } from '@element-plus/icons-vue';
+import TaskTemplateModal from './TaskTemplateModal.vue';
 
 const props = defineProps({
     form: {
@@ -15,6 +17,10 @@ const props = defineProps({
         type: Array,
         default: () => []
     },
+    templates: {
+        type: Array,
+        default: () => []
+    },
     isEdit: {
         type: Boolean,
         default: false
@@ -22,6 +28,13 @@ const props = defineProps({
 });
 
 defineEmits(['open-quick-tech']);
+
+const showTaskTemplateModal = ref(false);
+
+const handleTemplateSaved = () => {
+    // Recarga las plantillas usando Inertia sin perder el estado actual del formulario
+    router.reload({ only: ['templates'] });
+};
 
 const serviceTypes = [
     { id: 1, name: 'Iluminación' },
@@ -65,10 +78,13 @@ const contactBranches = computed(() => {
     if (!contact || !contact.branches) return [];
     
     if (Array.isArray(contact.branches)) {
-        return contact.branches.map(b => ({
-            label: `${b.unit} (${b.region}, ${b.country})`,
-            value: b.unit
-        }));
+        return contact.branches.map(b => {
+            const branchName = b.branch_name ? `${b.branch_name} - ` : '';
+            return {
+                label: `${branchName}${b.unit} (${b.region}, ${b.country})`,
+                value: b.unit
+            };
+        });
     } else if (typeof contact.branches === 'string') {
         return contact.branches.split(',').map(b => {
             const trimmed = b.trim();
@@ -90,20 +106,8 @@ const handleContactChange = () => {
     }
 };
 
-const groupedUsers = computed(() => {
-    return [
-        {
-            label: 'Usuarios / supervisores',
-            options: props.users.filter(u => !u.technician && u.is_active)
-        },
-        {
-            label: 'Manager / técnico interno',
-            options: props.users.filter(u => u.technician && u.technician.is_internal)
-        }
-    ].filter(group => group.options.length > 0);
-});
-
 const technicianUsers = computed(() => {
+    // Filtramos para asegurar que sólo se muestren técnicos activos
     return props.users.filter(u => u.technician);
 });
 </script>
@@ -203,7 +207,7 @@ const technicianUsers = computed(() => {
         <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
             <div class="flex justify-between items-center mb-4 border-b pb-3 dark:border-gray-700">
                 <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    <el-icon class="text-primary"><UserFilled /></el-icon> Responsables y programación
+                    <el-icon class="text-primary"><UserFilled /></el-icon> Técnicos y programación
                 </h3>
                 <el-button type="primary" link size="small" @click="$emit('open-quick-tech')">
                     + Nuevo técnico rápido
@@ -211,20 +215,8 @@ const technicianUsers = computed(() => {
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- Supervisor / Responsable -->
-                <el-form-item prop="user_id" :error="form.errors.user_id">
-                    <template #label>
-                        Supervisor / responsable de obra
-                    </template>
-                    <el-select v-model="form.user_id" placeholder="Seleccionar encargado general..." class="w-full" filterable clearable>
-                        <el-option-group v-for="group in groupedUsers" :key="group.label" :label="group.label">
-                            <el-option v-for="user in group.options" :key="user.id" :label="user.name" :value="user.id" />
-                        </el-option-group>
-                    </el-select>
-                </el-form-item>
-
-                <!-- Múltiples Técnicos Ejecutores -->
-                <el-form-item prop="technicians" :error="form.errors.technicians">
+                <!-- Técnicos Ejecutores (Toma el lugar principal) -->
+                <el-form-item prop="technicians" :error="form.errors.technicians" :class="isEdit ? 'md:col-span-2' : ''">
                     <template #label>
                         Técnicos asignados (ejecutores)
                     </template>
@@ -241,6 +233,34 @@ const technicianUsers = computed(() => {
                     </el-select>
                 </el-form-item>
 
+                <!-- Plantilla de Tareas (Solo Creación) -->
+                <el-form-item v-if="!isEdit" prop="task_template_id" :error="form.errors.task_template_id">
+                    <template #label>
+                        <div class="flex justify-between items-center w-full">
+                            <span>Plantilla de tareas iniciales (Opcional)</span>
+                            <el-button type="primary" link size="small" @click.stop="showTaskTemplateModal = true">
+                                + Nueva plantilla
+                            </el-button>
+                        </div>
+                    </template>
+                    <el-select v-model="form.task_template_id" clearable placeholder="Seleccionar plantilla..." class="w-full">
+                        <el-option v-for="tpl in templates" :key="tpl.id" :label="tpl.name" :value="tpl.id" />
+                    </el-select>
+                </el-form-item>
+            </div>
+
+            <!-- Alerta Informativa (Se muestra si se selecciona una plantilla en Creación) -->
+            <el-alert 
+                v-if="!isEdit && form.task_template_id" 
+                title="Generación automática de tareas activada" 
+                type="success" 
+                description="Las tareas definidas en esta plantilla se registrarán en automático para todos los técnicos asignados una vez que guardes el ticket. Recuerda cambier la fecha y hora programada para cada tarea según corresponda."
+                show-icon 
+                :closable="false"
+                class="mb-6 !bg-green-50 dark:!bg-green-900/20 !text-green-700 dark:!text-green-400 border border-green-100 dark:border-green-800"
+            />
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
                 <!-- Fechas -->
                 <el-form-item label="Inicio programado" prop="scheduled_start" :error="form.errors.scheduled_start">
                     <el-date-picker 
@@ -274,5 +294,11 @@ const technicianUsers = computed(() => {
                 />
             </el-form-item>
         </div>
+
+        <!-- Componente Modal de Plantillas de Tareas -->
+        <TaskTemplateModal 
+            v-model="showTaskTemplateModal"
+            @saved="handleTemplateSaved"
+        />
     </div>
 </template>

@@ -198,35 +198,34 @@ watch([search, region, contact], () => {
                                                     Sucursales a cargo:
                                                 </p>
                                                 
-                                                <div 
-                                                    v-for="(sucursal, bIdx) in (Array.isArray(contacto.branches) ? contacto.branches : [])" 
-                                                    :key="bIdx" 
-                                                    class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs bg-gray-50 dark:bg-[#2b2b2e] p-3 rounded-lg border border-gray-100 dark:border-gray-700 hover:bg-orange-50/50 dark:hover:bg-[#2a2a2d] transition-colors"
-                                                >
-                                                    <div class="flex items-center gap-3">
-                                                        <div class="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 p-1.5 rounded-md shrink-0">
-                                                            <el-icon :size="16"><Location /></el-icon>
+                                                <div v-if="contacto.branches && contacto.branches.length > 0">
+                                                    <div 
+                                                        v-for="sucursal in contacto.branches" 
+                                                        :key="sucursal.id" 
+                                                        class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs bg-gray-50 dark:bg-[#2b2b2e] p-3 rounded-lg border border-gray-100 dark:border-gray-700 hover:bg-orange-50/50 dark:hover:bg-[#2a2a2d] transition-colors mb-2 last:mb-0"
+                                                    >
+                                                        <div class="flex items-center gap-3">
+                                                            <div class="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 p-1.5 rounded-md shrink-0">
+                                                                <el-icon :size="16"><Location /></el-icon>
+                                                            </div>
+                                                            <div class="flex flex-col gap-0.5">
+                                                                <span class="font-bold text-gray-800 dark:text-gray-200 text-sm">
+                                                                    {{ sucursal.branch_name || 'Sin nombre definido' }}
+                                                                </span>
+                                                                <span class="text-gray-500 dark:text-gray-400">
+                                                                    <span class="font-medium text-gray-600 dark:text-gray-300">Unidad:</span> {{ sucursal.unit }}
+                                                                </span>
+                                                            </div>
                                                         </div>
-                                                        <div class="flex flex-col gap-0.5">
-                                                            <span class="font-bold text-gray-800 dark:text-gray-200 text-sm">
-                                                                {{ sucursal.branch_name || 'Sin nombre definido' }}
-                                                            </span>
-                                                            <span class="text-gray-500 dark:text-gray-400">
-                                                                <span class="font-medium text-gray-600 dark:text-gray-300">Unidad:</span> {{ sucursal.unit }}
-                                                            </span>
+                                                        
+                                                        <div class="flex flex-col sm:items-end pl-10 sm:pl-0 text-gray-500 dark:text-gray-400">
+                                                            <span class="font-medium">{{ sucursal.region }}</span>
+                                                            <span>{{ sucursal.country }}</span>
                                                         </div>
-                                                    </div>
-                                                    
-                                                    <div class="flex flex-col sm:items-end pl-10 sm:pl-0 text-gray-500 dark:text-gray-400">
-                                                        <span class="font-medium">{{ sucursal.region }}</span>
-                                                        <span>{{ sucursal.country }}</span>
                                                     </div>
                                                 </div>
-                                                
-                                                <!-- Fallback por si la data es un string viejo -->
-                                                <div v-if="typeof contacto.branches === 'string'" class="text-xs bg-gray-50 dark:bg-[#2b2b2e] p-3 rounded-lg border border-gray-100 dark:border-gray-700">
-                                                    <el-icon class="text-orange-500 mr-2 align-middle"><Location /></el-icon>
-                                                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ contacto.branches }}</span>
+                                                <div v-else class="text-xs text-gray-500 italic">
+                                                    No hay sucursales asignadas a este contacto.
                                                 </div>
                                             </div>
                                         </div>
@@ -266,7 +265,7 @@ watch([search, region, contact], () => {
                             <template #default="scope">
                                 <el-tag size="small" type="info" effect="light" class="mr-1">
                                     <span>
-                                        {{ scope.row.contacts?.reduce((acc, curr) => acc + (Array.isArray(curr.branches) ? curr.branches.length : 1), 0) || 0 }} registradas
+                                        {{ scope.row.branches?.length || 0 }} registradas
                                     </span>
                                 </el-tag>
                             </template>
@@ -294,7 +293,7 @@ watch([search, region, contact], () => {
                         </el-table-column>
 
                         <!-- Acciones -->
-                        <el-table-column label="Acciones" width="80" align="center" fixed="right">
+                        <el-table-column label="Acciones" width="90" align="center" fixed="right">
                             <template #default="scope">
                                 <div @click.stop>
                                     <el-dropdown trigger="click">
@@ -358,7 +357,7 @@ watch([search, region, contact], () => {
                             </p>
                             <p class="flex justify-between">
                                 <span class="text-gray-400 text-xs uppercase">Sucursales:</span> 
-                                <span class="text-xs">{{ customer.contacts?.reduce((acc, curr) => acc + (Array.isArray(curr.branches) ? curr.branches.length : 1), 0) || 0 }} registradas</span>
+                                <span class="text-xs">{{ customer.branches?.length || 0 }} registradas</span>
                             </p>
                         </div>
 

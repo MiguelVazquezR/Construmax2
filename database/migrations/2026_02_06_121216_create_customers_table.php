@@ -6,23 +6,31 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         // Tabla de Clientes
         Schema::create('customers', function (Blueprint $table) {
             $table->id();
-            $table->string('name');             // Nombre comercial
-            $table->string('business_name');    // Razón social
-            $table->string('rfc', 20);          // RFC
-            $table->string('payment_condition');// Crédito, Contado, Otro
-            $table->string('payment_method');   // Transferencia, Efectivo, Otro
-            $table->string('invoice_usage');    // Gastos en general, Otro
-            $table->string('currency', 3);      // MXN, USD
-            $table->unsignedSmallInteger('payment_days')->nullable(); // Ej: 45, 30, etc.
+            $table->string('name');             
+            $table->string('business_name');    
+            $table->string('rfc', 20);          
+            $table->string('payment_condition');
+            $table->string('payment_method');   
+            $table->string('invoice_usage');    
+            $table->string('currency', 3);      
+            $table->unsignedSmallInteger('payment_days')->nullable(); 
             $table->boolean('is_active')->default(true);
+            $table->timestamps();
+        });
+
+        // Tabla de Sucursales (Entidad propia relacionada al Cliente)
+        Schema::create('customer_branches', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('customer_id')->constrained()->onDelete('cascade');
+            $table->string('country', 100);
+            $table->string('region', 100);
+            $table->string('unit', 255);
+            $table->string('branch_name', 255);
             $table->timestamps();
         });
 
@@ -33,19 +41,24 @@ return new class extends Migration
             $table->string('name');
             $table->string('email');
             $table->string('phone');
-            $table->string('position'); // Puesto
-            // CAMBIO: Cambiamos text por json para almacenar el arreglo de sucursales estructuradas
-            $table->json('branches'); 
+            $table->string('position'); 
+            $table->timestamps();
+        });
+
+        // Tabla Pivote: Relación Muchos a Muchos entre Contactos y Sucursales
+        Schema::create('customer_branch_contact', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('customer_branch_id')->constrained('customer_branches')->onDelete('cascade');
+            $table->foreignId('customer_contact_id')->constrained('customer_contacts')->onDelete('cascade');
             $table->timestamps();
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
+        Schema::dropIfExists('customer_branch_contact');
         Schema::dropIfExists('customer_contacts');
+        Schema::dropIfExists('customer_branches');
         Schema::dropIfExists('customers');
     }
 };

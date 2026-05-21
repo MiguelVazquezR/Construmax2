@@ -12,18 +12,18 @@ return new class extends Migration
         Schema::create('tickets', function (Blueprint $table) {
             $table->id();
             
-            // --- DATOS DEL CLIENTE Y UBICACIÓN (Movidos desde presupuestos) ---
+            // --- DATOS DEL CLIENTE Y UBICACIÓN ---
             $table->foreignId('customer_id')->constrained()->onDelete('cascade');
             $table->foreignId('customer_contact_id')->constrained()->onDelete('cascade');
             $table->string('branch')->nullable(); // Sucursal
             
-            // --- DATOS DEL PROYECTO (Movidos desde presupuestos) ---
+            // --- DATOS DEL PROYECTO ---
             $table->string('name'); // Nombre del proyecto o necesidad
             $table->string('service_type'); // Tipo de servicio
             $table->string('duration')->nullable(); // Duración estimada general
             
-            // Responsable Operativo
-            $table->foreignId('user_id')->constrained()->comment('Responsable Técnico o Manager');
+            // CAMBIO: Se elimina user_id (Encargado) y se agrega technicians como JSON
+            $table->json('technicians')->nullable()->comment('Arreglo de IDs de técnicos ejecutores');
             
             $table->string('status')->default('Borrador'); 
             // Status: Borrador, Levantamiento, Catálogo, Proceso de ejecución, Ejecutado, Facturado, Pagado

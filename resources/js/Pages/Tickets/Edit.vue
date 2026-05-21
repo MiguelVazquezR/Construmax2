@@ -25,8 +25,7 @@ const form = useForm({
     name: props.ticket.name,
     service_type: props.ticket.service_type,
     duration: props.ticket.duration || '',
-    user_id: props.ticket.user_id,
-    technicians: props.ticket.technicians || [],
+    technicians: props.ticket.technicians || [], // user_id eliminado
     priority: props.ticket.priority,
     status: props.ticket.status,
     scheduled_start: props.ticket.scheduled_start,
@@ -39,14 +38,16 @@ const rules = reactive({
     customer_contact_id: [{ required: true, message: 'Selecciona un contacto', trigger: 'change' }],
     name: [{ required: true, message: 'El nombre del proyecto es obligatorio', trigger: 'blur' }],
     service_type: [{ required: true, message: 'Selecciona el tipo de servicio', trigger: 'change' }],
-    user_id: [{ required: true, message: 'Requerido', trigger: 'change' }],
+    technicians: [{ required: true, message: 'Asigna al menos un técnico', trigger: 'change' }],
     priority: [{ required: true, message: 'Requerido', trigger: 'change' }],
     status: [{ required: true, message: 'Requerido', trigger: 'change' }],
 });
 
 const handleTechCreated = (newUser) => {
     localUsers.value.push(newUser);
-    form.user_id = newUser.id;
+    if (!form.technicians.includes(newUser.id)) {
+        form.technicians.push(newUser.id);
+    }
 };
 
 const submit = () => {

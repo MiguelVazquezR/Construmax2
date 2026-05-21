@@ -27,13 +27,6 @@ const formatDate = (dateString) => {
     return `${day} ${month}, ${year}`;
 };
 
-const formatCurrency = (amount, currency = 'MXN') => {
-    return new Intl.NumberFormat('es-MX', { 
-        style: 'currency', 
-        currency: currency 
-    }).format(amount || 0);
-};
-
 const getWhatsappUrl = (phone) => {
     if (!phone) return '#';
     const number = phone.replace(/\D/g, '');
@@ -43,17 +36,26 @@ const getWhatsappUrl = (phone) => {
 const getStatusColor = (status) => {
     const map = {
         'Borrador': 'info',
-        'Ticket enviado': 'primary', // Actualizado a Ticket
-        'Facturado': 'warning',
-        'Trabajo en proceso': 'primary',
-        'Trabajo terminado': 'success',
+        'Levantamiento': 'warning',
+        'Catálogo': 'primary',
+        'Proceso de ejecución': 'warning',
+        'Ejecutado': 'success',
+        'Facturado': 'primary',
         'Pagado': 'success',
-        'Perdido': 'danger'
     };
     return map[status] || 'info';
 };
 
-// Actualizado a navigateToTicket
+const getPriorityColor = (priority) => {
+    const map = {
+        'Baja': 'info',
+        'Media': 'warning',
+        'Alta': 'danger',
+        'Urgente': 'danger'
+    };
+    return map[priority] || 'info';
+};
+
 const navigateToTicket = (row) => {
     router.visit(route('tickets.show', row.id)); 
 };
@@ -84,37 +86,104 @@ const navigateToTicket = (row) => {
             </div>
         </template>
 
-        <div class="max-w-6xl mx-auto py-6 sm:px-6 lg:px-8 space-y-6">
+        <div class="max-w-7xl mx-auto py-8 sm:px-6 lg:px-8 space-y-6">
             
-            <!-- HEADER RESUMEN -->
-            <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6 flex flex-col sm:flex-row justify-between items-center gap-4">
-                <div class="flex items-center gap-4">
-                    <div class="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 p-3 rounded-full">
-                        <el-icon :size="32"><OfficeBuilding /></el-icon>
+            <!-- Tarjeta de Datos Generales -->
+            <div class="bg-white dark:bg-[#1e1e20] rounded-xl shadow-sm border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
+                <div class="p-6 border-b border-gray-100 dark:border-[#2b2b2e] bg-gray-50/50 dark:bg-[#252529]">
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <el-icon class="text-primary"><OfficeBuilding /></el-icon> 
+                        Información General
+                    </h3>
+                </div>
+                <div class="p-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                    <div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">Nombre Comercial</p>
+                        <p class="font-semibold text-gray-900 dark:text-gray-100">{{ customer.name }}</p>
                     </div>
                     <div>
-                        <div class="flex items-center gap-2">
-                            <h3 class="text-2xl font-bold text-gray-900 dark:text-white">{{ customer.name }}</h3>
-                            <el-tag :type="customer.is_active ? 'success' : 'danger'" size="small" effect="dark" class="rounded-full">
-                                {{ customer.is_active ? 'Activo' : 'Inactivo' }}
-                            </el-tag>
-                        </div>
-                        <p class="text-gray-500 dark:text-gray-400 text-sm flex items-center gap-1 mt-1">
-                            <span class="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">{{ customer.rfc }}</span>
-                        </p>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">Razón Social</p>
+                        <p class="font-semibold text-gray-900 dark:text-gray-100">{{ customer.business_name }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">RFC</p>
+                        <p class="font-mono font-semibold text-gray-900 dark:text-gray-100">{{ customer.rfc }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">Condiciones de pago</p>
+                        <p class="font-semibold text-gray-900 dark:text-gray-100">{{ customer.payment_condition }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">Días de crédito</p>
+                        <p class="font-semibold text-gray-900 dark:text-gray-100">{{ customer.payment_days || 0 }} días</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">Uso de CFDI</p>
+                        <p class="font-semibold text-gray-900 dark:text-gray-100">{{ customer.invoice_usage }}</p>
                     </div>
                 </div>
-                
-                <div class="flex gap-8 text-center sm:text-right">
-                    <div>
-                        <p class="text-xs text-gray-400 uppercase font-bold">Moneda Base</p>
-                        <p class="text-lg font-bold text-gray-800 dark:text-white">{{ customer.currency }}</p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Tarjeta de Sucursales Globales -->
+                <div class="bg-white dark:bg-[#1e1e20] rounded-xl shadow-sm border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
+                    <div class="p-6 border-b border-gray-100 dark:border-[#2b2b2e] bg-gray-50/50 dark:bg-[#252529]">
+                        <h3 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                            <el-icon class="text-primary"><Location /></el-icon> 
+                            Sucursales Registradas ({{ customer.branches?.length || 0 }})
+                        </h3>
                     </div>
-                    <div>
-                        <p class="text-xs text-gray-400 uppercase font-bold">Plazo Crédito</p>
-                        <p class="text-lg font-bold text-blue-600 dark:text-blue-400">
-                            {{ customer.payment_days > 0 ? `${customer.payment_days} días` : 'Contado' }}
-                        </p>
+                    <div class="p-6">
+                        <div v-if="customer.branches && customer.branches.length > 0" class="space-y-4">
+                            <div v-for="branch in customer.branches" :key="branch.id" class="p-4 bg-gray-50 dark:bg-[#252529]/50 border border-gray-200 dark:border-gray-700 rounded-lg flex flex-col sm:flex-row justify-between gap-4 transition-colors hover:bg-gray-100 dark:hover:bg-[#252529]">
+                                <div>
+                                    <p class="font-bold text-gray-900 dark:text-gray-100">{{ branch.branch_name || 'Sin nombre definido' }}</p>
+                                    <p class="text-sm text-gray-500 dark:text-gray-400">Unidad: <span class="font-medium text-gray-700 dark:text-gray-300">{{ branch.unit }}</span></p>
+                                </div>
+                                <div class="text-left sm:text-right text-sm text-gray-500 dark:text-gray-400">
+                                    <p class="font-medium">{{ branch.region }}</p>
+                                    <p>{{ branch.country }}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <p v-else class="text-gray-500 dark:text-gray-400 italic text-sm">No hay sucursales registradas para este cliente.</p>
+                    </div>
+                </div>
+
+                <!-- Tarjeta de Contactos y sus Asignaciones -->
+                <div class="bg-white dark:bg-[#1e1e20] rounded-xl shadow-sm border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
+                    <div class="p-6 border-b border-gray-100 dark:border-[#2b2b2e] bg-gray-50/50 dark:bg-[#252529]">
+                        <h3 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                            <el-icon class="text-primary"><User /></el-icon> 
+                            Contactos Asignados ({{ customer.contacts?.length || 0 }})
+                        </h3>
+                    </div>
+                    <div class="p-6">
+                        <div v-if="customer.contacts && customer.contacts.length > 0" class="space-y-6">
+                            <div v-for="contact in customer.contacts" :key="contact.id" class="p-5 border-2 border-gray-100 dark:border-gray-800 rounded-xl relative">
+                                <div class="flex flex-col sm:flex-row justify-between mb-4">
+                                    <div>
+                                        <p class="font-bold text-gray-900 dark:text-gray-100">{{ contact.name }}</p>
+                                        <p class="text-sm text-primary font-medium">{{ contact.position }}</p>
+                                    </div>
+                                    <div class="text-sm text-gray-500 dark:text-gray-400 text-left sm:text-right mt-2 sm:mt-0 space-y-0.5">
+                                        <p>{{ contact.phone }}</p>
+                                        <p>{{ contact.email }}</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="pt-3 border-t border-gray-100 dark:border-gray-800">
+                                    <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Sucursales a cargo:</p>
+                                    <div v-if="contact.branches && contact.branches.length > 0" class="flex flex-wrap gap-2">
+                                        <el-tag v-for="cb in contact.branches" :key="cb.id" type="info" effect="light" size="small" class="border-gray-200 dark:border-gray-700">
+                                            {{ cb.branch_name ? cb.branch_name : cb.unit }} - {{ cb.region }}
+                                        </el-tag>
+                                    </div>
+                                    <p v-else class="text-xs text-gray-400 italic">Ninguna sucursal asignada.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <p v-else class="text-gray-500 dark:text-gray-400 italic text-sm">No hay contactos registrados.</p>
                     </div>
                 </div>
             </div>
@@ -165,7 +234,7 @@ const navigateToTicket = (row) => {
                                 <h4 class="font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2 border-b pb-2 dark:border-gray-700">
                                     <el-icon><User /></el-icon> Contactos Asociados
                                 </h4>
-                                <div v-if="customer.contacts.length > 0" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <div v-if="customer.contacts && customer.contacts.length > 0" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                     <div 
                                         v-for="contact in customer.contacts" 
                                         :key="contact.id"
@@ -209,7 +278,6 @@ const navigateToTicket = (row) => {
                                             </div>
                                         </div>
 
-                                        <!-- SECCIÓN DE SUCURSALES (FORMATO JSON) -->
                                         <div class="mt-auto pt-3 border-t border-gray-200 dark:border-gray-700">
                                             <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
                                                 <el-icon><Location /></el-icon> Sucursales a cargo
@@ -237,70 +305,66 @@ const navigateToTicket = (row) => {
                     </el-tab-pane>
 
                     <!-- PESTAÑA 2: HISTORIAL DE TICKETS -->
-                    <el-tab-pane label="Historial de Tickets" name="tickets"> <!-- Actualizado el nombre de la pestaña -->
+                    <el-tab-pane label="Historial de Tickets" name="tickets">
                         <div class="p-4">
                             <div class="flex justify-between items-center mb-4">
                                 <h4 class="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
-                                    <el-icon><Ticket /></el-icon> Tickets Recientes <!-- Icono actualizado a Ticket -->
+                                    <el-icon><Ticket /></el-icon> Tickets Registrados
                                 </h4>
-                                <!-- Actualizadas las rutas a tickets -->
-                                <Link :href="route('tickets.create')">
+                                <Link :href="route('tickets.create', { customer_id: customer.id })">
                                     <el-button size="small" type="primary" plain icon="Plus">Nuevo ticket</el-button>
                                 </Link>
                             </div>
 
-                            <!-- Asegúrate de que la relación en tu backend también se llame tickets si cambiaste el modelo, o mantenla como budgets si solo es un cambio visual -->
-                            <!-- Aquí asumo que la variable desde el controlador sigue siendo 'budgets' por ahora (como indicaste en el modelo inicialmente), pero la visualización dice 'Tickets' -->
-                            <div v-if="customer.budgets && customer.budgets.length > 0">
+                            <div v-if="customer.tickets && customer.tickets.length > 0">
                                 <el-table 
-                                    :data="customer.budgets" 
+                                    :data="customer.tickets" 
                                     style="width: 100%" 
                                     stripe 
                                     @row-click="navigateToTicket"
-                                    row-class-name="cursor-pointer"
+                                    row-class-name="cursor-pointer hover:bg-gray-50 dark:hover:bg-[#27272a] transition-colors"
                                 >
-                                    <el-table-column prop="id" label="Folio" width="80">
+                                    <el-table-column label="Folio" width="100">
                                         <template #default="scope">
-                                            <span class="font-mono font-bold text-gray-500">#{{ scope.row.id }}</span>
+                                            <span class="font-mono font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
+                                                {{ scope.row.folio || `#${scope.row.id}` }}
+                                            </span>
                                         </template>
                                     </el-table-column>
                                     
-                                    <el-table-column label="Proyecto / Servicio" min-width="200">
+                                    <el-table-column label="Proyecto / Servicio" min-width="220">
                                         <template #default="scope">
                                             <div class="font-bold text-gray-800 dark:text-gray-200">{{ scope.row.name }}</div>
                                             <div class="text-xs text-gray-500">{{ scope.row.service_type }}</div>
                                         </template>
                                     </el-table-column>
 
-                                    <el-table-column label="Monto" width="150" align="right">
+                                    <el-table-column label="Fechas" width="160">
                                         <template #default="scope">
-                                            <span class="font-bold text-gray-700 dark:text-gray-300">
-                                                {{ formatCurrency(scope.row.concepts_sum_amount, scope.row.currency) }}
-                                            </span>
-                                            <span class="text-xs text-gray-400 block">{{ scope.row.currency }}</span>
-                                        </template>
-                                    </el-table-column>
-
-                                    <el-table-column label="Fecha" width="140">
-                                        <template #default="scope">
-                                            <div class="text-sm">{{ formatDate(scope.row.created_at) }}</div>
-                                        </template>
-                                    </el-table-column>
-
-                                    <el-table-column label="Responsable" width="180">
-                                        <template #default="scope">
-                                            <div class="flex items-center gap-2">
-                                                <el-avatar :size="24" :src="scope.row.responsible?.profile_photo_url">
-                                                    {{ scope.row.responsible?.name?.charAt(0) }}
-                                                </el-avatar>
-                                                <span class="text-sm truncate">{{ scope.row.responsible?.name }}</span>
+                                            <div class="text-xs space-y-1">
+                                                <div class="flex justify-between">
+                                                    <span class="text-gray-400">Inicio:</span>
+                                                    <span class="text-gray-700 dark:text-gray-300 font-mono">{{ formatDate(scope.row.scheduled_start) }}</span>
+                                                </div>
+                                                <div class="flex justify-between">
+                                                    <span class="text-gray-400">Fin:</span>
+                                                    <span class="text-gray-700 dark:text-gray-300 font-mono">{{ formatDate(scope.row.scheduled_end) }}</span>
+                                                </div>
                                             </div>
                                         </template>
                                     </el-table-column>
 
-                                    <el-table-column label="Estatus" width="140" align="center">
+                                    <el-table-column label="Prioridad" width="100" align="center">
                                         <template #default="scope">
-                                            <el-tag :type="getStatusColor(scope.row.status)" size="small" effect="dark" class="w-full">
+                                            <el-tag :type="getPriorityColor(scope.row.priority)" size="small" effect="plain" class="w-full text-center">
+                                                {{ scope.row.priority }}
+                                            </el-tag>
+                                        </template>
+                                    </el-table-column>
+
+                                    <el-table-column label="Estatus" width="160" align="center">
+                                        <template #default="scope">
+                                            <el-tag :type="getStatusColor(scope.row.status)" size="small" effect="dark" class="w-full border-none">
                                                 {{ scope.row.status }}
                                             </el-tag>
                                         </template>
@@ -308,7 +372,7 @@ const navigateToTicket = (row) => {
                                 </el-table>
                             </div>
                             <el-empty v-else description="No hay tickets registrados para este cliente aún." :image-size="100">
-                                <Link :href="route('tickets.create')">
+                                <Link :href="route('tickets.create', { customer_id: customer.id })">
                                     <el-button type="primary">Crear el primero</el-button>
                                 </Link>
                             </el-empty>

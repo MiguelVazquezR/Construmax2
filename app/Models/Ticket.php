@@ -21,7 +21,6 @@ class Ticket extends Model implements HasMedia
         'name',
         'service_type',
         'duration',
-        'user_id',
         'technicians',
         'status',
         'priority',
@@ -36,7 +35,6 @@ class Ticket extends Model implements HasMedia
         'technicians' => 'array', 
     ];
 
-    // Agregamos 'folio' para que siempre viaje en las peticiones JSON
     protected $appends = ['progress', 'folio'];
 
     // --- RELACIONES ---
@@ -56,35 +54,60 @@ class Ticket extends Model implements HasMedia
         return $this->hasMany(Budget::class);
     }
 
-    public function responsible(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'user_id');
-    }
-
     public function tasks(): HasMany
     {
         return $this->hasMany(TicketTask::class);
     }
 
+    // --- LOGICA DE NEGOCIO (SOLID) ---
+
+    public function generateTasksFromTemplate($templateId, array $technicianIds)
+    {
+        $template = TaskTemplate::with('items')->find($templateId);
+        
+        if (!$template || empty($technicianIds) || $template->items->isEmpty()) {
+            return;
+        }
+
+        $tasksData = [];
+        $now = now();
+
+        foreach ($technicianIds as $techId) {
+            foreach ($template->items as $item) {
+                $tasksData[] = [
+                    'ticket_id' => $this->id,
+                    'user_id' => $techId,
+                    'name' => $item->name,
+                    'description' => $item->description,
+                    'status' => 'Pendiente',
+                    'start_date' => $this->scheduled_start ?? clone $now,
+                    'due_date' => $this->scheduled_end ?? (clone $now)->addDays(1),
+                    'created_at' => clone $now,
+                    'updated_at' => clone $now,
+                ];
+            }
+        }
+
+        TicketTask::insert($tasksData);
+        $this->updateStatusBasedOnTasks();
+    }
+
     // --- ACCESSORS ---
+    
     public function getCustomerNameAttribute()
     {
         return $this->customer->name ?? 'N/A';
     }
     
-    // Folio dinámico inteligente (Ej. #34-JAL-ME)
     public function getFolioAttribute()
     {
         $id = $this->id;
-        $code = "UND"; // Por si no hay datos (Undefined)
+        $code = "UND";
 
-        // Verificamos si tenemos el contacto y sus sucursales
         if ($this->relationLoaded('contact') && $this->contact && is_array($this->contact->branches)) {
-            // Buscamos la sucursal específica de este ticket
             $branchData = collect($this->contact->branches)->firstWhere('unit', $this->branch);
             
             if ($branchData) {
-                // Tomamos las primeras 3 letras de la región y 2 del país, quitando caracteres especiales
                 $region = strtoupper(substr(preg_replace('/[^a-zA-Z]/', '', $branchData['region'] ?? 'X'), 0, 3));
                 $country = strtoupper(substr(preg_replace('/[^a-zA-Z]/', '', $branchData['country'] ?? 'X'), 0, 2));
                 $code = "{$region}-{$country}";
@@ -109,18 +132,10 @@ class Ticket extends Model implements HasMedia
     {
         $this->load('tasks');
         
-        $total = $this->tasks->count();
-        $completed = $this->tasks->where('status', 'Completada')->count();
         $currentStatus = $this->status;
         $newStatus = $currentStatus;
 
-        if ($total === 0) {
-            $newStatus = 'Borrador'; // Cambiado el estatus por defecto
-        } elseif ($completed === $total) {
-            $newStatus = 'Ejecutado';
-        } else {
-            $newStatus = 'Proceso de ejecución';
-        }
+        $newStatus = 'Borrador'; 
 
         if ($newStatus !== $currentStatus) {
             $this->update(['status' => $newStatus]);
