@@ -108,7 +108,7 @@ watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilt
                         <el-option v-for="c in customers" :key="c.id" :label="c.name" :value="c.id" />
                     </el-select>
 
-                    <el-input v-model="regionFilter" placeholder="Región..." clearable :prefix-icon="Location" class="w-full" />
+                    <el-input v-model="regionFilter" placeholder="Sucursal, unidad, región o país..." clearable :prefix-icon="Location" class="w-full" />
 
                     <el-select v-model="priorityFilter" placeholder="Prioridad" clearable class="w-full">
                         <el-option label="Baja" value="Baja" />

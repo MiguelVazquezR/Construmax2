@@ -11,6 +11,7 @@ const props = defineProps({
     ticket: Object,
     users: Array,
     customers: Array,
+    templates: Array, // Reintegrado para evitar fallos de props en TicketForm
 });
 
 const formRef = ref();
@@ -21,11 +22,12 @@ const showQuickTechModal = ref(false);
 const form = useForm({
     customer_id: props.ticket.customer_id,
     customer_contact_id: props.ticket.customer_contact_id,
-    branch: props.ticket.branch || '',
+    customer_branch_id: props.ticket.customer_branch_id || '', // Actualizado para usar ID
     name: props.ticket.name,
     service_type: props.ticket.service_type,
     duration: props.ticket.duration || '',
-    technicians: props.ticket.technicians || [], // user_id eliminado
+    user_id: props.ticket.user_id,
+    technicians: props.ticket.technicians || [],
     priority: props.ticket.priority,
     status: props.ticket.status,
     scheduled_start: props.ticket.scheduled_start,
@@ -38,16 +40,14 @@ const rules = reactive({
     customer_contact_id: [{ required: true, message: 'Selecciona un contacto', trigger: 'change' }],
     name: [{ required: true, message: 'El nombre del proyecto es obligatorio', trigger: 'blur' }],
     service_type: [{ required: true, message: 'Selecciona el tipo de servicio', trigger: 'change' }],
-    technicians: [{ required: true, message: 'Asigna al menos un técnico', trigger: 'change' }],
+    user_id: [{ required: true, message: 'Requerido', trigger: 'change' }],
     priority: [{ required: true, message: 'Requerido', trigger: 'change' }],
     status: [{ required: true, message: 'Requerido', trigger: 'change' }],
 });
 
 const handleTechCreated = (newUser) => {
     localUsers.value.push(newUser);
-    if (!form.technicians.includes(newUser.id)) {
-        form.technicians.push(newUser.id);
-    }
+    form.user_id = newUser.id;
 };
 
 const submit = () => {
@@ -92,6 +92,7 @@ const submit = () => {
                     :form="form" 
                     :users="localUsers" 
                     :customers="customers"
+                    :templates="templates"
                     :is-edit="true" 
                     @open-quick-tech="showQuickTechModal = true"
                 />

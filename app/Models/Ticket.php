@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
@@ -17,7 +18,7 @@ class Ticket extends Model implements HasMedia
     protected $fillable = [
         'customer_id',
         'customer_contact_id',
-        'branch',
+        'customer_branch_id',
         'name',
         'service_type',
         'duration',
@@ -49,9 +50,14 @@ class Ticket extends Model implements HasMedia
         return $this->belongsTo(CustomerContact::class, 'customer_contact_id');
     }
 
-    public function budgets(): HasMany
+    public function branch(): BelongsTo
     {
-        return $this->hasMany(Budget::class);
+        return $this->belongsTo(CustomerBranch::class, 'customer_branch_id');
+    }
+
+    public function budget(): HasOne
+    {
+        return $this->hasOne(Budget::class);
     }
 
     public function tasks(): HasMany
@@ -59,7 +65,7 @@ class Ticket extends Model implements HasMedia
         return $this->hasMany(TicketTask::class);
     }
 
-    // --- LOGICA DE NEGOCIO (SOLID) ---
+    // --- LÓGICA DE NEGOCIO ---
 
     public function generateTasksFromTemplate($templateId, array $technicianIds)
     {
@@ -89,11 +95,10 @@ class Ticket extends Model implements HasMedia
         }
 
         TicketTask::insert($tasksData);
-        $this->updateStatusBasedOnTasks();
+        // No actualizamos el estatus aquí para garantizar que el ticket inicie y se mantenga como 'Borrador'
     }
 
     // --- ACCESSORS ---
-    
     public function getCustomerNameAttribute()
     {
         return $this->customer->name ?? 'N/A';
@@ -104,14 +109,10 @@ class Ticket extends Model implements HasMedia
         $id = $this->id;
         $code = "UND";
 
-        if ($this->relationLoaded('contact') && $this->contact && is_array($this->contact->branches)) {
-            $branchData = collect($this->contact->branches)->firstWhere('unit', $this->branch);
-            
-            if ($branchData) {
-                $region = strtoupper(substr(preg_replace('/[^a-zA-Z]/', '', $branchData['region'] ?? 'X'), 0, 3));
-                $country = strtoupper(substr(preg_replace('/[^a-zA-Z]/', '', $branchData['country'] ?? 'X'), 0, 2));
-                $code = "{$region}-{$country}";
-            }
+        if ($this->relationLoaded('branch') && $this->branch) {
+            $region = strtoupper(substr(preg_replace('/[^a-zA-Z]/', '', $this->branch->region ?? 'X'), 0, 3));
+            $country = strtoupper(substr(preg_replace('/[^a-zA-Z]/', '', $this->branch->country ?? 'X'), 0, 2));
+            $code = "{$region}-{$country}";
         }
 
         return "#{$id}-{$code}";
@@ -132,10 +133,25 @@ class Ticket extends Model implements HasMedia
     {
         $this->load('tasks');
         
+        $total = $this->tasks->count();
+        $completed = $this->tasks->where('status', 'Completada')->count();
         $currentStatus = $this->status;
         $newStatus = $currentStatus;
 
-        $newStatus = 'Borrador'; 
+        if ($total === 0) {
+            if ($currentStatus !== 'Cancelado') {
+                $newStatus = 'Borrador'; 
+            }
+        } elseif ($completed === $total) {
+            $newStatus = 'Ejecutado';
+        } else {
+            // Si hay tareas pero ninguna está completada, y el ticket es nuevo (Borrador), lo mantenemos en Borrador.
+            if ($completed === 0 && $currentStatus === 'Borrador') {
+                $newStatus = 'Borrador';
+            } else {
+                $newStatus = 'Proceso de ejecución';
+            }
+        }
 
         if ($newStatus !== $currentStatus) {
             $this->update(['status' => $newStatus]);

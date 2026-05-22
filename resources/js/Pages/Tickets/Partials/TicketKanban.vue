@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { ElMessage } from 'element-plus';
-import { OfficeBuilding, Timer } from '@element-plus/icons-vue';
+import { OfficeBuilding, Timer, Location } from '@element-plus/icons-vue';
 
 const props = defineProps({
     tickets: Object,
@@ -103,15 +103,6 @@ const getAssignedTechnicians = (ticket) => {
     }
     return Array.from(techs.values());
 };
-
-const getHealthStatusColor = (ticket) => {
-    if (['Ejecutado', 'Facturado', 'Pagado'].includes(ticket.status)) return 'bg-green-500';
-    if (!ticket.scheduled_start || !ticket.scheduled_end) return 'bg-gray-400';
-    const end = new Date(ticket.scheduled_end);
-    const now = new Date();
-    if (now > end && ticket.progress < 100) return 'bg-red-500';
-    return 'bg-blue-500'; 
-};
 </script>
 
 <template>
@@ -148,7 +139,6 @@ const getHealthStatusColor = (ticket) => {
                             class="bg-white dark:bg-[#252529] p-3 rounded-lg shadow-sm border-l-4 hover:shadow-md hover:-translate-y-0.5 transition-all cursor-move group relative"
                             :style="{ borderLeftColor: col.color }"
                         >
-                            <div class="absolute right-0 top-2 bottom-2 w-1 rounded-l-md" :class="getHealthStatusColor(ticket)"></div>
 
                             <div class="flex justify-between items-start mb-2 pr-2">
                                 <span class="text-xs font-mono font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
@@ -166,10 +156,16 @@ const getHealthStatusColor = (ticket) => {
                                 {{ ticket.name || ticket.service_type || 'Servicio' }}
                             </h4>
                             
-                            <div class="text-xs text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-1 pr-2">
+                            <div class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 pr-2">
                                 <el-icon :size="12"><OfficeBuilding /></el-icon>
                                 <span class="truncate">{{ ticket.customer?.name }}</span>
                             </div>
+
+                            <div v-if="ticket.branch" class="text-xs text-gray-400 dark:text-gray-500 mb-3 flex items-center gap-1 pr-2 mt-0.5">
+                                <el-icon :size="12"><Location /></el-icon>
+                                <span class="truncate">{{ [ticket.branch.branch_name, ticket.branch.unit].filter(Boolean).join(' · ') }}</span>
+                            </div>
+                            <div v-else class="mb-3"></div>
 
                             <div class="flex justify-between items-end border-t border-gray-100 dark:border-[#3f3f46] pt-2 mt-2 pr-2">
                                 <div class="flex -space-x-1">

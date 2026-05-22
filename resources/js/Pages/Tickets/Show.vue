@@ -30,12 +30,12 @@ const getStatusColor = (status) => {
 </script>
 
 <template>
-    <AppLayout :title="`Ticket #${ticket.id}`">
+    <AppLayout :title="`Ticket ${ticket.folio}`">
         <template #header>
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div class="flex items-center gap-3">
                     <h2 class="font-semibold text-gray-800 dark:text-white leading-tight">
-                        Ticket de servicio #{{ ticket.id }}
+                        Ticket {{ ticket.folio }}
                     </h2>
                     <el-tag :type="getStatusColor(ticket.status)" effect="dark" size="large">
                         {{ ticket.status }}
@@ -68,24 +68,11 @@ const getStatusColor = (status) => {
                         </div>
                         <div>
                             <h3 class="text-lg font-bold text-gray-800 dark:text-white leading-tight">
-                                {{ ticket.budget?.service_type }}
+                                {{ ticket.name }}
                             </h3>
                             <p class="text-sm text-gray-500 dark:text-gray-400">
-                                Cliente: {{ ticket.budget?.customer?.name }}
+                                {{ ticket.customer?.name }}
                             </p>
-                        </div>
-                    </div>
-
-                    <!-- Responsable -->
-                    <div class="flex items-center gap-3 w-full md:w-auto bg-gray-50 dark:bg-[#252529] px-4 py-2 rounded-lg border border-gray-100 dark:border-[#3f3f46]">
-                        <span class="text-xs text-gray-400 uppercase font-bold">Supervisor o encargado de obra</span>
-                        <div class="flex items-center gap-2">
-                            <el-avatar :size="28" class="!text-xs bg-white text-gray-600 border">
-                                {{ ticket.responsible?.name?.charAt(0) }}
-                            </el-avatar>
-                            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                {{ ticket.responsible?.name }}
-                            </span>
                         </div>
                     </div>
 

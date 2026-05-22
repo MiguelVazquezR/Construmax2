@@ -18,9 +18,9 @@ class TicketController extends Controller
         $perPage = $request->input('perPage', 20);
         $sort = $request->input('sort', 'delay'); 
 
-        $query = Ticket::with(['customer', 'contact', 'tasks.assignee']);
+        $query = Ticket::with(['customer', 'contact', 'branch', 'tasks.assignee']);
 
-        // BÚSQUEDA POR FOLIO (Extrae inteligentemente el ID)
+        // BÚSQUEDA POR FOLIO
         if ($request->filled('folio')) {
             $folio = $request->input('folio');
             preg_match('/\d+/', $folio, $matches);
@@ -35,19 +35,14 @@ class TicketController extends Controller
         }
 
         if ($request->filled('region')) {
-            $region = $request->input('region');
-            
-            // Convertimos las vocales en comodines para hacer una búsqueda difusa y que 
-            // coincida perfectamente con secuencias unicode (ej. M\u00e9xico) o sin acentos.
-            $fuzzyRegion = preg_replace('/[aeiouáéíóúüAEIOUÁÉÍÓÚÜ]/u', '%', $region);
-            
-            $query->where(function($q) use ($region, $fuzzyRegion) {
-                $q->where('branch', 'like', "%{$region}%")
-                  ->orWhere('branch', 'like', "%{$fuzzyRegion}%")
-                  ->orWhereHas('contact', function($c) use ($region, $fuzzyRegion) {
-                      $c->where('branches', 'like', "%{$region}%")
-                        ->orWhere('branches', 'like', "%{$fuzzyRegion}%");
-                  });
+            $like = '%' . $request->input('region') . '%';
+
+            // utf8mb4_unicode_ci es insensible a acentos y mayúsculas, así que un solo LIKE basta
+            $query->whereHas('branch', function($q) use ($like) {
+                $q->whereRaw('region COLLATE utf8mb4_unicode_ci LIKE ?', [$like])
+                  ->orWhereRaw('branch_name COLLATE utf8mb4_unicode_ci LIKE ?', [$like])
+                  ->orWhereRaw('unit COLLATE utf8mb4_unicode_ci LIKE ?', [$like])
+                  ->orWhereRaw('country COLLATE utf8mb4_unicode_ci LIKE ?', [$like]);
             });
         }
 
@@ -58,7 +53,6 @@ class TicketController extends Controller
         if ($request->filled('technician')) {
             $techId = $request->input('technician');
             $query->where(function($q) use ($techId) {
-                // Buscamos si está asignado al ticket general o en alguna tarea
                 $q->whereJsonContains('technicians', (string)$techId)
                   ->orWhereJsonContains('technicians', (int)$techId)
                   ->orWhereHas('tasks', function($t) use ($techId) {
@@ -83,7 +77,6 @@ class TicketController extends Controller
             'tickets' => $query->paginate($perPage)->withQueryString(),
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'technicians' => User::whereHas('technician')->orderBy('name')->get(['id', 'name']),
-            // Se define el array explícitamente para asegurar que se formatea como JSON Object en JS
             'filters' => [
                 'folio' => $request->input('folio'),
                 'customer' => $request->input('customer'),
@@ -101,7 +94,7 @@ class TicketController extends Controller
     {
         return Inertia::render('Tickets/Create', [
             'users' => User::where('id', '!=', 1)->with(['employee', 'technician'])->get(),
-            'customers' => Customer::where('is_active', true)->with('contacts')->get(),
+            'customers' => Customer::where('is_active', true)->with(['contacts', 'branches'])->get(),
             'templates' => TaskTemplate::where('is_active', true)->with('items')->get(),
         ]);
     }
@@ -111,11 +104,11 @@ class TicketController extends Controller
         $validated = $request->validate([
             'customer_id' => 'required|exists:customers,id',
             'customer_contact_id' => 'required|exists:customer_contacts,id',
-            'branch' => 'nullable|string',
+            'customer_branch_id' => 'nullable|exists:customer_branches,id',
             'name' => 'required|string|max:255',
             'service_type' => 'required|string|max:255',
             'duration' => 'nullable|string',
-            'technicians' => 'required|array|min:1',
+            'technicians' => 'nullable|array',
             'technicians.*' => 'exists:users,id',
             'priority' => 'required|string',
             'scheduled_start' => 'nullable|date',
@@ -124,11 +117,9 @@ class TicketController extends Controller
             'task_template_id' => 'nullable|exists:task_templates,id',
         ]);
 
-        $ticket = Ticket::create(array_merge($validated, [
-            'status' => 'Borrador'
-        ]));
+        $ticket = Ticket::create($validated); //status Borrador por defecto
 
-        if (!empty($validated['task_template_id'])) {
+        if (!empty($validated['task_template_id']) && !empty($validated['technicians'])) {
             $ticket->generateTasksFromTemplate($validated['task_template_id'], $validated['technicians']);
         }
 
@@ -141,7 +132,8 @@ class TicketController extends Controller
         $ticket->load([
             'customer', 
             'contact', 
-            'budgets', 
+            'branch',
+            'budget', 
             'tasks.assignee', 
             'tasks.media', 
             'media'
@@ -175,9 +167,9 @@ class TicketController extends Controller
     public function edit(Ticket $ticket)
     {
         return Inertia::render('Tickets/Edit', [
-            'ticket' => $ticket->load(['customer', 'contact']),
+            'ticket' => $ticket->load(['customer', 'contact', 'branch']),
             'users' => User::where('id', '!=', 1)->with(['employee', 'technician'])->get(),
-            'customers' => Customer::where('is_active', true)->with('contacts')->get(),
+            'customers' => Customer::where('is_active', true)->with(['contacts', 'branches'])->get(),
             'templates' => TaskTemplate::where('is_active', true)->with('items')->get(),
         ]);
     }
@@ -187,11 +179,11 @@ class TicketController extends Controller
         $validated = $request->validate([
             'customer_id' => 'required|exists:customers,id',
             'customer_contact_id' => 'required|exists:customer_contacts,id',
-            'branch' => 'nullable|string',
+            'customer_branch_id' => 'nullable|exists:customer_branches,id',
             'name' => 'required|string|max:255',
             'service_type' => 'required|string|max:255',
             'duration' => 'nullable|string',
-            'technicians' => 'required|array|min:1',
+            'technicians' => 'nullable|array',
             'technicians.*' => 'exists:users,id',
             'priority' => 'required|string',
             'status' => 'required|string',

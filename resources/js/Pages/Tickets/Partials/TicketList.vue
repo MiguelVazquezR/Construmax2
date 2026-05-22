@@ -94,28 +94,16 @@ const getAssignedTechnicians = (ticket) => {
     return Array.from(techs.values());
 };
 
-// Función para obtener la cadena completa de la sucursal (Nombre, Unidad, Región, País)
+// Devuelve "Sucursal - Unidad (Región, País)" a partir de la relación branch del ticket
 const getBranchDetails = (ticket) => {
-    if (!ticket.contact || !ticket.contact.branches) return ticket.branch || 'Sucursal no especificada';
+    const b = ticket.branch;
+    if (!b || typeof b !== 'object') return 'Sucursal no especificada';
 
-    let branches = ticket.contact.branches;
-    if (typeof branches === 'string') {
-        try {
-            branches = JSON.parse(branches);
-        } catch (e) {
-            return ticket.branch;
-        }
-    }
+    const head = [b.branch_name, b.unit].filter(Boolean).join(' - ');
+    const location = [b.region, b.country].filter(Boolean).join(', ');
 
-    if (Array.isArray(branches)) {
-        const branchObj = branches.find(b => b.unit === ticket.branch);
-        if (branchObj) {
-            const bName = branchObj.branch_name ? `${branchObj.branch_name} - ` : '';
-            return `${bName}${branchObj.unit} (${branchObj.region}, ${branchObj.country})`;
-        }
-    }
-    
-    return ticket.branch;
+    if (head && location) return `${head} (${location})`;
+    return head || location || 'Sucursal no especificada';
 };
 
 const handleRowClick = (row) => {

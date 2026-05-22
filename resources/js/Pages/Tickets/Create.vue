@@ -10,7 +10,7 @@ import QuickTechnicianModal from './Partials/QuickTechnicianModal.vue';
 const props = defineProps({
     users: Array,   
     customers: Array,
-    templates: Array, // <-- AGREGADO: Plantillas de tareas
+    templates: Array, // Reintegrado para el soporte de plantillas
 });
 
 const formRef = ref();
@@ -19,8 +19,8 @@ const showQuickTechModal = ref(false);
 
 const handleTechCreated = (newUser) => {
     localUsers.value.push(newUser);
-    // Asignamos al nuevo técnico directamente al arreglo de technicians
-    if (!form.technicians.includes(newUser.id)) {
+    form.user_id = newUser.id;
+    if (newUser.technician && !form.technicians.includes(newUser.id)) {
         form.technicians.push(newUser.id);
     }
 };
@@ -28,12 +28,13 @@ const handleTechCreated = (newUser) => {
 const form = useForm({
     customer_id: '',
     customer_contact_id: '',
-    branch: '',
+    customer_branch_id: '', // Actualizado para usar ID en vez del string 'branch'
     name: '',
     service_type: '',
     duration: '',
+    user_id: '', 
     technicians: [], 
-    task_template_id: '', // <-- AGREGADO: Plantilla seleccionada
+    task_template_id: '', // Integrado
     priority: 'Media',
     scheduled_start: '',
     scheduled_end: '',
@@ -45,7 +46,7 @@ const rules = reactive({
     customer_contact_id: [{ required: true, message: 'Selecciona un contacto', trigger: 'change' }],
     name: [{ required: true, message: 'El nombre del proyecto es obligatorio', trigger: 'blur' }],
     service_type: [{ required: true, message: 'Selecciona el tipo de servicio', trigger: 'change' }],
-    technicians: [{ required: true, message: 'Asigna al menos un técnico ejecutor', trigger: 'change' }], // <-- REEMPLAZADO user_id
+    user_id: [{ required: true, message: 'Asigna un supervisor/encargado', trigger: 'change' }],
     priority: [{ required: true, message: 'Requerido', trigger: 'change' }],
 });
 
@@ -55,7 +56,7 @@ const submit = () => {
     formRef.value.validate((valid) => {
         if (valid) {
             form.post(route('tickets.store'), {
-                onSuccess: () => ElMessage.success('Ticket creado y tareas generadas correctamente')
+                onSuccess: () => ElMessage.success('Ticket creado correctamente')
             });
         } else {
             ElMessage.error('Por favor completa los campos obligatorios');

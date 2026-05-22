@@ -32,7 +32,6 @@ defineEmits(['open-quick-tech']);
 const showTaskTemplateModal = ref(false);
 
 const handleTemplateSaved = () => {
-    // Recarga las plantillas usando Inertia sin perder el estado actual del formulario
     router.reload({ only: ['templates'] });
 };
 
@@ -71,43 +70,35 @@ const filteredContacts = computed(() => {
     return customer ? customer.contacts : [];
 });
 
-const contactBranches = computed(() => {
-    if (!props.form.customer_contact_id) return [];
-    const contact = filteredContacts.value.find(c => c.id === props.form.customer_contact_id);
+// Ahora leemos las sucursales directamente del cliente
+const customerBranches = computed(() => {
+    if (!props.form.customer_id) return [];
+    const customer = props.customers.find(c => c.id === props.form.customer_id);
     
-    if (!contact || !contact.branches) return [];
+    if (!customer || !customer.branches) return [];
     
-    if (Array.isArray(contact.branches)) {
-        return contact.branches.map(b => {
-            const branchName = b.branch_name ? `${b.branch_name} - ` : '';
-            return {
-                label: `${branchName}${b.unit} (${b.region}, ${b.country})`,
-                value: b.unit
-            };
-        });
-    } else if (typeof contact.branches === 'string') {
-        return contact.branches.split(',').map(b => {
-            const trimmed = b.trim();
-            return { label: trimmed, value: trimmed };
-        }).filter(b => b.value !== '');
-    }
-    return [];
+    return customer.branches.map(b => ({
+        label: b.branch_name ? `${b.branch_name} (${b.unit}) - ${b.region}` : `${b.unit} - ${b.region}`,
+        value: b.id
+    }));
 });
 
 const handleCustomerChange = () => {
     props.form.customer_contact_id = '';
-    props.form.branch = '';
-};
-
-const handleContactChange = () => {
-    props.form.branch = '';
-    if (contactBranches.value.length === 1) {
-        props.form.branch = contactBranches.value[0].value;
+    props.form.customer_branch_id = '';
+    
+    // Auto-seleccionar sucursal si el cliente solo tiene una
+    if (customerBranches.value.length === 1) {
+        props.form.customer_branch_id = customerBranches.value[0].value;
     }
 };
 
+const handleContactChange = () => {
+    // Ya no blanqueamos la sucursal obligatoriamente al cambiar de contacto,
+    // porque las sucursales son del cliente.
+};
+
 const technicianUsers = computed(() => {
-    // Filtramos para asegurar que sólo se muestren técnicos activos
     return props.users.filter(u => u.technician);
 });
 </script>
@@ -134,7 +125,7 @@ const technicianUsers = computed(() => {
                     </el-select>
                 </el-form-item>
 
-                <el-form-item label="Contacto" prop="customer_contact_id" :error="form.errors.customer_contact_id">
+                <el-form-item label="Contacto principal" prop="customer_contact_id" :error="form.errors.customer_contact_id">
                     <el-select 
                         v-model="form.customer_contact_id" 
                         placeholder="Seleccionar contacto" 
@@ -146,17 +137,16 @@ const technicianUsers = computed(() => {
                     </el-select>
                 </el-form-item>
 
-                <el-form-item label="Sucursal / sitio" prop="branch" :error="form.errors.branch">
+                <el-form-item label="Sucursal / sitio" prop="customer_branch_id" :error="form.errors.customer_branch_id">
                     <el-select 
-                        v-model="form.branch" 
+                        v-model="form.customer_branch_id" 
                         placeholder="Seleccionar sucursal" 
                         class="w-full"
-                        :disabled="!form.customer_contact_id"
+                        :disabled="!form.customer_id"
                         filterable
-                        allow-create
-                        default-first-option
+                        clearable
                     >
-                        <el-option v-for="branch in contactBranches" :key="branch.value" :label="branch.label" :value="branch.value" />
+                        <el-option v-for="branch in customerBranches" :key="branch.value" :label="branch.label" :value="branch.value" />
                     </el-select>
                 </el-form-item>
             </div>
@@ -207,7 +197,7 @@ const technicianUsers = computed(() => {
         <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
             <div class="flex justify-between items-center mb-4 border-b pb-3 dark:border-gray-700">
                 <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    <el-icon class="text-primary"><UserFilled /></el-icon> Técnicos y programación
+                    <el-icon class="text-primary"><UserFilled /></el-icon> Responsables y programación
                 </h3>
                 <el-button type="primary" link size="small" @click="$emit('open-quick-tech')">
                     + Nuevo técnico rápido
@@ -215,7 +205,7 @@ const technicianUsers = computed(() => {
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- Técnicos Ejecutores (Toma el lugar principal) -->
+                <!-- Múltiples Técnicos Ejecutores -->
                 <el-form-item prop="technicians" :error="form.errors.technicians" :class="isEdit ? 'md:col-span-2' : ''">
                     <template #label>
                         Técnicos asignados (ejecutores)
@@ -254,10 +244,10 @@ const technicianUsers = computed(() => {
                 v-if="!isEdit && form.task_template_id" 
                 title="Generación automática de tareas activada" 
                 type="success" 
-                description="Las tareas definidas en esta plantilla se registrarán en automático para todos los técnicos asignados una vez que guardes el ticket. Recuerda cambier la fecha y hora programada para cada tarea según corresponda."
+                description="Las tareas definidas en esta plantilla se registrarán en automático para todos los técnicos asignados una vez que guardes el ticket."
                 show-icon 
                 :closable="false"
-                class="mb-6 !bg-green-50 dark:!bg-green-900/20 !text-green-700 dark:!text-green-400 border border-green-100 dark:border-green-800"
+                class="mb-6 mt-2 !bg-green-50 dark:!bg-green-900/20 !text-green-700 dark:!text-green-400 border border-green-100 dark:border-green-800"
             />
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
