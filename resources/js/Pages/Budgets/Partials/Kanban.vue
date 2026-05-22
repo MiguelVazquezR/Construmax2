@@ -153,21 +153,21 @@ const handlePageChange = (val) => {
                                 <span class="text-[10px] font-mono text-gray-400">#{{ budget.id }}</span>
                                 <span 
                                     class="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                                    :class="budget.priority === 'Urgente' ? 'bg-red-100 text-red-600' : 'bg-gray-50 text-gray-500 dark:bg-[#27272a]'"
+                                    :class="budget.ticket?.priority === 'Urgente' ? 'bg-red-100 text-red-600' : 'bg-gray-50 text-gray-500 dark:bg-[#27272a]'"
                                 >
-                                    {{ budget.priority }}
+                                    {{ budget.ticket?.priority }}
                                 </span>
                             </div>
                             
                             <!-- Título -->
                             <h4 class="font-bold text-gray-800 dark:text-gray-200 text-sm leading-tight mb-1 group-hover:text-primary transition-colors">
-                                {{ budget.name }}
+                                {{ budget.ticket?.name }}
                             </h4>
                             
                             <!-- Cliente -->
                             <div class="text-xs text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-1">
                                 <el-icon :size="12"><OfficeBuilding /></el-icon>
-                                <span class="truncate">{{ budget.customer?.name }}</span>
+                                <span class="truncate">{{ budget.ticket?.customer?.name }}</span>
                             </div>
 
                             <!-- Footer: Costo y Responsable -->

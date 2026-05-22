@@ -16,18 +16,12 @@ class Budget extends Model implements HasMedia
     use InteractsWithMedia;
 
     protected $fillable = [
-        'name',
-        'service_type',
+        'ticket_id',
         'status',
         'description',
-        'duration',
-        'priority',
-        'currency',      
-        'exchange_rate', 
+        'currency',
+        'exchange_rate',
         'user_id',
-        'customer_id',
-        'customer_contact_id',
-        'branch',
     ];
 
     protected $casts = [
@@ -35,24 +29,14 @@ class Budget extends Model implements HasMedia
     ];
 
     // Relaciones
-    public function customer(): BelongsTo
+    public function ticket(): BelongsTo
     {
-        return $this->belongsTo(Customer::class);
-    }
-
-    public function contact(): BelongsTo
-    {
-        return $this->belongsTo(CustomerContact::class, 'customer_contact_id');
+        return $this->belongsTo(Ticket::class);
     }
 
     public function responsible(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
-    }
-
-    public function ticket(): HasOne
-    {
-        return $this->hasOne(Ticket::class);
     }
 
     public function concepts(): HasMany
@@ -91,12 +75,14 @@ class Budget extends Model implements HasMedia
     public function scopeFilter($query, array $filters)
     {
         $query->when($filters['search'] ?? null, function ($query, $search) {
-            $query->where('name', 'like', '%'.$search.'%')
-                  ->orWhereHas('customer', function($q) use ($search){
+            $query->whereHas('ticket', function ($q) use ($search) {
+                $q->where('name', 'like', '%'.$search.'%')
+                  ->orWhereHas('customer', function ($q) use ($search) {
                       $q->where('name', 'like', '%'.$search.'%');
                   });
+            });
         })->when($filters['status'] ?? null, function ($query, $status) {
-            if($status !== 'all') {
+            if ($status !== 'all') {
                 $query->where('status', $status);
             }
         })->when($filters['user_id'] ?? null, function ($query, $userId) {

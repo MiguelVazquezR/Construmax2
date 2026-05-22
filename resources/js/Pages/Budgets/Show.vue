@@ -294,7 +294,7 @@ const deleteTechPayment = (paymentId) => {
 </script>
 
 <template>
-    <AppLayout :title="`Proyecto: ${budget.name}`">
+    <AppLayout :title="`Presupuesto #${budget.id}`">
         <template #header>
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div class="flex items-center gap-3">
@@ -324,7 +324,7 @@ const deleteTechPayment = (paymentId) => {
             <!-- RESUMEN SUPERIOR -->
             <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border-l-4 border-primary p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-1">{{ budget.name }}</h1>
+                    <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-1">{{ budget.ticket?.name }}</h1>
                     <p class="text-sm text-gray-500 flex items-center gap-2">
                         <el-icon><Calendar /></el-icon> Registro: {{ formatDate(budget.created_at) }}
                         <span class="mx-1">•</span>
@@ -360,12 +360,12 @@ const deleteTechPayment = (paymentId) => {
                         </div>
                         <div class="p-6">
                             <el-descriptions border :column="2">
-                                <el-descriptions-item label="Tipo de servicio">{{ budget.service_type }}</el-descriptions-item>
+                                <el-descriptions-item label="Tipo de servicio">{{ budget.ticket?.service_type }}</el-descriptions-item>
                                 <el-descriptions-item label="Prioridad">
-                                    <el-tag size="small" :type="budget.priority === 'Urgente' ? 'danger' : 'info'">{{ budget.priority }}</el-tag>
+                                    <el-tag size="small" :type="budget.ticket?.priority === 'Urgente' ? 'danger' : 'info'">{{ budget.ticket?.priority }}</el-tag>
                                 </el-descriptions-item>
-                                <el-descriptions-item label="Duración estimada">{{ budget.duration || 'No especificada' }}</el-descriptions-item>
-                                <el-descriptions-item label="Sucursal / Sitio">{{ budget.branch }}</el-descriptions-item>
+                                <el-descriptions-item label="Duración estimada">{{ budget.ticket?.duration || 'No especificada' }}</el-descriptions-item>
+                                <el-descriptions-item label="Sucursal / Sitio">{{ budget.ticket?.branch?.branch_name }}</el-descriptions-item>
                             </el-descriptions>
                             
                             <div class="mt-4 p-4 bg-gray-50/50 dark:bg-[#252529]/50 rounded-md text-sm text-gray-600 dark:text-gray-300 whitespace-pre-line">
@@ -610,16 +610,16 @@ const deleteTechPayment = (paymentId) => {
                         <div class="space-y-3">
                             <div>
                                 <p class="text-xs text-gray-400 uppercase">Empresa</p>
-                                <p class="font-bold text-gray-800 dark:text-white">{{ budget.customer?.name }}</p>
+                                <p class="font-bold text-gray-800 dark:text-white">{{ budget.ticket?.customer?.name }}</p>
                             </div>
                             <div>
                                 <p class="text-xs text-gray-400 uppercase">Contacto</p>
-                                <p class="text-sm text-gray-600 dark:text-gray-300">{{ budget.contact?.name }}</p>
-                                <a :href="`mailto:${budget.contact?.email}`" class="text-xs text-primary hover:underline">{{ budget.contact?.email }}</a>
+                                <p class="text-sm text-gray-600 dark:text-gray-300">{{ budget.ticket?.contact?.name }}</p>
+                                <a :href="`mailto:${budget.ticket?.contact?.email}`" class="text-xs text-primary hover:underline">{{ budget.ticket?.contact?.email }}</a>
                             </div>
                             <div>
                                 <p class="text-xs text-gray-400 uppercase">Sucursal</p>
-                                <p class="text-sm text-gray-600 dark:text-gray-300">{{ budget.branch }}</p>
+                                <p class="text-sm text-gray-600 dark:text-gray-300">{{ budget.ticket?.branch?.branch_name }}</p>
                             </div>
                         </div>
                     </div>

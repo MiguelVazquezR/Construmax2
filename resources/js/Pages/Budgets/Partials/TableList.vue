@@ -43,7 +43,7 @@ const handleRowClick = (row) => {
 
 const deleteBudget = (budget) => {
     ElMessageBox.confirm(
-        `¿Eliminar el presupuesto "${budget.name}"?`,
+        `¿Eliminar el presupuesto del proyecto "${budget.ticket?.name}"?`,
         'Confirmar eliminación',
         { confirmButtonText: 'Eliminar', cancelButtonText: 'Cancelar', type: 'error' }
     ).then(() => {
@@ -75,8 +75,8 @@ const deleteBudget = (budget) => {
                 <el-table-column label="Proyecto / Servicio" min-width="200">
                     <template #default="scope">
                         <div>
-                            <p class="font-bold text-gray-800 dark:text-gray-200 text-sm">{{ scope.row.name }}</p>
-                            <p class="text-xs text-gray-500">{{ scope.row.service_type }}</p>
+                            <p class="font-bold text-gray-800 dark:text-gray-200 text-sm">{{ scope.row.ticket?.name }}</p>
+                            <p class="text-xs text-gray-500">{{ scope.row.ticket?.service_type }}</p>
                         </div>
                     </template>
                 </el-table-column>
@@ -85,7 +85,7 @@ const deleteBudget = (budget) => {
                     <template #default="scope">
                         <div class="flex items-center gap-2">
                             <el-icon class="text-gray-400"><OfficeBuilding /></el-icon>
-                            <span class="text-sm text-gray-600 dark:text-gray-400">{{ scope.row.customer?.name }}</span>
+                            <span class="text-sm text-gray-600 dark:text-gray-400">{{ scope.row.ticket?.customer?.name }}</span>
                         </div>
                     </template>
                 </el-table-column>
@@ -164,11 +164,11 @@ const deleteBudget = (budget) => {
                     <span class="font-mono text-xs text-gray-400">#{{ item.id }}</span>
                     <el-tag :type="getStatusColor(item.status)" size="small">{{ item.status }}</el-tag>
                 </div>
-                <h3 class="font-bold text-gray-800 dark:text-gray-200 text-sm mb-1">{{ item.name }}</h3>
+                <h3 class="font-bold text-gray-800 dark:text-gray-200 text-sm mb-1">{{ item.ticket?.name }}</h3>
                 
                 <div class="flex flex-col gap-1 mb-3">
                     <p class="text-xs text-gray-500 flex items-center gap-1">
-                        <el-icon><OfficeBuilding /></el-icon> {{ item.customer?.name }}
+                        <el-icon><OfficeBuilding /></el-icon> {{ item.ticket?.customer?.name }}
                     </p>
                     <p class="text-xs text-gray-500 flex items-center gap-1">
                         <el-icon><User /></el-icon> {{ item.responsible?.name }}
@@ -188,7 +188,7 @@ const deleteBudget = (budget) => {
                 </div>
 
                 <div class="flex justify-between items-center pt-2 border-t border-gray-50 dark:border-gray-800">
-                    <span class="text-xs text-gray-400">{{ item.service_type }}</span>
+                    <span class="text-xs text-gray-400">{{ item.ticket?.service_type }}</span>
                     <div class="flex gap-2" @click.stop>
                          <Link v-if="can('budgets.edit')" :href="route('budgets.edit', item.id)">
                             <el-button size="small" icon="Edit" circle />

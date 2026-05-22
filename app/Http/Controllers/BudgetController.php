@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Budget;
 use App\Models\BudgetPayment;
 use App\Models\Calendar;
-use App\Models\Customer;
+use App\Models\Ticket;
 use App\Models\User;
 use App\Models\TechnicianPayment;
 use Illuminate\Http\Request;
@@ -26,7 +26,7 @@ class BudgetController extends Controller
         }
 
         return Inertia::render('Budgets/Index', [
-            'budgets' => Budget::with(['customer', 'responsible'])
+            'budgets' => Budget::with(['ticket.customer', 'responsible'])
                 ->withSum('concepts', 'amount')
                 ->filter($filters)
                 ->orderBy('id', 'desc')
@@ -39,8 +39,13 @@ class BudgetController extends Controller
 
     public function create()
     {
+        $tickets = Ticket::with(['customer', 'contact', 'branch'])
+            ->whereDoesntHave('budget')
+            ->orderBy('id', 'desc')
+            ->get();
+
         return Inertia::render('Budgets/Create', [
-            'customers' => Customer::where('is_active', true)->with('contacts')->get(),
+            'tickets' => $tickets,
             'users' => User::where('is_active', true)->get(),
         ]);
     }
@@ -48,18 +53,12 @@ class BudgetController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'service_type' => 'required|string',
+            'ticket_id' => 'required|exists:tickets,id',
             'status' => 'required|string',
-            'user_id' => 'required|exists:users,id',
-            'customer_id' => 'required|exists:customers,id',
-            'customer_contact_id' => 'required|exists:customer_contacts,id',
-            'branch' => 'required|string',
-            'duration' => 'nullable|string',
-            'priority' => 'required|string',
             'description' => 'nullable|string',
             'currency' => 'required|string|in:MXN,USD',
             'exchange_rate' => 'required|numeric|min:0.0001',
+            'user_id' => 'required|exists:users,id',
             'concepts' => 'array|min:1',
             'concepts.*.concept' => 'required|string',
             'concepts.*.amount' => 'required|numeric|min:0',
@@ -69,18 +68,12 @@ class BudgetController extends Controller
 
         DB::transaction(function () use ($validated, &$budget) {
             $budget = Budget::create([
-                'name' => $validated['name'],
-                'service_type' => $validated['service_type'],
+                'ticket_id' => $validated['ticket_id'],
                 'status' => $validated['status'],
-                'user_id' => $validated['user_id'],
-                'customer_id' => $validated['customer_id'],
-                'customer_contact_id' => $validated['customer_contact_id'],
-                'branch' => $validated['branch'],
-                'duration' => $validated['duration'],
-                'priority' => $validated['priority'],
                 'description' => $validated['description'],
-                 'currency' => $validated['currency'],
+                'currency' => $validated['currency'],
                 'exchange_rate' => $validated['exchange_rate'],
+                'user_id' => $validated['user_id'],
             ]);
 
             $budget->concepts()->createMany($validated['concepts']);
@@ -88,7 +81,7 @@ class BudgetController extends Controller
 
         if ($request->boolean('quick_create')) {
             return response()->json([
-                'budget' => $budget?->load('customer'),
+                'budget' => $budget?->load('ticket.customer'),
                 'message' => 'Presupuesto creado exitosamente.'
             ], 201);
         }
@@ -98,20 +91,19 @@ class BudgetController extends Controller
 
     public function show(Budget $budget)
     {
-        // Cargamos ticket.tasks para calcular progreso
-        // Cargamos technicianPayments para ver historial de pagos a técnicos
         $budget->load([
-            'customer', 
-            'contact', 
-            'responsible', 
-            'concepts', 
-            'payments.media', 
-            'media', 
-            'ticket.tasks.assignee', // Necesario para identificar a los técnicos
-            'technicianPayments.media', // Historial de pagos a técnicos
-            'technicianPayments.technician' // Datos del técnico pagado
+            'ticket.customer',
+            'ticket.contact',
+            'ticket.branch',
+            'responsible',
+            'concepts',
+            'payments.media',
+            'media',
+            'ticket.tasks.assignee',
+            'technicianPayments.media',
+            'technicianPayments.technician',
         ]);
-        
+
         $budget->append(['total_cost', 'total_paid', 'balance_due']);
 
         return Inertia::render('Budgets/Show', [
@@ -121,11 +113,19 @@ class BudgetController extends Controller
 
     public function edit(Budget $budget)
     {
-        $budget->load('concepts');
+        $budget->load(['concepts', 'ticket.customer', 'ticket.contact', 'ticket.branch']);
+
+        $tickets = Ticket::with(['customer', 'contact', 'branch'])
+            ->where(function ($q) use ($budget) {
+                $q->whereDoesntHave('budget')
+                  ->orWhere('id', $budget->ticket_id);
+            })
+            ->orderBy('id', 'desc')
+            ->get();
 
         return Inertia::render('Budgets/Edit', [
             'budget' => $budget,
-            'customers' => Customer::where('is_active', true)->with('contacts')->get(),
+            'tickets' => $tickets,
             'users' => User::where('is_active', true)->get(),
         ]);
     }
@@ -133,18 +133,12 @@ class BudgetController extends Controller
     public function update(Request $request, Budget $budget)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'service_type' => 'required|string',
+            'ticket_id' => 'required|exists:tickets,id',
             'status' => 'required|string',
-            'user_id' => 'required|exists:users,id',
-            'customer_id' => 'required|exists:customers,id',
-            'customer_contact_id' => 'required|exists:customer_contacts,id',
-            'branch' => 'required|string',
-            'duration' => 'nullable|string',
-            'priority' => 'required|string',
             'description' => 'nullable|string',
             'currency' => 'required|string|in:MXN,USD',
             'exchange_rate' => 'required|numeric|min:0.0001',
+            'user_id' => 'required|exists:users,id',
             'concepts' => 'array|min:1',
             'concepts.*.concept' => 'required|string',
             'concepts.*.amount' => 'required|numeric|min:0',
@@ -152,18 +146,12 @@ class BudgetController extends Controller
 
         DB::transaction(function () use ($validated, $budget) {
             $budget->update([
-                'name' => $validated['name'],
-                'service_type' => $validated['service_type'],
+                'ticket_id' => $validated['ticket_id'],
                 'status' => $validated['status'],
-                'user_id' => $validated['user_id'],
-                'customer_id' => $validated['customer_id'],
-                'customer_contact_id' => $validated['customer_contact_id'],
-                'branch' => $validated['branch'],
-                'duration' => $validated['duration'],
-                'priority' => $validated['priority'],
                 'description' => $validated['description'],
                 'currency' => $validated['currency'],
                 'exchange_rate' => $validated['exchange_rate'],
+                'user_id' => $validated['user_id'],
             ]);
 
             $budget->concepts()->delete();
@@ -187,8 +175,8 @@ class BudgetController extends Controller
         // --- AUTOMATIZACIÓN CALENDARIO (COBRANZA) ---
         // Si el estado cambia a 'Facturado', verificamos si el cliente tiene días de crédito
         if ($newStatus === 'Facturado' && $oldStatus !== 'Facturado') {
-            $budget->load('customer');
-            $paymentDays = $budget->customer->payment_days;
+            $budget->load('ticket.customer');
+            $paymentDays = $budget->ticket->customer->payment_days;
 
             if ($paymentDays && $paymentDays > 0) {
                 // Calculamos fecha de recordatorio (Hoy + días de crédito)
@@ -198,8 +186,8 @@ class BudgetController extends Controller
                 Calendar::create([
                     'user_id' => $budget->user_id, // Asignamos el recordatorio al responsable del presupuesto
                     'type' => 'Recordatorio',
-                    'title' => "Cobranza: {$budget->name}",
-                    'description' => "Vencimiento de plazo de pago ({$paymentDays} días) para el cliente {$budget->customer->name}.\nPresupuesto #{$budget->id}.",
+                    'title' => "Cobranza: {$budget->ticket->name}",
+                    'description' => "Vencimiento de plazo de pago ({$paymentDays} días) para el cliente {$budget->ticket->customer->name}.\nPresupuesto #{$budget->id}.",
                     'start_time' => $reminderDate,
                     'end_time' => $reminderDate->copy()->addHour(), // Duración de 1 hora por defecto
                     'is_completed' => false,

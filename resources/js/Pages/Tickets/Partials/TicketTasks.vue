@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, computed } from 'vue';
-import { useForm, router } from '@inertiajs/vue3';
+import { useForm, router, usePage } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus';
 import { 
     Check, Share, CopyDocument, ChatDotSquare, Edit, Delete, VideoPlay, 
@@ -159,6 +159,15 @@ const submitTask = () => {
                     showTaskModal.value = false;
                     taskForm.reset();
                     ElMessage.success(isEditing.value ? 'Tarea actualizada' : 'Tarea agendada');
+                    if (usePage().props.flash.warning) {
+                        ElNotification({
+                            title: 'Conflicto de agenda',
+                            message: usePage().props.flash.warning,
+                            type: 'warning',
+                            duration: 8000,
+                            position: 'top-right',
+                        });
+                    }
                 },
                 onError: (errors) => handleFormError(errors)
             };
