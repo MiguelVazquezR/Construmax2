@@ -8,6 +8,7 @@ use App\Services\Costs\CostService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Http\RedirectResponse;
 
 class CostController extends Controller
 {
@@ -25,7 +26,7 @@ class CostController extends Controller
 
         return Inertia::render('Costs/Index', [
             'budgets' => $budgets,
-            'filters' => $request->only(['search', 'status']),
+            'filters' => $request->only(['search', 'catalog', 'branch']),
         ]);
     }
 
@@ -39,6 +40,53 @@ class CostController extends Controller
 
         return Inertia::render('Costs/Show', [
             'budget' => $budgetDetails,
+        ]);
+    }
+
+    public function storeCatalog(Request $request, Budget $budget): RedirectResponse
+    {
+        if (!$request->user()->can('costs.index')) {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'subtotal' => 'required|numeric|min:0',
+            'iva' => 'required|numeric|min:0',
+            'total' => 'required|numeric|min:0',
+            'items' => 'required|array|min:1',
+            'items.*.description' => 'required|string',
+            'items.*.unit' => 'required|string',
+            'items.*.quantity' => 'required|numeric|min:0.01',
+            'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.total' => 'required|numeric|min:0',
+        ]);
+
+        $latestVersion = $budget->latestCatalog ? $budget->latestCatalog->version : 0;
+
+        $catalog = $budget->catalogs()->create([
+            'version' => $latestVersion + 1,
+            'subtotal' => $validated['subtotal'],
+            'iva' => $validated['iva'],
+            'total' => $validated['total'],
+        ]);
+
+        $catalog->items()->createMany($validated['items']);
+
+        return back()->with('success', 'Nueva versión del catálogo guardada correctamente.');
+    }
+
+    public function print(Request $request, Budget $budget): Response
+    {
+        if (!$request->user()->can('costs.index')) {
+            abort(403);
+        }
+
+        $budgetDetails = $this->costService->getBudgetCatalogDetails($budget);
+        $version = $request->query('version');
+
+        return Inertia::render('Costs/Print', [
+            'budget' => $budgetDetails,
+            'version' => $version,
         ]);
     }
 }

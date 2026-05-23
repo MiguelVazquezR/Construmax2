@@ -2,7 +2,7 @@
 import { ref, reactive, computed, watch } from 'vue';
 import { useForm, Link, usePage } from '@inertiajs/vue3';
 import { ElMessage } from 'element-plus';
-import { Money, Loading, Delete, Plus, OfficeBuilding } from '@element-plus/icons-vue';
+import { Money, Loading, Delete, Plus, OfficeBuilding, Camera, ZoomIn } from '@element-plus/icons-vue';
 import axios from 'axios';
 
 const props = defineProps({
@@ -37,6 +37,7 @@ const form = useForm({
     concepts: isEdit && props.budget?.concepts?.length > 0
         ? props.budget.concepts.map(c => ({ concept: c.concept, amount: parseFloat(c.amount) }))
         : [{ concept: '', amount: 0 }],
+    survey_images: [],
 });
 
 // Si es edit y el cliente del ticket actual usa USD, cargar TC al montar
@@ -144,15 +145,24 @@ const submit = () => {
                 return;
             }
 
+            const hasFiles = form.survey_images.length > 0;
+
             if (isEdit) {
-                form.put(route('budgets.update', props.budget.id), {
-                    onSuccess: () => {
-                        ElMessage.success('Presupuesto actualizado correctamente');
-                        emit('submitted');
-                    },
-                });
+                form
+                    .transform(data => ({
+                        ...data,
+                        _method: 'PUT',
+                    }))
+                    .post(route('budgets.update', props.budget.id), {
+                        forceFormData: hasFiles || false,
+                        onSuccess: () => {
+                            ElMessage.success('Presupuesto actualizado correctamente');
+                            emit('submitted');
+                        },
+                    });
             } else {
                 form.post(route('budgets.store'), {
+                    forceFormData: hasFiles || false,
                     onSuccess: () => {
                         ElMessage.success('Presupuesto registrado correctamente');
                         emit('submitted');
@@ -163,6 +173,31 @@ const submit = () => {
             ElMessage.error('Completa los campos obligatorios.');
         }
     });
+};
+
+// --- IMÁGENES DE LEVANTAMIENTO ---
+
+const surveyImageList = ref([]);
+const surveyUploadRef = ref(null);
+
+const handleSurveyImagesChange = (file, fileListArg) => {
+    surveyImageList.value = fileListArg;
+    form.survey_images = fileListArg.map(f => f.raw);
+};
+
+const handleSurveyImagesRemove = (file, fileListArg) => {
+    surveyImageList.value = fileListArg;
+    form.survey_images = fileListArg.map(f => f.raw);
+};
+
+const removeSurveyImage = (index) => {
+    surveyImageList.value.splice(index, 1);
+    form.survey_images = surveyImageList.value.map(f => f.raw);
+};
+
+const previewSurveyImage = (file) => {
+    const url = file.url || URL.createObjectURL(file.raw);
+    window.open(url, '_blank');
 };
 
 defineExpose({ form });
@@ -200,7 +235,7 @@ defineExpose({ form });
                             <el-option
                                 v-for="ticket in tickets"
                                 :key="ticket.id"
-                                :label="`#${ticket.id} — ${ticket.name} (${ticket.customer?.name})`"
+                                :label="`${ticket.folio} — ${ticket.name} (${ticket.customer?.name})`"
                                 :value="ticket.id"
                             />
                         </el-select>
@@ -377,6 +412,60 @@ defineExpose({ form });
                     </div>
                 </div>
 
+                <!-- Tarjeta: Imágenes de levantamiento -->
+                <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                            <el-icon class="text-primary"><Camera /></el-icon> Imágenes de levantamiento
+                        </h3>
+                        <span class="text-xs text-gray-400">Opcional</span>
+                    </div>
+
+                    <p class="text-sm text-gray-500 mb-4">
+                        Adjunta las fotos que tomó el técnico durante el levantamiento para que el área de costos pueda revisar los detalles del trabajo requerido.
+                    </p>
+
+                    <el-upload
+                        ref="surveyUploadRef"
+                        v-model:file-list="surveyImageList"
+                        :auto-upload="false"
+                        :on-change="handleSurveyImagesChange"
+                        :on-remove="handleSurveyImagesRemove"
+                        list-type="picture-card"
+                        multiple
+                        accept="image/*"
+                    >
+                        <template #default>
+                            <el-icon><Plus /></el-icon>
+                        </template>
+                        <template #file="{ file }">
+                            <div class="relative group">
+                                <img
+                                    :src="file.url"
+                                    class="w-full h-full object-cover rounded"
+                                    alt="Preview"
+                                />
+                                <div class="absolute inset-0 bg-black/50 rounded opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                    <el-button
+                                        circle
+                                        size="small"
+                                        type="primary"
+                                        :icon="ZoomIn"
+                                        @click="previewSurveyImage(file)"
+                                    />
+                                    <el-button
+                                        circle
+                                        size="small"
+                                        type="danger"
+                                        :icon="Delete"
+                                        @click="surveyUploadRef.handleRemove(file)"
+                                    />
+                                </div>
+                            </div>
+                        </template>
+                    </el-upload>
+                </div>
+
             </div>
 
             <!-- COLUMNA DERECHA: Resumen + Acción -->
@@ -402,6 +491,10 @@ defineExpose({ form });
                         <div class="flex justify-between">
                             <span class="text-gray-500">Conceptos</span>
                             <span class="font-medium text-gray-800 dark:text-white">{{ form.concepts.length }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-500">Imágenes</span>
+                            <span class="font-medium text-gray-800 dark:text-white">{{ form.survey_images.length || 0 }}</span>
                         </div>
                         <el-divider class="!my-3" />
                         <div class="flex justify-between text-base">

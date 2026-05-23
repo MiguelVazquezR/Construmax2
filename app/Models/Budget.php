@@ -60,9 +60,20 @@ class Budget extends Model implements HasMedia
         return $this->hasMany(TechnicianPayment::class);
     }
 
+    public function catalogs(): HasMany
+    {
+        return $this->hasMany(BudgetCatalog::class);
+    }
+ 
+    public function latestCatalog(): HasOne
+    {
+        return $this->hasOne(BudgetCatalog::class)->latestOfMany('version');
+    }
+
     public function registerMediaCollections(): void
     {
         $this->addMediaCollection('invoice_document')->singleFile();
+        $this->addMediaCollection('survey_images');
     }
 
     // Atributos Calculados

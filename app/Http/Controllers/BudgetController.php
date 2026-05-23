@@ -8,6 +8,7 @@ use App\Models\Calendar;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Models\TechnicianPayment;
+use App\Services\Media\ImageOptimizerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -15,6 +16,10 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class BudgetController extends Controller
 {
+    public function __construct(
+        private readonly ImageOptimizerService $imageOptimizer,
+    ) {}
+
     public function index(Request $request)
     {
         $perPage = $request->input('perPage', 10);
@@ -62,6 +67,8 @@ class BudgetController extends Controller
             'concepts' => 'array|min:1',
             'concepts.*.concept' => 'required|string',
             'concepts.*.amount' => 'required|numeric|min:0',
+            'survey_images' => 'nullable|array',
+            'survey_images.*' => 'image|max:10240',
         ]);
 
         $budget = null;
@@ -78,6 +85,15 @@ class BudgetController extends Controller
 
             $budget->concepts()->createMany($validated['concepts']);
         });
+
+        if ($request->hasFile('survey_images')) {
+            foreach ($request->file('survey_images') as $image) {
+                $optimizedPath = $this->imageOptimizer->optimize($image);
+                $budget?->addMedia($optimizedPath)
+                    ->usingFileName($image->getClientOriginalName())
+                    ->toMediaCollection('survey_images');
+            }
+        }
 
         if ($request->boolean('quick_create')) {
             return response()->json([
@@ -142,6 +158,8 @@ class BudgetController extends Controller
             'concepts' => 'array|min:1',
             'concepts.*.concept' => 'required|string',
             'concepts.*.amount' => 'required|numeric|min:0',
+            'survey_images' => 'nullable|array',
+            'survey_images.*' => 'image|max:10240',
         ]);
 
         DB::transaction(function () use ($validated, $budget) {
@@ -157,6 +175,15 @@ class BudgetController extends Controller
             $budget->concepts()->delete();
             $budget->concepts()->createMany($validated['concepts']);
         });
+
+        if ($request->hasFile('survey_images')) {
+            foreach ($request->file('survey_images') as $image) {
+                $optimizedPath = $this->imageOptimizer->optimize($image);
+                $budget->addMedia($optimizedPath)
+                    ->usingFileName($image->getClientOriginalName())
+                    ->toMediaCollection('survey_images');
+            }
+        }
 
         return redirect()->route('budgets.index')->with('success', 'Presupuesto actualizado correctamente.');
     }
