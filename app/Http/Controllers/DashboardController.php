@@ -31,9 +31,11 @@ class DashboardController extends Controller
             ->limit(5)
             ->get();
 
-        $myPendingTickets = Ticket::where('user_id', $user->id)
+        $myPendingTickets = Ticket::whereHas('tasks', function ($q) use ($user) {
+                $q->where('user_id', $user->id);
+            })
             ->whereNotIn('status', ['Completado', 'Cancelado'])
-            ->with(['budget.customer'])
+            ->with(['customer'])
             ->orderBy('priority', 'desc')
             ->orderBy('scheduled_start', 'asc')
             ->limit(5)
@@ -73,7 +75,7 @@ class DashboardController extends Controller
 
             $kpis['crm'] = [
                 'customers_month' => Customer::whereMonth('created_at', $today->month)->count(),
-                'budgets_pending' => Budget::whereIn('status', ['Presupuesto enviado', 'Trabajo en proceso'])->count(),
+                'budgets_pending' => Budget::whereIn('status', ['Presupuesto enviado'])->count(),
                 // Enviamos los totales separados (sin conversión)
                 'sales_month_mxn' => $totalMXN,
                 'sales_month_usd' => $totalUSD,
@@ -87,6 +89,30 @@ class DashboardController extends Controller
                     ->where('scheduled_end', '<', $today)->count(),
             ];
         }
+
+        // Módulo de Costos: presupuestos en Cotización
+        $costsBudgets = Budget::where('status', 'Cotización')
+            ->with(['ticket.customer'])
+            ->latest()
+            ->limit(5)
+            ->get();
+
+        $kpis['costs'] = [
+            'total' => Budget::where('status', 'Cotización')->count(),
+            'budgets' => $costsBudgets,
+        ];
+
+        // Módulo de Facturación: presupuestos en Facturación
+        $invoicingBudgets = Budget::where('status', 'Facturación')
+            ->with(['ticket.customer'])
+            ->latest()
+            ->limit(5)
+            ->get();
+
+        $kpis['invoicing'] = [
+            'total' => Budget::where('status', 'Facturación')->count(),
+            'budgets' => $invoicingBudgets,
+        ];
 
         return Inertia::render('Dashboard', [
             'my_day' => [

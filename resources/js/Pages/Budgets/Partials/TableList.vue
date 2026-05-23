@@ -20,8 +20,10 @@ const formatCurrency = (value, currency = 'MXN') => {
 const getStatusColor = (status) => {
     const map = {
         'Borrador': 'info',
+        'Cotización': 'warning',
         'Presupuesto enviado': 'primary',
         'Facturado': 'warning',
+        'Facturación': 'danger',
         'Trabajo en proceso': 'primary',
         'Trabajo terminado': 'success',
         'Pagado': 'success',
@@ -81,11 +83,22 @@ const deleteBudget = (budget) => {
                     </template>
                 </el-table-column>
 
-                <el-table-column label="Cliente" min-width="180">
+                <el-table-column label="Cliente / Sucursal" min-width="220">
                     <template #default="scope">
-                        <div class="flex items-center gap-2">
-                            <el-icon class="text-gray-400"><OfficeBuilding /></el-icon>
-                            <span class="text-sm text-gray-600 dark:text-gray-400">{{ scope.row.ticket?.customer?.name }}</span>
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <el-icon class="text-gray-400"><OfficeBuilding /></el-icon>
+                                <span class="text-sm text-gray-600 dark:text-gray-400">{{ scope.row.ticket?.customer?.name }}</span>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-0.5 ml-6">
+                                {{ scope.row.ticket?.branch?.branch_name || '—' }}
+                                <template v-if="scope.row.ticket?.branch?.unit">
+                                    · {{ scope.row.ticket.branch.unit }}
+                                </template>
+                                <template v-if="scope.row.ticket?.branch?.region">
+                                    · {{ scope.row.ticket.branch.region }}
+                                </template>
+                            </p>
                         </div>
                     </template>
                 </el-table-column>
@@ -169,6 +182,11 @@ const deleteBudget = (budget) => {
                 <div class="flex flex-col gap-1 mb-3">
                     <p class="text-xs text-gray-500 flex items-center gap-1">
                         <el-icon><OfficeBuilding /></el-icon> {{ item.ticket?.customer?.name }}
+                    </p>
+                    <p class="text-xs text-gray-400 ml-5">
+                        {{ item.ticket?.branch?.branch_name || '—' }}
+                        <template v-if="item.ticket?.branch?.unit"> · {{ item.ticket.branch.unit }}</template>
+                        <template v-if="item.ticket?.branch?.region"> · {{ item.ticket.branch.region }}</template>
                     </p>
                     <p class="text-xs text-gray-500 flex items-center gap-1">
                         <el-icon><User /></el-icon> {{ item.responsible?.name }}

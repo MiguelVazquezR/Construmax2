@@ -23,6 +23,9 @@ return new class extends Migration
             // --- CAMPOS DE MONEDA ---
             $table->string('currency', 3)->default('MXN'); // MXN, USD
             $table->decimal('exchange_rate', 10, 4)->default(1); // Valor del dólar si aplica
+
+            $table->date('invoice_date')->nullable();
+            $table->string('invoice_number')->nullable();
             
             // Vendedor o responsable de elaborar el presupuesto
             $table->foreignId('user_id')->constrained()->comment('Vendedor / Responsable Comercial'); 

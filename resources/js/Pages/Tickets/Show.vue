@@ -5,6 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import TicketTasks from '@/Pages/Tickets/Partials/TicketTasks.vue';
 import TicketInfo from '@/Pages/Tickets/Partials/TicketInfo.vue';
 import TicketTimeline from '@/Pages/Tickets/Partials/TicketTimeline.vue';
+import TicketBudgetCard from '@/Pages/Tickets/Partials/TicketBudgetCard.vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
 const { can } = usePermissions();
@@ -109,6 +110,13 @@ const getStatusColor = (status) => {
                     <!-- TAB 3: CRONOGRAMA -->
                     <el-tab-pane label="Cronograma" name="timeline">
                         <TicketTimeline :ticket="ticket" />
+                    </el-tab-pane>
+
+                    <!-- TAB 4: PRESUPUESTO -->
+                    <el-tab-pane label="Presupuesto" name="budget">
+                        <div class="pb-4">
+                            <TicketBudgetCard :budget="ticket.budget" :ticket-id="ticket.id" :ticket="ticket" />
+                        </div>
                     </el-tab-pane>
 
                 </el-tabs>

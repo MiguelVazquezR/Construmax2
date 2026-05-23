@@ -19,14 +19,14 @@ class BudgetController extends Controller
     {
         $perPage = $request->input('perPage', 10);
         
-        $filters = $request->only(['search', 'status', 'perPage', 'user_id']);
+        $filters = $request->only(['search', 'status', 'perPage', 'user_id', 'branch']);
 
-        if (!$request->has('user_id') && !$request->has('search') && !$request->has('status') && !$request->has('page')) {
+        if (!$request->has('user_id') && !$request->has('search') && !$request->has('status') && !$request->has('page') && !$request->has('branch')) {
             $filters['user_id'] = [auth()->id()];
         }
 
         return Inertia::render('Budgets/Index', [
-            'budgets' => Budget::with(['ticket.customer', 'responsible'])
+            'budgets' => Budget::with(['ticket.customer', 'ticket.branch', 'responsible'])
                 ->withSum('concepts', 'amount')
                 ->filter($filters)
                 ->orderBy('id', 'desc')
@@ -99,7 +99,7 @@ class BudgetController extends Controller
             'concepts',
             'payments.media',
             'media',
-            'ticket.tasks.assignee',
+            'ticket.tasks.assignee.technician',
             'technicianPayments.media',
             'technicianPayments.technician',
         ]);

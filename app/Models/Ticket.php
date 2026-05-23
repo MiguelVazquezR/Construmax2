@@ -109,7 +109,7 @@ class Ticket extends Model implements HasMedia
         $id = $this->id;
         $code = "UND";
 
-        if ($this->relationLoaded('branch') && $this->branch) {
+        if ($this->branch) {
             $region = strtoupper(substr(preg_replace('/[^a-zA-Z]/', '', $this->branch->region ?? 'X'), 0, 3));
             $country = strtoupper(substr(preg_replace('/[^a-zA-Z]/', '', $this->branch->country ?? 'X'), 0, 2));
             $code = "{$region}-{$country}";

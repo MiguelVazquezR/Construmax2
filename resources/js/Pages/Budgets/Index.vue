@@ -21,6 +21,7 @@ const viewMode = ref(localStorage.getItem('budget_view_mode') || 'list');
 const search = ref(props.filters.search || '');
 const statusFilter = ref(props.filters.status || 'all');
 const perPage = ref(parseInt(props.filters.perPage) || 10);
+const branchFilter = ref(props.filters.branch || '');
 
 // Lógica de inicialización del filtro de usuarios
 // Si viene 'all' o vacío, el array es vacío (se ven todos).
@@ -34,8 +35,10 @@ const userFilter = ref(transformUserId(props.filters.user_id));
 
 const statuses = [
     'Borrador', 
+    'Cotización',
     'Presupuesto enviado', 
     'Facturado', 
+    'Facturación',
     'Trabajo en proceso', 
     'Trabajo terminado', 
     'Pagado', 
@@ -54,8 +57,7 @@ const fetchData = debounce(() => {
         search: search.value, 
         status: statusFilter.value,
         perPage: perPage.value,
-        // Si el array está vacío, enviamos 'all' explícitamente para que el Backend 
-        // sepa que queremos ver TODO y no aplique el filtro por defecto (Usuario Autenticado)
+        branch: branchFilter.value,
         user_id: userFilter.value.length > 0 ? userFilter.value : 'all',
     }, {
         preserveState: true,
@@ -64,7 +66,7 @@ const fetchData = debounce(() => {
     });
 }, 300);
 
-watch([search, statusFilter, perPage, userFilter], fetchData);
+watch([search, statusFilter, perPage, userFilter, branchFilter], fetchData);
 </script>
 
 <template>
@@ -110,6 +112,15 @@ watch([search, statusFilter, perPage, userFilter], fetchData);
                             <el-option v-for="st in statuses" :key="st" :label="st" :value="st" />
                         </el-select>
                     </div>
+
+                    <div class="w-full sm:w-48">
+                        <el-input
+                            v-model="branchFilter"
+                            placeholder="Sucursal, región, unidad..."
+                            clearable
+                            prefix-icon="Search"
+                        />
+                    </div>
                 </div>
 
                 <!-- Acciones Derecha -->
@@ -154,6 +165,16 @@ watch([search, statusFilter, perPage, userFilter], fetchData);
             <!-- Contenido Dinámico -->
             <transition name="el-fade-in-linear" mode="out-in">
                 <div :key="viewMode">
+                    <el-alert
+                        type="info"
+                        :closable="false"
+                        show-icon
+                        class="mb-4"
+                    >
+                        <template #title>
+                            Los presupuestos permiten el control administrativo de un ticket: registro de costos, moneda, pagos del cliente y pagos a técnicos.
+                        </template>
+                    </el-alert>
                     <TableList 
                         v-if="viewMode === 'list'" 
                         :budgets="budgets" 

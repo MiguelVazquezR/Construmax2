@@ -133,7 +133,10 @@ class TicketController extends Controller
             'customer', 
             'contact', 
             'branch',
-            'budget', 
+            'budget.concepts',
+            'budget.payments',
+            'budget.responsible',
+            'budget.technicianPayments.technician.technician',
             'tasks.assignee', 
             'tasks.media', 
             'media'

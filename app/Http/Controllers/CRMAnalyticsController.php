@@ -29,7 +29,7 @@ class CRMAnalyticsController extends Controller
         
         $budgetsInRange = Budget::whereBetween('created_at', [$startDate, $endDate]);
         $totalBudgets = $budgetsInRange->count();
-        $wonBudgets = (clone $budgetsInRange)->whereIn('status', ['Facturado', 'Trabajo en proceso', 'Trabajo terminado', 'Pagado'])->count();
+        $wonBudgets = (clone $budgetsInRange)->whereIn('status', ['Facturado', 'Pagado'])->count();
         $conversionRate = $totalBudgets > 0 ? round(($wonBudgets / $totalBudgets) * 100, 1) : 0;
 
         // --- LÓGICA DE INGRESOS (REVENUE BUCKETS) ---
