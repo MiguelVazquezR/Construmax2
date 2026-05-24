@@ -144,6 +144,8 @@ class Ticket extends Model implements HasMedia
             }
         } elseif ($completed === $total) {
             $newStatus = 'Ejecutado';
+
+
         } else {
             // Si hay tareas pero ninguna está completada, y el ticket es nuevo (Borrador), lo mantenemos en Borrador.
             if ($completed === 0 && $currentStatus === 'Borrador') {

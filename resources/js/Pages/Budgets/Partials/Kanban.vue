@@ -17,9 +17,9 @@ watch(() => props.budgets.data, (newVal) => {
 
 // Configuración de Columnas con colores fijos (Hex)
 const columns = [
-    { id: 'Borrador', label: 'Borrador', color: '#9ca3af' }, // Gray
-    { id: 'Cotización', label: 'Cotización', color: '#a78bfa' }, // Purple
-    { id: 'Presupuesto enviado', label: 'Enviado', color: '#60a5fa' }, // Blue
+    { id: 'Cotización', label: 'Cotización (catálogo)', color: '#a78bfa' }, // Purple
+    { id: 'Presupuesto enviado', label: 'Catálogo enviado a cliente', color: '#60a5fa' }, // Blue
+    { id: 'Trabajo en proceso', label: 'Ticket en ejecución', color: '#3b82f6' }, // Sky
     { id: 'Facturación', label: 'Facturación', color: '#f97316' }, // Orange-dark
     { id: 'Facturado', label: 'Facturado', color: '#facc15' }, // Yellow
     { id: 'Pagado', label: 'Pagado', color: '#34d399' }, // Emerald

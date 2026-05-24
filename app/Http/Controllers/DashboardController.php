@@ -75,7 +75,7 @@ class DashboardController extends Controller
 
             $kpis['crm'] = [
                 'customers_month' => Customer::whereMonth('created_at', $today->month)->count(),
-                'budgets_pending' => Budget::whereIn('status', ['Presupuesto enviado'])->count(),
+                'budgets_pending' => Budget::whereHas('ticket', fn($q) => $q->where('status', 'En proceso'))->count(),
                 // Enviamos los totales separados (sin conversión)
                 'sales_month_mxn' => $totalMXN,
                 'sales_month_usd' => $totalUSD,
@@ -90,27 +90,27 @@ class DashboardController extends Controller
             ];
         }
 
-        // Módulo de Costos: presupuestos en Cotización
-        $costsBudgets = Budget::where('status', 'Cotización')
+        // Módulo de Costos: presupuestos con ticket en Catálogo
+        $costsBudgets = Budget::whereHas('ticket', fn($q) => $q->where('status', 'Catálogo'))
             ->with(['ticket.customer'])
             ->latest()
             ->limit(5)
             ->get();
 
         $kpis['costs'] = [
-            'total' => Budget::where('status', 'Cotización')->count(),
+            'total' => Budget::whereHas('ticket', fn($q) => $q->where('status', 'Catálogo'))->count(),
             'budgets' => $costsBudgets,
         ];
 
-        // Módulo de Facturación: presupuestos en Facturación
-        $invoicingBudgets = Budget::where('status', 'Facturación')
+        // Módulo de Facturación: presupuestos con ticket en Ejecutado
+        $invoicingBudgets = Budget::whereHas('ticket', fn($q) => $q->where('status', 'Ejecutado'))
             ->with(['ticket.customer'])
             ->latest()
             ->limit(5)
             ->get();
 
         $kpis['invoicing'] = [
-            'total' => Budget::where('status', 'Facturación')->count(),
+            'total' => Budget::whereHas('ticket', fn($q) => $q->where('status', 'Ejecutado'))->count(),
             'budgets' => $invoicingBudgets,
         ];
 

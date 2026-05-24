@@ -17,17 +17,17 @@ const formatCurrency = (value, currency = 'MXN') => {
     }).format(value || 0);
 };
 
-const getStatusColor = (status) => {
+const getTicketStatusColor = (status) => {
     const map = {
         'Borrador': 'info',
         'Cotización': 'warning',
-        'Presupuesto enviado': 'primary',
-        'Facturado': 'warning',
+        'Proceso de ejecución': 'primary',
+        'Ejecutado': 'success',
         'Facturación': 'danger',
-        'Trabajo en proceso': 'primary',
-        'Trabajo terminado': 'success',
+        'Facturado': 'warning',
         'Pagado': 'success',
-        'Perdido': 'danger'
+        'Completado': 'success',
+        'Cancelado': 'danger',
     };
     return map[status] || 'info';
 };
@@ -123,8 +123,8 @@ const deleteBudget = (budget) => {
 
                 <el-table-column label="Estado" width="140" align="center">
                     <template #default="scope">
-                        <el-tag :type="getStatusColor(scope.row.status)" size="small" effect="light" class="w-full text-center">
-                            {{ scope.row.status }}
+                        <el-tag :type="getTicketStatusColor(scope.row.ticket?.status)" size="small" effect="light" class="w-full text-center">
+                            {{ scope.row.ticket?.status || 'N/A' }}
                         </el-tag>
                     </template>
                 </el-table-column>
@@ -175,7 +175,7 @@ const deleteBudget = (budget) => {
             <div v-for="item in budgets.data" :key="item.id" class="p-4 border-b border-gray-100 dark:border-[#2b2b2e] last:border-0 hover:bg-gray-50 dark:hover:bg-[#252529] cursor-pointer" @click="handleRowClick(item)">
                 <div class="flex justify-between items-start mb-2">
                     <span class="font-mono text-xs text-gray-400">#{{ item.id }}</span>
-                    <el-tag :type="getStatusColor(item.status)" size="small">{{ item.status }}</el-tag>
+                    <el-tag :type="getTicketStatusColor(item.ticket?.status)" size="small">{{ item.ticket?.status || 'N/A' }}</el-tag>
                 </div>
                 <h3 class="font-bold text-gray-800 dark:text-gray-200 text-sm mb-1">{{ item.ticket?.name }}</h3>
                 

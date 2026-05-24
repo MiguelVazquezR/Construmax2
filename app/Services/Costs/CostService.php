@@ -42,7 +42,7 @@ class CostService
                     'ticket_name'    => $budget->ticket->name ?? 'N/A',
                     'ticket_folio'   => $budget->ticket->folio ?? 'N/A',
                     'customer_name'  => $budget->ticket->customer->name ?? 'N/A',
-                    'status'         => $budget->status,
+                    'status'         => $budget->ticket->status ?? 'N/A',
                     'total_cost'     => $budget->latestCatalog
                         ? $budget->latestCatalog->total
                         : $budget->total_cost,
@@ -65,18 +65,26 @@ class CostService
 
         return [
             'id'            => $budget->id,
-            'status'        => $budget->status,
+            'status'        => $budget->ticket->status ?? 'N/A',
             'currency'      => $budget->currency,
             'exchange_rate' => $budget->exchange_rate,
             'description'   => $budget->description,
             'ticket'        => [
-                'id'           => $budget->ticket->id ?? null,
-                'folio'        => $budget->ticket->folio ?? 'N/A',
-                'name'         => $budget->ticket->name ?? 'N/A',
-                'service_type' => $budget->ticket->service_type ?? 'N/A',
-            ],
-            'customer'      => [
-                'name' => $budget->ticket->customer->name ?? 'N/A',
+                'id'              => $budget->ticket->id ?? null,
+                'folio'           => $budget->ticket->folio ?? 'N/A',
+                'name'            => $budget->ticket->name ?? 'N/A',
+                'service_type'    => $budget->ticket->service_type ?? 'N/A',
+                'scheduled_start' => $budget->ticket->scheduled_start ?? null,
+                'scheduled_end'   => $budget->ticket->scheduled_end ?? null,
+                'customer'        => [
+                    'name' => $budget->ticket->customer->name ?? 'N/A',
+                    'rfc'  => $budget->ticket->customer->rfc ?? 'N/A',
+                ],
+                'branch'          => [
+                    'branch_name' => $budget->ticket->branch->branch_name ?? 'N/D',
+                    'region'      => $budget->ticket->branch->region ?? 'N/D',
+                    'country'     => $budget->ticket->branch->country ?? 'N/D',
+                ],
             ],
             'latest_catalog' => $budget->latestCatalog,
             'catalogs'      => $budget->catalogs,

@@ -92,7 +92,12 @@ const openPreview = (file) => {
 
             <div class="flex justify-between items-center">
                 <span class="text-sm text-gray-500">Total proyecto</span>
-                <span class="font-bold text-gray-800 dark:text-white">{{ formatCurrency(budget.total_cost) }}</span>
+                <div class="text-right">
+                    <span class="font-bold text-gray-800 dark:text-white">{{ formatCurrency(budget.total_cost) }}</span>
+                    <span v-if="budget.total_catalog_cost > 0" class="text-[10px] text-primary block">
+                        (último catálogo)
+                    </span>
+                </div>
             </div>
             <div class="flex justify-between items-center text-green-600">
                 <span class="text-sm">Pagado</span>

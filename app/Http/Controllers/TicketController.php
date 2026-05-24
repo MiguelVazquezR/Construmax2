@@ -6,6 +6,7 @@ use App\Models\Ticket;
 use App\Models\User;
 use App\Models\Customer;
 use App\Models\TaskTemplate;
+use App\Services\Media\ImageOptimizerService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\URL;
@@ -13,12 +14,15 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class TicketController extends Controller
 {
+    public function __construct(
+        private readonly ImageOptimizerService $imageOptimizer,
+    ) {}
     public function index(Request $request)
     {
         $perPage = $request->input('perPage', 20);
         $sort = $request->input('sort', 'delay'); 
 
-        $query = Ticket::with(['customer', 'contact', 'branch', 'tasks.assignee']);
+        $query = Ticket::with(['customer', 'contact', 'branch', 'tasks.assignee', 'budget']);
 
         // BÚSQUEDA POR FOLIO
         if ($request->filled('folio')) {
@@ -215,7 +219,14 @@ class TicketController extends Controller
         
         if ($request->hasFile('files')) {
             foreach ($request->file('files') as $file) {
-                $ticket->addMedia($file)->toMediaCollection('ticket_evidence');
+                if (str_starts_with($file->getMimeType(), 'image/')) {
+                    $optimizedPath = $this->imageOptimizer->optimize($file);
+                    $ticket->addMedia($optimizedPath)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('ticket_evidence');
+                } else {
+                    $ticket->addMedia($file)->toMediaCollection('ticket_evidence');
+                }
             }
         }
         return back()->with('success', 'Archivo general agregado.');

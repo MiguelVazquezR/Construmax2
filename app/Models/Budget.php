@@ -31,7 +31,7 @@ class Budget extends Model implements HasMedia
         'invoice_date'  => 'date',
     ];
 
-    protected $appends = ['total_cost', 'total_paid', 'balance_due'];
+    protected $appends = ['total_cost', 'total_paid', 'balance_due', 'total_catalog_cost'];
 
     // Relaciones
     public function ticket(): BelongsTo
@@ -77,17 +77,30 @@ class Budget extends Model implements HasMedia
     }
 
     // Atributos Calculados
-    public function getTotalCostAttribute()
+    public function getTotalCatalogCostAttribute(): float
     {
-        return $this->concepts->sum('amount');
+        $catalog = $this->relationLoaded('latestCatalog')
+            ? $this->latestCatalog
+            : $this->latestCatalog()->first();
+
+        return $catalog ? (float) $catalog->total : 0;
     }
 
-    public function getTotalPaidAttribute()
+    public function getTotalCostAttribute(): float
     {
-        return $this->payments->sum('amount');
+        $catalogTotal = $this->getTotalCatalogCostAttribute();
+
+        return $catalogTotal > 0
+            ? $catalogTotal
+            : (float) $this->concepts->sum('amount');
     }
 
-    public function getBalanceDueAttribute()
+    public function getTotalPaidAttribute(): float
+    {
+        return (float) $this->payments->sum('amount');
+    }
+
+    public function getBalanceDueAttribute(): float
     {
         return $this->total_cost - $this->total_paid;
     }
@@ -104,7 +117,9 @@ class Budget extends Model implements HasMedia
             });
         })->when($filters['status'] ?? null, function ($query, $status) {
             if ($status !== 'all') {
-                $query->where('status', $status);
+                $query->whereHas('ticket', function ($q) use ($status) {
+                    $q->where('status', $status);
+                });
             }
         })->when($filters['user_id'] ?? null, function ($query, $userId) {
             if ($userId !== 'all' && !empty($userId)) {

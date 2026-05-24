@@ -4,6 +4,10 @@ import { Link, usePage } from '@inertiajs/vue3';
 import ApplicationMark from '@/Components/ApplicationMark.vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
+// Iconos
+import {  
+    Money, Document 
+} from '@element-plus/icons-vue';
 
 defineProps({
     isCollapse: Boolean,
@@ -123,11 +127,7 @@ const activeMenu = computed(() => {
 
                 <Link v-if="can('invoices.index')" :href="route('invoices.index')">
                     <el-menu-item class="!bg-dark" index="invoices.index">
-                        <el-icon><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                                stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                                <path stroke-linecap="round" stroke-linejoin="round"
-                                    d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                            </svg></el-icon>
+                        <el-icon><Document/></el-icon>
                         <template #title><span>Facturación</span></template>
                     </el-menu-item>
                 </Link>
@@ -135,7 +135,7 @@ const activeMenu = computed(() => {
                 <!-- Costos -->
                <Link v-if="can('costs.index')" :href="route('costs.index')">
                    <el-menu-item class="!bg-dark" index="costs.index">
-                       <el-icon><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9 14.25a.75.75 0 01.75-.75h4.5a.75.75 0 010 1.5h-4.5a.75.75 0 01-.75-.75zM9 10.5a.75.75 0 01.75-.75h4.5a.75.75 0 010 1.5h-4.5a.75.75 0 01-.75-.75zM12 21a9.003 9.003 0 008.716-6.747M12 21a9.003 9.003 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.974 0-5.749-.536-8.227-1.503M19.843 7.582A11.954 11.954 0 0012 10.5c-2.974 0-5.749-.536-8.227-1.503" /></svg></el-icon>
+                       <el-icon><Money/></el-icon>
                        <template #title><span>Costos</span></template>
                    </el-menu-item>
                </Link>

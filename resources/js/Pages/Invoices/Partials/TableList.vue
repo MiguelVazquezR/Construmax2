@@ -19,7 +19,7 @@ const formatCurrency = (value, currency = 'MXN') => {
 
 const getStatusColor = (status) => {
     const map = {
-        'Facturación': 'danger',
+        'Ejecutado': 'danger',
         'Facturado': 'success',
     };
     return map[status] || 'info';
@@ -153,7 +153,7 @@ const submitInvoice = () => {
                                 <el-button type="info" size="small" icon="Download" circle />
                             </a>
                             <el-button
-                                v-if="scope.row.status === 'Facturación' && can('invoices.upload')"
+                                v-if="scope.row.status === 'Ejecutado' && can('invoices.upload')"
                                 type="primary"
                                 size="small"
                                 @click="openUploadModal(scope.row)"

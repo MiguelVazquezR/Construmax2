@@ -243,7 +243,7 @@ const getBudgetServiceType = (budget) => {
                         <el-icon class="text-purple-500"><Money /></el-icon>
                     </div>
                     <p class="text-3xl font-bold text-gray-800 dark:text-white">{{ kpis.costs?.total || 0 }}</p>
-                    <p class="text-xs text-gray-500">Presupuestos en cotización</p>
+                    <p class="text-xs text-gray-500">Presupuestos en cotización (creación de catálogo)</p>
 
                     <div v-if="kpis.costs?.budgets?.length > 0" class="mt-4 space-y-2">
                         <div v-for="budget in kpis.costs.budgets" :key="budget.id" class="flex items-center justify-between p-2 bg-purple-50 dark:bg-purple-900/10 rounded text-xs">
@@ -251,12 +251,12 @@ const getBudgetServiceType = (budget) => {
                                 <p class="font-medium text-gray-700 dark:text-gray-300 truncate">{{ getBudgetServiceType(budget) }}</p>
                                 <p class="text-gray-500 truncate">{{ getBudgetCustomerName(budget) }}</p>
                             </div>
-                            <Link :href="route('budgets.show', budget.id)" class="text-primary hover:underline ml-2 shrink-0">Ver</Link>
+                            <Link :href="route('costs.show', budget.id)" class="text-primary hover:underline ml-2 shrink-0">Ver</Link>
                         </div>
                     </div>
 
                     <div class="mt-4 pt-4 border-t border-gray-200 dark:border-[#3f3f46] text-center">
-                        <Link :href="route('budgets.index', { status: 'Cotización' })" class="text-sm text-primary font-medium hover:underline">Ver todos en cotización</Link>
+                        <Link :href="route('costs.index')" class="text-sm text-primary font-medium hover:underline">Ver todos en cotización</Link>
                     </div>
                 </div>
 
@@ -275,12 +275,11 @@ const getBudgetServiceType = (budget) => {
                                 <p class="font-medium text-gray-700 dark:text-gray-300 truncate">{{ getBudgetServiceType(budget) }}</p>
                                 <p class="text-gray-500 truncate">{{ getBudgetCustomerName(budget) }}</p>
                             </div>
-                            <Link :href="route('budgets.show', budget.id)" class="text-primary hover:underline ml-2 shrink-0">Ver</Link>
                         </div>
                     </div>
 
                     <div class="mt-4 pt-4 border-t border-gray-200 dark:border-[#3f3f46] text-center">
-                        <Link :href="route('budgets.index', { status: 'Facturación' })" class="text-sm text-primary font-medium hover:underline">Ver todos en facturación</Link>
+                        <Link :href="route('invoices.index')" class="text-sm text-primary font-medium hover:underline">Ver todos en facturación</Link>
                     </div>
                 </div>
 

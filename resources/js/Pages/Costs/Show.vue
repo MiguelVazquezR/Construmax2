@@ -141,7 +141,7 @@ const openPrintView = () => {
                         <div class="flex items-center gap-2 text-sm text-gray-500">
                             <span>{{ budget.ticket.folio }}</span>
                             <span class="text-gray-300 dark:text-gray-600">|</span>
-                            <span>{{ budget.customer.name }}</span>
+                            <span>{{ budget.ticket.customer.name }}</span>
                             <el-dropdown v-if="budget.catalogs.length > 0" trigger="click"
                                 @command="viewCatalogVersion">
                                 <span

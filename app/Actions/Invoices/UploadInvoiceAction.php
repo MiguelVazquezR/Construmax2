@@ -14,6 +14,11 @@ class UploadInvoiceAction
             'status'         => 'Facturado',
         ]);
 
+        // Sincronizar estatus del ticket relacionado
+        if ($budget->ticket && $budget->ticket->status !== 'Facturado') {
+            $budget->ticket->update(['status' => 'Facturado']);
+        }
+
         if (isset($data['file'])) {
             $budget->addMedia($data['file'])->toMediaCollection('invoice_document');
         }

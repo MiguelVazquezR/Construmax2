@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { OfficeBuilding, Timer, Location } from '@element-plus/icons-vue';
 
 const props = defineProps({
@@ -19,11 +19,12 @@ watch(() => props.tickets.data, (newVal) => {
 const columns = [
     { id: 'Borrador', label: 'Borrador', color: '#9ca3af' },
     { id: 'Levantamiento', label: 'Levantamiento', color: '#0d9488' },
-    { id: 'Catálogo', label: 'Catálogo', color: '#3b82f6' },
-    { id: 'Proceso de ejecución', label: 'Ejecución', color: '#f59e0b' },
+    { id: 'Catálogo', label: 'Cotización (Catálogo)', color: '#3b82f6' },
+    { id: 'Proceso de ejecución', label: 'En ejecución', color: '#f59e0b' },
     { id: 'Ejecutado', label: 'Ejecutado', color: '#10b981' },
     { id: 'Facturado', label: 'Facturado', color: '#eab308' },
     { id: 'Pagado', label: 'Pagado', color: '#34d399' },
+    { id: 'Cancelado', label: 'Cancelado', color: '#ef4444' },
 ];
 
 const groupedTickets = computed(() => {
@@ -54,13 +55,47 @@ const onDragOver = (e) => {
     e.dataTransfer.dropEffect = 'move';
 };
 
-const onDrop = (e, targetStatus) => {
+const onDrop = async (e, targetStatus) => {
     e.preventDefault();
-    const ticketId = draggedItem.value?.id;
-    
-    if (ticketId && draggedItem.value.status !== targetStatus) {
-        updateStatus(ticketId, targetStatus);
+    const ticket = draggedItem.value;
+    if (!ticket || ticket.status === targetStatus) {
+        draggedItem.value = null;
+        return;
     }
+
+    // When moving to Catálogo, a budget is required
+    if (targetStatus === 'Catálogo' && !ticket.budget) {
+        try {
+            await ElMessageBox.confirm(
+                'A partir del proceso de creación de catálogo, se requiere un presupuesto relacionado al ticket. ¿Deseas crear el presupuesto ahora?',
+                'Presupuesto requerido',
+                {
+                    confirmButtonText: 'Crear presupuesto',
+                    cancelButtonText: 'Más tarde',
+                    type: 'warning',
+                }
+            );
+            // Update status first, then redirect to budget creation
+            router.put(route('tickets.update-status', ticket.id), {
+                status: targetStatus
+            }, {
+                preserveScroll: true,
+                preserveState: true,
+                onSuccess: () => {
+                    router.visit(route('budgets.create', { ticket_id: ticket.id }));
+                },
+                onError: () => {
+                    ElMessage.error('Error al actualizar el estatus.');
+                }
+            });
+        } catch {
+            // User chose "Más tarde" — do not change status
+        }
+        draggedItem.value = null;
+        return;
+    }
+
+    updateStatus(ticket.id, targetStatus);
     draggedItem.value = null;
 };
 

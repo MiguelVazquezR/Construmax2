@@ -212,6 +212,13 @@ class PermissionSeeder extends Seeder
                 'category' => 'Facturación',
                 'description' => 'Permite marcar como factura emitida a un presupuesto y también subir la factura'
             ],
+
+            // --- MÓDULO: COSTOS ---
+            [
+                'name' => 'costs.index',
+                'category' => 'Costos',
+                'description' => 'Ver listado de presupuestos y costos'
+            ],
         ];
 
         foreach ($permissions as $permission) {

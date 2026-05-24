@@ -26,17 +26,17 @@ const formatMXN = (value) => {
     }).format(value || 0);
 };
 
-const getStatusColor = (status) => {
+const getTicketStatusColor = (status) => {
     const map = {
         'Borrador': 'info',
         'Cotización': 'warning',
-        'Presupuesto enviado': 'primary',
-        'Facturado': 'warning',
+        'Proceso de ejecución': 'primary',
+        'Ejecutado': 'success',
         'Facturación': 'danger',
-        'Trabajo en proceso': 'primary',
-        'Trabajo terminado': 'success',
+        'Facturado': 'warning',
         'Pagado': 'success',
-        'Perdido': 'danger',
+        'Completado': 'success',
+        'Cancelado': 'danger',
     };
     return map[status] || 'info';
 };
@@ -139,7 +139,7 @@ const hasExternalTechnicians = computed(() => {
                         <span class="text-xs text-gray-500 uppercase tracking-wide">Estado y responsable</span>
                     </div>
                     <div class="flex items-center gap-2 mb-2">
-                        <el-tag :type="getStatusColor(budget.status)" size="small">{{ budget.status }}</el-tag>
+                        <el-tag :type="getTicketStatusColor(budget.ticket?.status)" size="small">{{ budget.ticket?.status || 'N/A' }}</el-tag>
                     </div>
                     <p class="text-sm text-gray-700 dark:text-gray-300">
                         {{ budget.responsible?.name || '—' }}

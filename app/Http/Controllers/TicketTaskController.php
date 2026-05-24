@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Ticket;
 use App\Models\TicketTask;
 use App\Models\User;
+use App\Services\Media\ImageOptimizerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
 use Inertia\Inertia;
@@ -12,6 +13,9 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class TicketTaskController extends Controller
 {
+    public function __construct(
+        private readonly ImageOptimizerService $imageOptimizer,
+    ) {}
     // --- GESTIÓN INTERNA (AUTH) ---
 
     public function store(Request $request, Ticket $ticket)
@@ -87,7 +91,11 @@ class TicketTaskController extends Controller
         ]);
 
         if ($request->hasFile('file')) {
-            $task->addMediaFromRequest('file')->toMediaCollection('task_evidence');
+            $file = $request->file('file');
+            $optimizedPath = $this->imageOptimizer->optimize($file);
+            $task->addMedia($optimizedPath)
+                ->usingFileName($file->getClientOriginalName())
+                ->toMediaCollection('task_evidence');
         }
 
         return back()->with('success', 'Evidencia subida.');
@@ -174,7 +182,11 @@ class TicketTaskController extends Controller
         ]);
 
         if ($request->hasFile('file')) {
-            $task->addMediaFromRequest('file')->toMediaCollection('task_evidence');
+            $file = $request->file('file');
+            $optimizedPath = $this->imageOptimizer->optimize($file);
+            $task->addMedia($optimizedPath)
+                ->usingFileName($file->getClientOriginalName())
+                ->toMediaCollection('task_evidence');
         }
 
         return back()->with('success', 'Evidencia compartida correctamente.');

@@ -6,6 +6,7 @@ use App\Models\Technician;
 use App\Models\User;
 use App\Models\Ticket;
 use App\Models\TechnicianPayment;
+use App\Services\Media\ImageOptimizerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -15,6 +16,9 @@ use Illuminate\Support\Str;
 
 class TechnicianController extends Controller
 {
+    public function __construct(
+        private readonly ImageOptimizerService $imageOptimizer,
+    ) {}
     public function index(Request $request)
     {
         $perPage = $request->input('perPage', 10);
@@ -85,7 +89,14 @@ class TechnicianController extends Controller
             ]);
 
             if ($request->hasFile('photo')) {
-                $user->updateProfilePhoto($request->file('photo'));
+                $optimizedPath = $this->imageOptimizer->optimize($request->file('photo'));
+                $user->updateProfilePhoto(new \Illuminate\Http\UploadedFile(
+                    $optimizedPath,
+                    $request->file('photo')->getClientOriginalName(),
+                    $request->file('photo')->getMimeType(),
+                    null,
+                    true
+                ));
             }
 
             $technician = Technician::create([
@@ -110,8 +121,16 @@ class TechnicianController extends Controller
             ]);
 
             if ($request->hasFile('tax_file')) {
-                $technician->addMediaFromRequest('tax_file')
-                    ->toMediaCollection('fiscal_documents');
+                $file = $request->file('tax_file');
+                if (str_starts_with($file->getMimeType(), 'image/')) {
+                    $optimizedPath = $this->imageOptimizer->optimize($file);
+                    $technician->addMedia($optimizedPath)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('fiscal_documents');
+                } else {
+                    $technician->addMediaFromRequest('tax_file')
+                        ->toMediaCollection('fiscal_documents');
+                }
             }
         });
 
@@ -198,7 +217,14 @@ class TechnicianController extends Controller
             ]);
 
             if ($request->hasFile('photo')) {
-                $technician->user->updateProfilePhoto($request->file('photo'));
+                $optimizedPath = $this->imageOptimizer->optimize($request->file('photo'));
+                $technician->user->updateProfilePhoto(new \Illuminate\Http\UploadedFile(
+                    $optimizedPath,
+                    $request->file('photo')->getClientOriginalName(),
+                    $request->file('photo')->getMimeType(),
+                    null,
+                    true
+                ));
             }
 
             $technician->update([
@@ -225,10 +251,17 @@ class TechnicianController extends Controller
             if ($request->hasFile('tax_file')) {
                 // Borramos el documento anterior si existía para no llenar el servidor de archivos viejos
                 $technician->clearMediaCollection('fiscal_documents');
-                
-                // Guardamos el nuevo
-                $technician->addMediaFromRequest('tax_file')
-                    ->toMediaCollection('fiscal_documents');
+
+                $file = $request->file('tax_file');
+                if (str_starts_with($file->getMimeType(), 'image/')) {
+                    $optimizedPath = $this->imageOptimizer->optimize($file);
+                    $technician->addMedia($optimizedPath)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('fiscal_documents');
+                } else {
+                    $technician->addMediaFromRequest('tax_file')
+                        ->toMediaCollection('fiscal_documents');
+                }
             }
         });
 

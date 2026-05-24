@@ -10,6 +10,7 @@ const props = defineProps({
     tickets: { type: Array, required: true },
     users: { type: Array, required: true },
     budget: { type: Object, default: null },
+    preselectedTicketId: { type: Number, default: null },
 });
 
 const emit = defineEmits(['submitted']);
@@ -20,16 +21,10 @@ const loadingRate = ref(false);
 
 const isEdit = props.mode === 'edit';
 
-const statuses = [
-    'Borrador',
-    'Cotización',
-    'Presupuesto enviado', 'Facturado', 'Facturación',
-    'Trabajo en proceso', 'Trabajo terminado', 'Pagado', 'Perdido',
-];
+const initialTicketId = isEdit ? props.budget?.ticket_id : (props.preselectedTicketId || null);
 
 const form = useForm({
-    ticket_id: isEdit ? props.budget?.ticket_id : null,
-    status: isEdit ? props.budget?.status : 'Borrador',
+    ticket_id: initialTicketId,
     description: isEdit ? props.budget?.description : '',
     currency: isEdit ? (props.budget?.currency || 'MXN') : 'MXN',
     exchange_rate: isEdit ? (parseFloat(props.budget?.exchange_rate) || 1) : 1,
@@ -43,6 +38,15 @@ const form = useForm({
 // Si es edit y el cliente del ticket actual usa USD, cargar TC al montar
 if (isEdit && props.budget?.ticket?.customer?.currency === 'USD') {
     fetchExchangeRate();
+}
+
+// If creating with a preselected ticket, auto-set currency
+if (!isEdit && props.preselectedTicketId) {
+    const ticket = props.tickets.find(t => t.id === props.preselectedTicketId);
+    if (ticket?.customer?.currency === 'USD') {
+        form.currency = 'USD';
+        fetchExchangeRate();
+    }
 }
 
 // --- TICKET SELECCIONADO ---
@@ -128,7 +132,6 @@ const removeConcept = (index) => {
 
 const rules = reactive({
     ticket_id: [{ required: true, message: 'Selecciona un ticket', trigger: 'change' }],
-    status: [{ required: true, message: 'Requerido', trigger: 'change' }],
     user_id: [{ required: true, message: 'Requerido', trigger: 'change' }],
     currency: [{ required: true, message: 'Requerido', trigger: 'change' }],
     exchange_rate: [{ required: true, message: 'Requerido', trigger: 'blur' }],
@@ -304,12 +307,6 @@ defineExpose({ form });
                     </h3>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <el-form-item label="Estado" prop="status">
-                            <el-select v-model="form.status" class="w-full">
-                                <el-option v-for="item in statuses" :key="item" :label="item" :value="item" />
-                            </el-select>
-                        </el-form-item>
-
                         <el-form-item label="Responsable interno" prop="user_id">
                             <el-select v-model="form.user_id" placeholder="Asignar a..." class="w-full" filterable>
                                 <el-option
@@ -357,7 +354,7 @@ defineExpose({ form });
                                     v-model="form.exchange_rate"
                                     placeholder="TC"
                                     type="number"
-                                    step="0.0001"
+                                    step="0.000001"
                                 >
                                     <template #prefix><span class="text-xs text-gray-400">Tipo cambio:</span></template>
                                     <template #suffix>

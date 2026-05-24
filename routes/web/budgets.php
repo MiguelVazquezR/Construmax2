@@ -10,9 +10,6 @@ Route::middleware([
 ])->group(function () {
     Route::post('/budgets/{budget}/technician-payments', [BudgetController::class, 'storeTechnicianPayment'])->name('budgets.technician-payments.store');
     Route::delete('/technician-payments/{payment}', [BudgetController::class, 'destroyTechnicianPayment'])->name('budgets.technician-payments.destroy');
-    // Ruta específica para Kanban (Drag & Drop)
-    Route::put('/budgets/{budget}/status', [BudgetController::class, 'updateStatus'])->name('budgets.update-status');
-
     // Rutas Resource principales
     Route::resource('budgets', BudgetController::class);
 

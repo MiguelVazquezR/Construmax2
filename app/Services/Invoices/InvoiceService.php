@@ -10,7 +10,9 @@ class InvoiceService
     public function getPendingInvoices(array $filters): LengthAwarePaginator
     {
         return Budget::with(['ticket.customer'])
-            ->whereIn('status', ['Facturación', 'Facturado'])
+            ->whereHas('ticket', function ($q) {
+                $q->whereIn('status', ['Ejecutado', 'Facturado']);
+            })
             ->when($filters['search'] ?? null, function ($query, $search) {
                 $query->whereHas('ticket', function ($q) use ($search) {
                     $q->where('name', 'like', '%' . $search . '%')
@@ -21,7 +23,7 @@ class InvoiceService
             })
             ->when($filters['status'] ?? null, function ($query, $status) {
                 if ($status !== 'all') {
-                    $query->where('status', $status);
+                    $query->whereHas('ticket', fn($q) => $q->where('status', $status));
                 }
             })
             ->orderBy('created_at', 'desc')
@@ -38,7 +40,7 @@ class InvoiceService
                     'ticket_folio'     => $budget->ticket->folio ?? 'N/A',
                     'ticket_id'        => $budget->ticket->id ?? null,
                     'customer_name'    => $budget->ticket->customer->name ?? 'N/A',
-                    'status'           => $budget->status,
+                    'status'           => $budget->ticket->status ?? $budget->status,
                     'total_cost'       => $budget->total_cost,
                     'currency'         => $budget->currency,
                     'invoice_date'     => $budget->invoice_date?->format('Y-m-d'),

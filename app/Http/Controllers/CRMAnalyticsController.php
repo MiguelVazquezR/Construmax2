@@ -29,7 +29,7 @@ class CRMAnalyticsController extends Controller
         
         $budgetsInRange = Budget::whereBetween('created_at', [$startDate, $endDate]);
         $totalBudgets = $budgetsInRange->count();
-        $wonBudgets = (clone $budgetsInRange)->whereIn('status', ['Facturado', 'Pagado'])->count();
+        $wonBudgets = (clone $budgetsInRange)->whereHas('ticket', fn($q) => $q->whereIn('status', ['Facturado', 'Pagado']))->count();
         $conversionRate = $totalBudgets > 0 ? round(($wonBudgets / $totalBudgets) * 100, 1) : 0;
 
         // --- LÓGICA DE INGRESOS (REVENUE BUCKETS) ---
@@ -73,10 +73,11 @@ class CRMAnalyticsController extends Controller
         // 3. Gráficas
         $incomeData = $this->getIncomeChart($startDate, $endDate);
 
-        $statusDistribution = Budget::whereBetween('created_at', [$startDate, $endDate])
-            ->select('status', DB::raw('count(*) as total'))
-            ->groupBy('status')
-            ->pluck('total', 'status');
+        $statusDistribution = Budget::whereBetween('budgets.created_at', [$startDate, $endDate])
+            ->join('tickets', 'budgets.ticket_id', '=', 'tickets.id')
+            ->select('tickets.status', DB::raw('count(*) as total'))
+            ->groupBy('tickets.status')
+            ->pluck('total', 'tickets.status');
 
         $topServices = Budget::whereBetween('created_at', [$startDate, $endDate])
             ->select('service_type', DB::raw('count(*) as total'))
@@ -125,7 +126,7 @@ class CRMAnalyticsController extends Controller
                 'conversion_rate' => $conversionRate,
                 'total_revenue' => $revenue, // {mxn, usd}
                 'pending_balance' => $pendingBalance, // {mxn, usd}
-                'active_projects' => Budget::where('status', 'Trabajo en proceso')->count(),
+                'active_projects' => Budget::whereHas('ticket', fn($q) => $q->where('status', 'En proceso'))->count(),
             ],
             'charts' => [
                 'income' => $incomeData, // {labels, data_mxn, data_usd}
