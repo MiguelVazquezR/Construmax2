@@ -1,16 +1,12 @@
 <?php
 
-use App\Http\Controllers\CRMAnalyticsController;
 use Illuminate\Support\Facades\Route;
 
+// Redirigir el antiguo dashboard CRM al nuevo tablero unificado de analíticas
 Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),
     'verified',
 ])->prefix('crm')->name('crm.')->group(function () {
-    
-    // Dashboard Principal de Analíticas
-    Route::get('/dashboard', [CRMAnalyticsController::class, 'index'])->name('dashboard');
-    
-    // Aquí podrías agregar más rutas de reportes específicos en el futuro
+    Route::redirect('/dashboard', '/tickets/dashboard')->name('dashboard');
 });

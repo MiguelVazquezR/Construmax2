@@ -213,7 +213,7 @@ const getBudgetServiceType = (budget) => {
                         </div>
                     </div>
                     <div class="mt-4 pt-4 border-t border-gray-200 dark:border-[#3f3f46] text-center">
-                        <Link :href="route('crm.dashboard')" class="text-sm text-primary font-medium hover:underline">Ver analíticas completas</Link>
+                        <Link :href="route('tickets.dashboard')" class="text-sm text-primary font-medium hover:underline">Ver analíticas completas</Link>
                     </div>
                 </div>
 
