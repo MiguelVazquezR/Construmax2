@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -71,10 +72,17 @@ class Technician extends Model implements HasMedia
         return $this->belongsTo(User::class);
     }
 
-    // Historial Operativo: Tickets donde este técnico es el responsable (vía User)
-    public function tickets()
+    // Historial Operativo: Tickets donde este técnico participa (vía JSON technicians o tasks)
+    // No se puede usar hasMany estándar porque technicians es JSON; usar scope o query directa.
+    public function scopeWhereInvolved(Builder $query, int $userId): Builder
     {
-        return $this->hasMany(Ticket::class, 'user_id', 'user_id');
+        return $query->where(function ($q) use ($userId) {
+            $q->whereJsonContains('technicians', (string) $userId)
+              ->orWhereJsonContains('technicians', (int) $userId)
+              ->orWhereHas('tasks', function ($t) use ($userId) {
+                  $t->where('user_id', $userId);
+              });
+        });
     }
 
     // --- SCOPES Y FILTROS ---

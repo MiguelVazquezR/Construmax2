@@ -22,7 +22,7 @@ class TicketController extends Controller
         $perPage = $request->input('perPage', 20);
         $sort = $request->input('sort', 'delay'); 
 
-        $query = Ticket::with(['customer', 'contact', 'branch', 'tasks.assignee', 'budget']);
+        $query = Ticket::with(['customer', 'contact', 'branch', 'tasks.assignee', 'budget', 'seller']);
 
         // BÚSQUEDA POR FOLIO
         if ($request->filled('folio')) {
@@ -109,6 +109,7 @@ class TicketController extends Controller
             'customer_id' => 'required|exists:customers,id',
             'customer_contact_id' => 'required|exists:customer_contacts,id',
             'customer_branch_id' => 'nullable|exists:customer_branches,id',
+            'seller_id' => 'nullable|exists:users,id',
             'name' => 'required|string|max:255',
             'service_type' => 'required|string|max:255',
             'duration' => 'nullable|string',
@@ -137,6 +138,7 @@ class TicketController extends Controller
             'customer', 
             'contact', 
             'branch',
+            'seller',
             'budget.concepts',
             'budget.payments',
             'budget.responsible',
@@ -174,7 +176,7 @@ class TicketController extends Controller
     public function edit(Ticket $ticket)
     {
         return Inertia::render('Tickets/Edit', [
-            'ticket' => $ticket->load(['customer', 'contact', 'branch']),
+            'ticket' => $ticket->load(['customer', 'contact', 'branch', 'seller']),
             'users' => User::where('id', '!=', 1)->with(['employee', 'technician'])->get(),
             'customers' => Customer::where('is_active', true)->with(['contacts', 'branches'])->get(),
             'templates' => TaskTemplate::where('is_active', true)->with('items')->get(),
@@ -187,6 +189,7 @@ class TicketController extends Controller
             'customer_id' => 'required|exists:customers,id',
             'customer_contact_id' => 'required|exists:customer_contacts,id',
             'customer_branch_id' => 'nullable|exists:customer_branches,id',
+            'seller_id' => 'nullable|exists:users,id',
             'name' => 'required|string|max:255',
             'service_type' => 'required|string|max:255',
             'duration' => 'nullable|string',

@@ -19,6 +19,7 @@ class Ticket extends Model implements HasMedia
         'customer_id',
         'customer_contact_id',
         'customer_branch_id',
+        'seller_id',
         'name',
         'service_type',
         'duration',
@@ -53,6 +54,11 @@ class Ticket extends Model implements HasMedia
     public function branch(): BelongsTo
     {
         return $this->belongsTo(CustomerBranch::class, 'customer_branch_id');
+    }
+
+    public function seller(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'seller_id');
     }
 
     public function budget(): HasOne

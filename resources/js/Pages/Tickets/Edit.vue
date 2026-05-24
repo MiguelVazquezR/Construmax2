@@ -23,6 +23,7 @@ const form = useForm({
     customer_id: props.ticket.customer_id,
     customer_contact_id: props.ticket.customer_contact_id,
     customer_branch_id: props.ticket.customer_branch_id || '', // Actualizado para usar ID
+    seller_id: props.ticket.seller_id || '',
     name: props.ticket.name,
     service_type: props.ticket.service_type,
     duration: props.ticket.duration || '',

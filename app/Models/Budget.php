@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
@@ -37,6 +38,18 @@ class Budget extends Model implements HasMedia
     public function ticket(): BelongsTo
     {
         return $this->belongsTo(Ticket::class);
+    }
+
+    public function customer(): HasOneThrough
+    {
+        return $this->hasOneThrough(
+            Customer::class,
+            Ticket::class,
+            'id',            // tickets.id = budgets.ticket_id
+            'id',            // customers.id = tickets.customer_id
+            'ticket_id',     // budgets.ticket_id
+            'customer_id'    // tickets.customer_id
+        );
     }
 
     public function responsible(): BelongsTo

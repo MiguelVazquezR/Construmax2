@@ -29,6 +29,7 @@ const form = useForm({
     customer_id: '',
     customer_contact_id: '',
     customer_branch_id: '', // Actualizado para usar ID en vez del string 'branch'
+    seller_id: '',
     name: '',
     service_type: '',
     duration: '',

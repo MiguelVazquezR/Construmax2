@@ -101,6 +101,10 @@ const handleContactChange = () => {
 const technicianUsers = computed(() => {
     return props.users.filter(u => u.technician);
 });
+
+const sellerUsers = computed(() => {
+    return props.users.filter(u => u.employee);
+});
 </script>
 
 <template>
@@ -205,6 +209,22 @@ const technicianUsers = computed(() => {
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Asesor / Vendedor -->
+                <el-form-item prop="seller_id" :error="form.errors.seller_id">
+                    <template #label>
+                        Asesor / Vendedor
+                    </template>
+                    <el-select 
+                        v-model="form.seller_id" 
+                        placeholder="Seleccionar asesor..." 
+                        class="w-full" 
+                        filterable
+                        clearable
+                    >
+                        <el-option v-for="seller in sellerUsers" :key="seller.id" :label="seller.name" :value="seller.id" />
+                    </el-select>
+                </el-form-item>
+
                 <!-- Múltiples Técnicos Ejecutores -->
                 <el-form-item prop="technicians" :error="form.errors.technicians" :class="isEdit ? 'md:col-span-2' : ''">
                     <template #label>

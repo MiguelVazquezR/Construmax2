@@ -141,9 +141,10 @@ class TechnicianController extends Controller
     {
         $technician->load(['user', 'media']);
         
-        $historyQuery = Ticket::with(['budget.customer', 'tasks']) 
+        $historyQuery = Ticket::with(['budget.customer', 'tasks'])
             ->where(function($query) use ($technician) {
-                $query->where('user_id', $technician->user_id)
+                $query->whereJsonContains('technicians', (string) $technician->user_id)
+                      ->orWhereJsonContains('technicians', (int) $technician->user_id)
                       ->orWhereHas('tasks', function($q) use ($technician) {
                           $q->where('user_id', $technician->user_id);
                       });
@@ -159,7 +160,7 @@ class TechnicianController extends Controller
             ->get();
             
         $totalTickets = $historyQuery->count();
-        $completedTickets = (clone $historyQuery)->where('status', 'Completado')->count();
+        $completedTickets = (clone $historyQuery)->whereIn('status', ['Ejecutado', 'Facturado', 'Pagado'])->count();
         $completionRate = $totalTickets > 0 ? round(($completedTickets / $totalTickets) * 100) : 0;
         $totalEarnings = $payments->sum('amount');
 

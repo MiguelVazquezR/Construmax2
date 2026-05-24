@@ -5,8 +5,12 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import TicketsPerformance from '@/Components/Dashboard/TicketsPerformance.vue';
 import CRMRevenue from '@/Components/Dashboard/CRMRevenue.vue';
 import GlobalState from '@/Components/Dashboard/GlobalState.vue';
+import RegionDistribution from '@/Components/Dashboard/RegionDistribution.vue';
+import InvoiceStatus from '@/Components/Dashboard/InvoiceStatus.vue';
+import TechnicianPayments from '@/Components/Dashboard/TechnicianPayments.vue';
 
 const props = defineProps({
+    customers: Array,
     kpis: Object,
     charts: Object,
     tables: Object,
@@ -20,6 +24,9 @@ const currencyMode = ref('MXN');
 // --- Filtros de fecha ---
 const dateRange = ref([props.filters.start_date, props.filters.end_date]);
 
+// --- Filtro de cliente ---
+const selectedCustomer = ref(props.filters.customer_id || '');
+
 const shortcuts = [
     { text: 'Hoy', value: () => [new Date(), new Date()] },
     { text: 'Últimos 7 días', value: () => { const end = new Date(); const start = new Date(); start.setTime(start.getTime() - 3600 * 1000 * 24 * 7); return [start, end]; } },
@@ -28,13 +35,20 @@ const shortcuts = [
     { text: 'Próximo mes', value: () => { const start = new Date(); start.setDate(1); start.setMonth(start.getMonth() + 1); const end = new Date(start); end.setMonth(end.getMonth() + 1); end.setDate(0); return [start, end]; } },
 ];
 
+const applyFilters = () => {
+    router.get(route('tickets.dashboard'), {
+        start_date: dateRange.value[0],
+        end_date: dateRange.value[1],
+        customer_id: selectedCustomer.value || null,
+    }, { preserveState: true, preserveScroll: true, replace: true });
+};
+
 const handleDateChange = (val) => {
-    if (val) {
-        router.get(route('tickets.dashboard'), {
-            start_date: val[0],
-            end_date: val[1],
-        }, { preserveState: true, preserveScroll: true, replace: true });
-    }
+    if (val) applyFilters();
+};
+
+const handleCustomerChange = () => {
+    applyFilters();
 };
 </script>
 
@@ -46,7 +60,24 @@ const handleDateChange = (val) => {
                     Tablero de analíticas
                 </h2>
 
-                <div class="w-full md:w-auto flex items-center gap-2">
+                <div class="w-full md:w-auto flex items-center gap-3">
+                    <!-- Filtro de cliente -->
+                    <el-select
+                        v-model="selectedCustomer"
+                        placeholder="Todos los clientes"
+                        clearable
+                        size="large"
+                        class="!w-[220px]"
+                        @change="handleCustomerChange"
+                    >
+                        <el-option
+                            v-for="c in customers"
+                            :key="c.id"
+                            :label="c.name"
+                            :value="c.id"
+                        />
+                    </el-select>
+
                     <span class="text-sm text-gray-500 hidden md:inline">Periodo:</span>
                     <el-date-picker
                         v-model="dateRange"
@@ -83,7 +114,22 @@ const handleDateChange = (val) => {
 
             <el-divider border-style="dashed" />
 
-            <!-- SECCIÓN 3: Estado global (sin filtro) -->
+            <!-- SECCIÓN 3: Distribución geográfica + Facturas -->
+            <RegionDistribution :regions="charts.regions" />
+
+            <el-divider border-style="dashed" />
+
+            <!-- SECCIÓN 4: Facturas emitidas vs pagadas -->
+            <InvoiceStatus :invoices="charts.invoices" />
+
+            <el-divider border-style="dashed" />
+
+            <!-- SECCIÓN 5: Pagos a técnicos externos -->
+            <TechnicianPayments :kpis="kpis" :tables="tables" />
+
+            <el-divider border-style="dashed" />
+
+            <!-- SECCIÓN 6: Estado global (sin filtro) -->
             <GlobalState :general="general" :kpis="kpis" />
         </div>
     </AppLayout>

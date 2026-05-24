@@ -215,7 +215,7 @@ const serviceOptions = computed(() => ({
 
             <!-- Servicios populares -->
             <div class="bg-white dark:bg-[#1e1e20] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-[#2b2b2e]">
-                <h3 class="text-lg font-bold text-gray-800 dark:text-white mb-4">Servicios solicitados</h3>
+                <h3 class="text-lg font-bold text-gray-800 dark:text-white mb-4">Servicios solicitados por categoría</h3>
                 <div class="h-64">
                     <VueApexCharts type="bar" height="100%" :options="serviceOptions" :series="serviceSeries" />
                 </div>
