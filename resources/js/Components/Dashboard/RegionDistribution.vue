@@ -4,11 +4,11 @@ import { Loading } from '@element-plus/icons-vue';
 import VChart from 'vue-echarts';
 import { use } from 'echarts/core';
 import { MapChart } from 'echarts/charts';
-import { TooltipComponent, VisualMapComponent } from 'echarts/components';
+import { TooltipComponent, VisualMapComponent, TitleComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import * as echarts from 'echarts/core';
 
-use([CanvasRenderer, MapChart, TooltipComponent, VisualMapComponent]);
+use([CanvasRenderer, MapChart, TooltipComponent, VisualMapComponent, TitleComponent]);
 
 const props = defineProps({
     regions: Array,
@@ -67,7 +67,7 @@ function buildOption(title, mapName, data) {
             left: 'left',
             bottom: 'bottom',
             calculable: false,
-            show: mapName === 'USA',
+            show: true,
             inRange: { color: ['#e0f2fe', '#0ea5e9', '#0369a1'] },
             text: ['Alto', 'Bajo'],
             textStyle: { color: '#6b7280', fontSize: 10 },
@@ -123,7 +123,7 @@ onMounted(async () => {
             Hawaii: { left: -110, top: 28, width: 5 },
             'Puerto Rico': { left: -76, top: 26, width: 2 },
         }),
-        loadMap('Mexico', '/maps/mexico'),
+        loadMap('Mexico', 'https://raw.githubusercontent.com/angelnmara/geojson/master/mexicoHigh.json'),
     ]);
 
     if (usaOk) usaOption.value = buildOption('Estados Unidos', 'USA', usaData.value);

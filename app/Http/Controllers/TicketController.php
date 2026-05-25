@@ -65,6 +65,10 @@ class TicketController extends Controller
             });
         }
 
+        if ($request->filled('seller')) {
+            $query->where('seller_id', $request->input('seller'));
+        }
+
         if ($request->filled('status') && $request->input('status') !== 'all') {
             $query->where('status', $request->input('status'));
         }
@@ -81,12 +85,14 @@ class TicketController extends Controller
             'tickets' => $query->paginate($perPage)->withQueryString(),
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'technicians' => User::whereHas('technician')->orderBy('name')->get(['id', 'name']),
+            'sellers' => User::whereHas('ticketsAsSeller')->orderBy('name')->get(['id', 'name']),
             'filters' => [
                 'folio' => $request->input('folio'),
                 'customer' => $request->input('customer'),
                 'region' => $request->input('region'),
                 'priority' => $request->input('priority'),
                 'technician' => $request->input('technician'),
+                'seller' => $request->input('seller'),
                 'status' => $request->input('status', 'all'),
                 'perPage' => $perPage,
                 'sort' => $sort,

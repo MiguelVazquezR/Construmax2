@@ -160,6 +160,9 @@ async function handleStatusChange(newStatus) {
                             <p class="text-sm text-gray-500 dark:text-gray-400">
                                 {{ ticket.customer?.name }}
                             </p>
+                            <p v-if="ticket.seller" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                                Asesor: {{ ticket.seller.name }}
+                            </p>
                         </div>
                     </div>
 

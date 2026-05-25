@@ -9,7 +9,7 @@ class InvoiceService
 {
     public function getPendingInvoices(array $filters): LengthAwarePaginator
     {
-        return Budget::with(['ticket.customer'])
+        return Budget::with(['ticket.customer', 'ticket.tasks.media'])
             ->whereHas('ticket', function ($q) {
                 $q->whereIn('status', ['Ejecutado', 'Facturado']);
             })
@@ -34,6 +34,23 @@ class InvoiceService
                     ? $budget->invoice_date->copy()->addDays($paymentDays)->format('Y-m-d')
                     : null;
 
+                // Recopilar evidencias de todas las tareas del ticket
+                $taskEvidence = collect($budget->ticket->tasks ?? [])
+                    ->filter(fn($task) => $task->relationLoaded('media') && $task->media->isNotEmpty())
+                    ->flatMap(function ($task) {
+                        return $task->media->map(function ($media) use ($task) {
+                            return [
+                                'id'          => $media->id,
+                                'url'         => $media->getUrl(),
+                                'file_name'   => $media->file_name,
+                                'task_name'   => $task->name,
+                                'task_status' => $task->status,
+                            ];
+                        });
+                    })
+                    ->values()
+                    ->toArray();
+
                 return [
                     'id'               => $budget->id,
                     'ticket_name'      => $budget->ticket->name ?? 'N/A',
@@ -49,6 +66,7 @@ class InvoiceService
                     'payment_days'     => $paymentDays,
                     'has_invoice_file' => $budget->hasMedia('invoice_document'),
                     'invoice_url'      => $budget->getFirstMediaUrl('invoice_document'),
+                    'task_evidence'    => $taskEvidence,
                 ];
             });
     }

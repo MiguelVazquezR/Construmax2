@@ -314,11 +314,15 @@ const navigateToTicket = (row) => {
                                         </template>
                                     </el-table-column>
 
-                                    <el-table-column label="Sucursal" min-width="150">
+                                    <el-table-column label="Sucursal" min-width="180">
                                         <template #default="scope">
-                                            <span class="text-sm text-gray-700 dark:text-gray-300 truncate block">
-                                                {{ scope.row.branch || 'General' }}
-                                            </span>
+                                            <div v-if="scope.row.branch" class="text-sm text-gray-700 dark:text-gray-300">
+                                                <div class="font-semibold truncate">{{ scope.row.branch.branch_name }}</div>
+                                                <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                                    {{ scope.row.branch.region }}, {{ scope.row.branch.country }}
+                                                </div>
+                                            </div>
+                                            <span v-else class="text-sm text-gray-400 italic">General</span>
                                         </template>
                                     </el-table-column>
 

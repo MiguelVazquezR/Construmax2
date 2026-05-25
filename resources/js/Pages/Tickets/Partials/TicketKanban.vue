@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { OfficeBuilding, Timer, Location } from '@element-plus/icons-vue';
+import { OfficeBuilding, Timer, Location, UserFilled } from '@element-plus/icons-vue';
 
 const props = defineProps({
     tickets: Object,
@@ -194,6 +194,11 @@ const getAssignedTechnicians = (ticket) => {
                             <div class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 pr-2">
                                 <el-icon :size="12"><OfficeBuilding /></el-icon>
                                 <span class="truncate">{{ ticket.customer?.name }}</span>
+                            </div>
+
+                            <div v-if="ticket.seller" class="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1 pr-2 mt-0.5">
+                                <el-icon :size="12"><UserFilled /></el-icon>
+                                <span class="truncate">{{ ticket.seller.name }}</span>
                             </div>
 
                             <div v-if="ticket.branch" class="text-xs text-gray-400 dark:text-gray-500 mb-3 flex items-center gap-1 pr-2 mt-0.5">

@@ -17,10 +17,8 @@ class UserController extends Controller
         $perPage = $request->input('perPage', 10);
 
         return Inertia::render('Users/Index', [
-            'users' => User::with(['employee', 'roles']) // Cargamos roles para mostrar si es necesario
-                ->where('id', '!=', 1) // Excluir al usuario soporte/superadmin
-                ->has('employee') // NUEVO: Mostrar SOLO los que tienen perfil de Empleado
-                ->doesntHave('technician') // NUEVO: Excluir a los que tienen perfil de Técnico (por doble seguridad)
+            'users' => User::with(['employee', 'roles'])
+                ->where('id', '!=', 1) // Excluir al super admin
                 ->filter($request->only('search'))
                 ->orderBy('id', 'desc')
                 ->paginate($perPage)
@@ -72,8 +70,17 @@ class UserController extends Controller
 
     public function show(User $user)
     {
+        $user->load([
+            'employee',
+            'roles',
+            'ticketsAsSeller' => function ($query) {
+                $query->orderBy('id', 'desc')
+                      ->with('branch');
+            },
+        ]);
+
         return Inertia::render('Users/Show', [
-            'user' => $user->load(['employee', 'roles']),
+            'user' => $user,
         ]);
     }
 

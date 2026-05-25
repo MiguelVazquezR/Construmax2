@@ -58,7 +58,7 @@ defineProps({
                             <Link
                                 v-for="ticket in tech.tickets"
                                 :key="ticket.id"
-                                :href="route('tickets.edit', ticket.id)"
+                                :href="route('tickets.show', ticket.id)"
                                 class="text-xs bg-gray-50 dark:bg-[#252529] hover:bg-orange-50 dark:hover:bg-orange-900/20 px-2 py-1 rounded border border-gray-200 dark:border-[#3f3f46] text-orange-600 dark:text-orange-400 hover:border-orange-300 transition-colors"
                             >
                                 {{ ticket.folio }}
@@ -90,7 +90,7 @@ defineProps({
                             <Link
                                 v-for="ticket in tech.tickets"
                                 :key="ticket.id"
-                                :href="route('tickets.edit', ticket.id)"
+                                :href="route('tickets.show', ticket.id)"
                                 class="text-xs bg-gray-50 dark:bg-[#252529] hover:bg-blue-50 dark:hover:bg-blue-900/20 px-2 py-1 rounded border border-gray-200 dark:border-[#3f3f46] text-blue-600 dark:text-blue-400 hover:border-blue-300 transition-colors"
                             >
                                 {{ ticket.folio }}

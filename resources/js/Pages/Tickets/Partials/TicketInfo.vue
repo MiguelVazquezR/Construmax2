@@ -81,6 +81,10 @@ const deleteEvidence = (mediaId) => {
                         <p class="text-xs text-blue-500 uppercase font-bold">Tipo de Servicio</p>
                         <p class="text-blue-900 dark:text-blue-100 font-medium">{{ ticket.service_type || 'Sin especificar' }}</p>
                     </div>
+                    <div>
+                        <p class="text-xs text-blue-500 uppercase font-bold">Vendedor / Asesor</p>
+                        <p class="text-blue-900 dark:text-blue-100 font-medium">{{ ticket.seller?.name || 'Sin asignar' }}</p>
+                    </div>
                 </div>
             </div>
         </div>

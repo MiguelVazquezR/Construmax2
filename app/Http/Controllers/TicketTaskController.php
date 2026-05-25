@@ -139,7 +139,7 @@ class TicketTaskController extends Controller
 
     public function publicJobOrder(Request $request, Ticket $ticket, User $user)
     {
-        $ticket->load(['budget.customer', 'budget.contact']);
+        $ticket->load(['budget.customer']);
 
         $tasks = $ticket->tasks()
             ->where('user_id', $user->id)

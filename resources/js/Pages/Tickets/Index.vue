@@ -14,6 +14,7 @@ const props = defineProps({
     tickets: Object, 
     customers: { type: Array, default: () => [] },
     technicians: { type: Array, default: () => [] },
+    sellers: { type: Array, default: () => [] },
     filters: { type: Object, default: () => ({}) }, 
 });
 
@@ -30,6 +31,7 @@ const customerFilter = ref(getFilter('customer', '') ? Number(getFilter('custome
 const regionFilter = ref(getFilter('region', ''));
 const priorityFilter = ref(getFilter('priority', ''));
 const technicianFilter = ref(getFilter('technician', '') ? Number(getFilter('technician', '')) : '');
+const sellerFilter = ref(getFilter('seller', '') ? Number(getFilter('seller', '')) : '');
 const statusFilter = ref(getFilter('status', 'all'));
 
 // Validación extra explícita para asegurar que siempre sea un string correcto
@@ -63,6 +65,7 @@ const fetchData = debounce(() => {
         region: regionFilter.value,
         priority: priorityFilter.value,
         technician: technicianFilter.value,
+        seller: sellerFilter.value,
         status: statusFilter.value,
         sort: sortFilter.value,
         perPage: perPage.value 
@@ -80,6 +83,7 @@ const handlePageChange = (val) => {
         region: regionFilter.value,
         priority: priorityFilter.value,
         technician: technicianFilter.value,
+        seller: sellerFilter.value,
         status: statusFilter.value,
         sort: sortFilter.value,
         perPage: perPage.value, 
@@ -90,7 +94,7 @@ const handlePageChange = (val) => {
     });
 };
 
-watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilter, statusFilter, sortFilter], fetchData);
+watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilter, sellerFilter, statusFilter, sortFilter], fetchData);
 </script>
 
 <template>
@@ -101,7 +105,7 @@ watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilt
             <div class="bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] space-y-4">
                 
                 <!-- Fila Superior: Filtros específicos -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 w-full">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-3 w-full">
                     <el-input v-model="folioFilter" placeholder="Folio (Ej. #34)" clearable :prefix-icon="Search" class="w-full" />
                     
                     <el-select v-model="customerFilter" placeholder="Filtrar por cliente" clearable filterable class="w-full">
@@ -119,6 +123,10 @@ watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilt
 
                     <el-select v-model="technicianFilter" placeholder="Técnico asignado" clearable filterable class="w-full">
                         <el-option v-for="t in technicians" :key="t.id" :label="t.name" :value="t.id" />
+                    </el-select>
+
+                    <el-select v-model="sellerFilter" placeholder="Vendedor / Asesor" clearable filterable class="w-full">
+                        <el-option v-for="s in sellers" :key="s.id" :label="s.name" :value="s.id" />
                     </el-select>
 
                     <el-select v-model="statusFilter" placeholder="Estado" clearable class="w-full">

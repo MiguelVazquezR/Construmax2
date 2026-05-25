@@ -11,6 +11,7 @@ import TechnicianPayments from '@/Components/Dashboard/TechnicianPayments.vue';
 
 const props = defineProps({
     customers: Array,
+    sellers: Array,
     kpis: Object,
     charts: Object,
     tables: Object,
@@ -27,6 +28,9 @@ const dateRange = ref([props.filters.start_date, props.filters.end_date]);
 // --- Filtro de cliente ---
 const selectedCustomer = ref(props.filters.customer_id || '');
 
+// --- Filtro de vendedor ---
+const selectedSeller = ref(props.filters.seller_id || '');
+
 const shortcuts = [
     { text: 'Hoy', value: () => [new Date(), new Date()] },
     { text: 'Últimos 7 días', value: () => { const end = new Date(); const start = new Date(); start.setTime(start.getTime() - 3600 * 1000 * 24 * 7); return [start, end]; } },
@@ -40,6 +44,7 @@ const applyFilters = () => {
         start_date: dateRange.value[0],
         end_date: dateRange.value[1],
         customer_id: selectedCustomer.value || null,
+        seller_id: selectedSeller.value || null,
     }, { preserveState: true, preserveScroll: true, replace: true });
 };
 
@@ -48,6 +53,10 @@ const handleDateChange = (val) => {
 };
 
 const handleCustomerChange = () => {
+    applyFilters();
+};
+
+const handleSellerChange = () => {
     applyFilters();
 };
 </script>
@@ -75,6 +84,23 @@ const handleCustomerChange = () => {
                             :key="c.id"
                             :label="c.name"
                             :value="c.id"
+                        />
+                    </el-select>
+
+                    <!-- Filtro de vendedor -->
+                    <el-select
+                        v-model="selectedSeller"
+                        placeholder="Todos los vendedores"
+                        clearable
+                        size="large"
+                        class="!w-[220px]"
+                        @change="handleSellerChange"
+                    >
+                        <el-option
+                            v-for="s in sellers"
+                            :key="s.id"
+                            :label="s.name"
+                            :value="s.id"
                         />
                     </el-select>
 

@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { router, useForm, Link } from '@inertiajs/vue3';
 import { ElMessage } from 'element-plus';
+import { OfficeBuilding, PictureFilled, Document, WarningFilled } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
 const { can } = usePermissions();
@@ -186,9 +187,60 @@ const submitInvoice = () => {
         <el-dialog
             v-model="isModalVisible"
             title="Subir factura"
-            width="500px"
+            width="650px"
             destroy-on-close
         >
+            <!-- SECCIÓN DE EVIDENCIAS DE TAREAS -->
+            <div v-if="activeBudget?.task_evidence?.length" class="mb-6 bg-gray-50 dark:bg-[#252529] rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                <h4 class="text-sm font-bold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-2">
+                    <el-icon><PictureFilled /></el-icon>
+                    Evidencias registradas en el ticket ({{ activeBudget.task_evidence.length }} archivos)
+                </h4>
+                
+                <div class="flex flex-wrap gap-3">
+                    <div
+                        v-for="evidence in activeBudget.task_evidence"
+                        :key="evidence.id"
+                        class="relative w-24 h-24 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600 bg-white dark:bg-[#1e1e20] group"
+                    >
+                        <el-image
+                            :src="evidence.url"
+                            class="w-full h-full"
+                            fit="cover"
+                            :preview-src-list="[evidence.url]"
+                            preview-teleported
+                            hide-on-click-modal
+                        >
+                            <template #error>
+                                <div class="flex items-center justify-center w-full h-full bg-gray-100 dark:bg-gray-800 text-gray-400">
+                                    <el-icon :size="24"><Document /></el-icon>
+                                </div>
+                            </template>
+                        </el-image>
+                        <!-- Tooltip con info -->
+                        <el-tooltip placement="top">
+                            <template #content>
+                                <div class="text-xs">
+                                    <p class="font-semibold">{{ evidence.task_name }}</p>
+                                    <p>{{ evidence.file_name }}</p>
+                                    <el-tag size="small" :type="evidence.task_status === 'Completada' ? 'success' : 'warning'">
+                                        {{ evidence.task_status }}
+                                    </el-tag>
+                                </div>
+                            </template>
+                            <div class="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                                {{ evidence.task_name }}
+                            </div>
+                        </el-tooltip>
+                    </div>
+                </div>
+            </div>
+            <div v-else class="mb-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-3 text-sm text-orange-700 dark:text-orange-300">
+                <p class="flex items-center gap-2">
+                    <el-icon><WarningFilled /></el-icon>
+                    <strong>Sin evidencias:</strong> Las tareas de este ticket aún no tienen archivos (fotos del acta) subidos.
+                </p>
+            </div>
             <el-form :model="form" label-position="top" @submit.prevent="submitInvoice">
                 <el-form-item label="Número de factura" :error="form.errors.invoice_number">
                     <el-input v-model="form.invoice_number" placeholder="Ej. A-1234" />

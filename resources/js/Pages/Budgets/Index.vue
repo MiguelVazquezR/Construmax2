@@ -76,11 +76,11 @@ watch([search, statusFilter, perPage, userFilter, branchFilter], fetchData);
                         />
                     </div>
                     
-                    <!-- NUEVO: Filtro de Responsable -->
+                    <!-- NUEVO: Filtro de asesor/vendedor -->
                     <div class="w-full sm:w-60">
                          <el-select 
                             v-model="userFilter" 
-                            placeholder="Responsable(s)" 
+                            placeholder="Asesor/vendedor" 
                             multiple 
                             collapse-tags 
                             collapse-tags-tooltip

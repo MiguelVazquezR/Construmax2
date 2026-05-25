@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { 
     MoreFilled, View, Edit, Delete, 
     OfficeBuilding, Warning, InfoFilled, Minus,
-    Timer, Check, Location
+    Timer, Check, Location, UserFilled
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
@@ -195,6 +195,10 @@ const deleteTicket = (ticket) => {
                                     <el-icon><OfficeBuilding /></el-icon>
                                     <span class="truncate font-medium">{{ scope.row.customer?.name }}</span>
                                 </div>
+                                <div v-if="scope.row.seller" class="flex items-center gap-1 text-xs text-gray-500">
+                                    <el-icon><UserFilled /></el-icon>
+                                    <span class="truncate">{{ scope.row.seller.name }}</span>
+                                </div>
                                 <div class="flex items-center gap-1 text-[11px] text-gray-500" v-if="scope.row.branch">
                                     <el-icon><Location /></el-icon>
                                     <span class="truncate" :title="getBranchDetails(scope.row)">
@@ -317,6 +321,10 @@ const deleteTicket = (ticket) => {
                         <p class="text-xs text-gray-500 flex items-center gap-1 font-medium">
                             <el-icon><OfficeBuilding /></el-icon> 
                             {{ ticket.customer?.name }}
+                        </p>
+                        <p v-if="ticket.seller" class="text-xs text-gray-500 flex items-center gap-1">
+                            <el-icon><UserFilled /></el-icon>
+                            {{ ticket.seller.name }}
                         </p>
                         <p class="text-[11px] text-gray-400 flex items-center gap-1" v-if="ticket.branch">
                             <el-icon><Location /></el-icon> 

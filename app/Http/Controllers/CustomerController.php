@@ -97,7 +97,7 @@ class CustomerController extends Controller
             'contacts.branches', 
             'tickets' => function ($query) {
                 $query->orderBy('id', 'desc')
-                      ->with('responsible:id,name,profile_photo_path');
+                      ->with(['seller:id,name,profile_photo_path', 'branch']);
             }
         ]);
 

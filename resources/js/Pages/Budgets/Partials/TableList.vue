@@ -103,8 +103,8 @@ const deleteBudget = (budget) => {
                     </template>
                 </el-table-column>
 
-                <!-- NUEVA COLUMNA: RESPONSABLE -->
-                <el-table-column label="Responsable" width="160">
+                <!-- NUEVA COLUMNA: Asesor/vendedor -->
+                <el-table-column label="Asesor/vendedor" width="160">
                     <template #default="scope">
                         <div class="flex items-center gap-2">
                             <el-avatar 

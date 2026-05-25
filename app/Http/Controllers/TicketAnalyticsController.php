@@ -6,6 +6,7 @@ use App\Models\Budget;
 use App\Models\Customer;
 use App\Models\Ticket;
 use App\Models\TicketTask;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -15,8 +16,9 @@ class TicketAnalyticsController extends Controller
 {
     public function index(Request $request)
     {
-        // 0. Filtro de cliente (opcional)
+        // 0. Filtros opcionales
         $customerId = $request->input('customer_id');
+        $sellerId   = $request->input('seller_id');
 
         // 1. Rango de Fechas (Default: Este mes)
         $startDate = $request->input('start_date')
@@ -43,21 +45,41 @@ class TicketAnalyticsController extends Controller
             return $query;
         };
 
+        // Helper para aplicar filtro de vendedor a queries de tickets
+        $applySellerFilter = function ($query) use ($sellerId) {
+            if ($sellerId) {
+                $query->where('seller_id', $sellerId);
+            }
+            return $query;
+        };
+
+        // Helper para aplicar filtro de vendedor a queries de budgets (vía ticket)
+        $applySellerToBudget = function ($query) use ($sellerId) {
+            if ($sellerId) {
+                $query->whereHas('ticket', fn($q) => $q->where('seller_id', $sellerId));
+            }
+            return $query;
+        };
+
         // ================================================================
         // SECCIÓN A: KPIs OPERATIVOS (TICKETS)
         // ================================================================
-        $ticketsInPeriod = $applyCustomerFilter(
-            Ticket::whereBetween('scheduled_start', [$startDate, $endDate])
+        $ticketsInPeriod = $applySellerFilter(
+            $applyCustomerFilter(
+                Ticket::whereBetween('scheduled_start', [$startDate, $endDate])
+            )
         );
 
         $totalTickets = $ticketsInPeriod->count();
         $completedTickets = (clone $ticketsInPeriod)->whereIn('status', ['Facturado', 'Ejecutado', 'Pagado'])->count();
         $completionRate = $totalTickets > 0 ? round(($completedTickets / $totalTickets) * 100, 1) : 0;
 
-        $overdueTickets = $applyCustomerFilter(
-            Ticket::whereBetween('scheduled_end', [$startDate, $endDate])
-                ->whereNotIn('status', ['Facturado', 'Ejecutado', 'Pagado'])
-                ->where('scheduled_end', '<', now())
+        $overdueTickets = $applySellerFilter(
+            $applyCustomerFilter(
+                Ticket::whereBetween('scheduled_end', [$startDate, $endDate])
+                    ->whereNotIn('status', ['Facturado', 'Ejecutado', 'Pagado'])
+                    ->where('scheduled_end', '<', now())
+            )
         )->count();
 
         // ================================================================
@@ -66,8 +88,10 @@ class TicketAnalyticsController extends Controller
         $totalCustomers = Customer::count();
         $newCustomersInRange = Customer::whereBetween('created_at', [$startDate, $endDate])->count();
 
-        $budgetsInRange = $applyCustomerToBudget(
-            Budget::whereBetween('created_at', [$startDate, $endDate])
+        $budgetsInRange = $applySellerToBudget(
+            $applyCustomerToBudget(
+                Budget::whereBetween('created_at', [$startDate, $endDate])
+            )
         );
         $totalBudgets = $budgetsInRange->count();
         $wonBudgets = (clone $budgetsInRange)
@@ -107,8 +131,10 @@ class TicketAnalyticsController extends Controller
             'usd' => $totalBudgeted['usd'] - $totalPaidForBudgets['usd'],
         ];
 
-        $activeProjects = $applyCustomerToBudget(
-            Budget::whereHas('ticket', fn($q) => $q->where('status', 'Proceso de ejecución'))
+        $activeProjects = $applySellerToBudget(
+            $applyCustomerToBudget(
+                Budget::whereHas('ticket', fn($q) => $q->where('status', 'Proceso de ejecución'))
+            )
         )->count();
 
         // ================================================================
@@ -116,7 +142,7 @@ class TicketAnalyticsController extends Controller
         // ================================================================
 
         // C.1 Cronología (área)
-        $timelineData = $this->getTimelineChart($startDate, $endDate);
+        $timelineData = $this->getTimelineChart($startDate, $endDate, $customerId, $sellerId);
 
         // C.2 Carga por técnico — corregido: ahora usa ticket_tasks.user_id
         $workloadQuery = Ticket::whereBetween('tickets.scheduled_start', [$startDate, $endDate])
@@ -124,6 +150,9 @@ class TicketAnalyticsController extends Controller
             ->join('users', 'ticket_tasks.user_id', '=', 'users.id');
         if ($customerId) {
             $workloadQuery->where('tickets.customer_id', $customerId);
+        }
+        if ($sellerId) {
+            $workloadQuery->where('tickets.seller_id', $sellerId);
         }
         $workloadByTech = $workloadQuery
             ->select('users.name', DB::raw('count(distinct tickets.id) as total'))
@@ -143,17 +172,31 @@ class TicketAnalyticsController extends Controller
         // ================================================================
 
         // D.1 Ingresos por día/mes (barras, separado MXN/USD)
-        $incomeData = $this->getIncomeChart($startDate, $endDate, $customerId);
+        $incomeData = $this->getIncomeChart($startDate, $endDate, $customerId, $sellerId);
 
         // D.2 Distribución de estatus de presupuestos (donut)
-        $statusDistribution = Budget::whereBetween('budgets.created_at', [$startDate, $endDate])
-            ->join('tickets', 'budgets.ticket_id', '=', 'tickets.id')
+        $statusQuery = Budget::whereBetween('budgets.created_at', [$startDate, $endDate])
+            ->join('tickets', 'budgets.ticket_id', '=', 'tickets.id');
+        if ($customerId) {
+            $statusQuery->where('tickets.customer_id', $customerId);
+        }
+        if ($sellerId) {
+            $statusQuery->where('tickets.seller_id', $sellerId);
+        }
+        $statusDistribution = $statusQuery
             ->select('tickets.status', DB::raw('count(*) as total'))
             ->groupBy('tickets.status')
             ->pluck('total', 'tickets.status');
 
         // D.3 Servicios más solicitados (barras horizontales)
-        $topServices = Ticket::whereBetween('scheduled_start', [$startDate, $endDate])
+        $topServicesQuery = Ticket::whereBetween('scheduled_start', [$startDate, $endDate]);
+        if ($customerId) {
+            $topServicesQuery->where('customer_id', $customerId);
+        }
+        if ($sellerId) {
+            $topServicesQuery->where('seller_id', $sellerId);
+        }
+        $topServices = $topServicesQuery
             ->select('service_type', DB::raw('count(*) as total'))
             ->groupBy('service_type')
             ->orderByDesc('total')
@@ -161,11 +204,15 @@ class TicketAnalyticsController extends Controller
             ->get();
 
         // D.4 Top clientes por ingresos (tabla) — vía Ticket (Budget no tiene customer_id)
-        $topCustomersRaw = DB::table('customers')
+        $topCustomersQuery = DB::table('customers')
             ->join('tickets', 'customers.id', '=', 'tickets.customer_id')
             ->join('budgets', 'tickets.id', '=', 'budgets.ticket_id')
             ->join('budget_payments', 'budgets.id', '=', 'budget_payments.budget_id')
-            ->whereBetween('budget_payments.payment_date', [$startDate, $endDate])
+            ->whereBetween('budget_payments.payment_date', [$startDate, $endDate]);
+        if ($sellerId) {
+            $topCustomersQuery->where('tickets.seller_id', $sellerId);
+        }
+        $topCustomersRaw = $topCustomersQuery
             ->select('customers.name', 'customers.id', 'budget_payments.amount', 'budgets.currency')
             ->get();
 
@@ -193,6 +240,9 @@ class TicketAnalyticsController extends Controller
             ->whereBetween('tickets.scheduled_start', [$startDate, $endDate]);
         if ($customerId) {
             $regionQuery->where('tickets.customer_id', $customerId);
+        }
+        if ($sellerId) {
+            $regionQuery->where('tickets.seller_id', $sellerId);
         }
         $regionDistribution = $regionQuery
             ->select(
@@ -243,7 +293,7 @@ class TicketAnalyticsController extends Controller
         };
 
         // G.1 Técnicos externos con todas sus tareas completadas y sin pago registrado
-        $completedUnpaidRaw = DB::table('ticket_tasks')
+        $completedUnpaidQuery = DB::table('ticket_tasks')
             ->join('tickets', 'ticket_tasks.ticket_id', '=', 'tickets.id')
             ->join('users', 'ticket_tasks.user_id', '=', 'users.id')
             ->join('technicians', 'users.id', '=', 'technicians.user_id')
@@ -254,7 +304,11 @@ class TicketAnalyticsController extends Controller
                 $sub->select(DB::raw(1))
                     ->from('technician_payments')
                     ->whereColumn('technician_payments.user_id', 'ticket_tasks.user_id');
-            })
+            });
+        if ($sellerId) {
+            $completedUnpaidQuery->where('tickets.seller_id', $sellerId);
+        }
+        $completedUnpaidRaw = $completedUnpaidQuery
             ->select(
                 'users.id as user_id',
                 'users.name as user_name',
@@ -292,13 +346,17 @@ class TicketAnalyticsController extends Controller
             ->values();
 
         // G.2 Técnicos externos con tareas pendientes (no han terminado)
-        $pendingRaw = DB::table('ticket_tasks')
+        $pendingQuery = DB::table('ticket_tasks')
             ->join('tickets', 'ticket_tasks.ticket_id', '=', 'tickets.id')
             ->join('users', 'ticket_tasks.user_id', '=', 'users.id')
             ->join('technicians', 'users.id', '=', 'technicians.user_id')
             ->leftJoin('customer_branches', 'tickets.customer_branch_id', '=', 'customer_branches.id')
             ->where('technicians.is_internal', false)
-            ->where('ticket_tasks.status', '!=', 'Completada')
+            ->where('ticket_tasks.status', '!=', 'Completada');
+        if ($sellerId) {
+            $pendingQuery->where('tickets.seller_id', $sellerId);
+        }
+        $pendingRaw = $pendingQuery
             ->select(
                 'users.id as user_id',
                 'users.name as user_name',
@@ -341,12 +399,26 @@ class TicketAnalyticsController extends Controller
         // ================================================================
         // SECCIÓN E: TENDENCIAS GLOBALES (SIN FILTRO DE FECHA)
         // ================================================================
-        $globalBacklog = Ticket::whereNotIn('status', ['Ejecutado', 'Cancelado'])->count();
-        $globalTasksPending = TicketTask::where('status', '!=', 'Completada')->count();
+        $globalBacklogQuery = Ticket::whereNotIn('status', ['Ejecutado', 'Cancelado']);
+        if ($sellerId) {
+            $globalBacklogQuery->where('seller_id', $sellerId);
+        }
+        $globalBacklog = $globalBacklogQuery->count();
 
-        $techsWithPendingTasks = DB::table('ticket_tasks')
+        $globalTasksPendingQuery = TicketTask::where('status', '!=', 'Completada');
+        if ($sellerId) {
+            $globalTasksPendingQuery->whereHas('ticket', fn($q) => $q->where('seller_id', $sellerId));
+        }
+        $globalTasksPending = $globalTasksPendingQuery->count();
+
+        $techsPendingQuery = DB::table('ticket_tasks')
             ->join('users', 'ticket_tasks.user_id', '=', 'users.id')
-            ->where('ticket_tasks.status', '!=', 'Completada')
+            ->join('tickets', 'ticket_tasks.ticket_id', '=', 'tickets.id')
+            ->where('ticket_tasks.status', '!=', 'Completada');
+        if ($sellerId) {
+            $techsPendingQuery->where('tickets.seller_id', $sellerId);
+        }
+        $techsWithPendingTasks = $techsPendingQuery
             ->select('users.name', DB::raw('count(*) as pending_count'))
             ->groupBy('users.id', 'users.name')
             ->orderByDesc('pending_count')
@@ -358,6 +430,7 @@ class TicketAnalyticsController extends Controller
         // ================================================================
         return Inertia::render('TicketsDashboard', [
             'customers' => Customer::select('id', 'name')->orderBy('name')->get(),
+            'sellers'   => User::whereHas('ticketsAsSeller')->select('id', 'name')->orderBy('name')->get(),
             'kpis' => [
                 // Tickets
                 'total_tickets'      => $totalTickets,
@@ -402,6 +475,7 @@ class TicketAnalyticsController extends Controller
                 'start_date'  => $startDate->toDateString(),
                 'end_date'    => $endDate->toDateString(),
                 'customer_id' => $customerId,
+                'seller_id'   => $sellerId,
             ],
         ]);
     }
@@ -425,7 +499,7 @@ class TicketAnalyticsController extends Controller
         return ['mxn' => $mxn, 'usd' => $usd];
     }
 
-    private function getTimelineChart($startDate, $endDate): array
+    private function getTimelineChart($startDate, $endDate, $customerId = null, $sellerId = null): array
     {
         $diffInDays = $startDate->diffInDays($endDate);
         $labels = [];
@@ -435,16 +509,20 @@ class TicketAnalyticsController extends Controller
             $period = \Carbon\CarbonPeriod::create($startDate, '1 month', $endDate);
             foreach ($period as $dt) {
                 $labels[] = ucfirst($dt->translatedFormat('M Y'));
-                $createdData[] = Ticket::whereYear('scheduled_start', $dt->year)
-                    ->whereMonth('scheduled_start', $dt->month)
-                    ->count();
+                $query = Ticket::whereYear('scheduled_start', $dt->year)
+                    ->whereMonth('scheduled_start', $dt->month);
+                if ($customerId) $query->where('customer_id', $customerId);
+                if ($sellerId) $query->where('seller_id', $sellerId);
+                $createdData[] = $query->count();
             }
         } else {
             $period = \Carbon\CarbonPeriod::create($startDate, $endDate);
             foreach ($period as $dt) {
                 $labels[] = $dt->format('d/m');
-                $createdData[] = Ticket::whereDate('scheduled_start', $dt->toDateString())
-                    ->count();
+                $query = Ticket::whereDate('scheduled_start', $dt->toDateString());
+                if ($customerId) $query->where('customer_id', $customerId);
+                if ($sellerId) $query->where('seller_id', $sellerId);
+                $createdData[] = $query->count();
             }
         }
 
@@ -456,7 +534,7 @@ class TicketAnalyticsController extends Controller
         ];
     }
 
-    private function getIncomeChart($startDate, $endDate, $customerId = null): array
+    private function getIncomeChart($startDate, $endDate, $customerId = null, $sellerId = null): array
     {
         $diffInDays = $startDate->diffInDays($endDate);
         $labels = [];
@@ -478,9 +556,14 @@ class TicketAnalyticsController extends Controller
 
             $query = DB::table('budget_payments')
                 ->join('budgets', 'budget_payments.budget_id', '=', 'budgets.id');
+            if ($customerId || $sellerId) {
+                $query->join('tickets', 'budgets.ticket_id', '=', 'tickets.id');
+            }
             if ($customerId) {
-                $query->join('tickets', 'budgets.ticket_id', '=', 'tickets.id')
-                      ->where('tickets.customer_id', $customerId);
+                $query->where('tickets.customer_id', $customerId);
+            }
+            if ($sellerId) {
+                $query->where('tickets.seller_id', $sellerId);
             }
             $query->select('budget_payments.amount', 'budgets.currency');
 
