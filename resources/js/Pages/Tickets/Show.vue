@@ -1,10 +1,12 @@
 <script setup>
-import { ref } from 'vue';
-import { Link } from '@inertiajs/vue3';
+import { ref, computed } from 'vue';
+import { Link, router } from '@inertiajs/vue3';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import TicketTasks from '@/Pages/Tickets/Partials/TicketTasks.vue';
 import TicketInfo from '@/Pages/Tickets/Partials/TicketInfo.vue';
 import TicketTimeline from '@/Pages/Tickets/Partials/TicketTimeline.vue';
+import TicketBudgetCard from '@/Pages/Tickets/Partials/TicketBudgetCard.vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
 const { can } = usePermissions();
@@ -16,30 +18,115 @@ const props = defineProps({
 
 const activeTab = ref('tasks');
 
+const statusOptions = [
+    { label: 'Borrador', value: 'Borrador', color: '#9ca3af' },
+    { label: 'Levantamiento', value: 'Levantamiento', color: '#0d9488' },
+    { label: 'Cotización (Catálogo)', value: 'Catálogo', color: '#3b82f6' },
+    { label: 'En ejecución', value: 'Proceso de ejecución', color: '#f59e0b' },
+    { label: 'Ejecutado', value: 'Ejecutado', color: '#10b981' },
+    { label: 'Facturado', value: 'Facturado', color: '#eab308' },
+    { label: 'Pagado', value: 'Pagado', color: '#34d399' },
+    { label: 'Cancelado', value: 'Cancelado', color: '#ef4444' },
+];
+
+const currentStatus = ref(props.ticket.status);
+
+const hasBudget = computed(() => !!props.ticket.budget);
+
 const getStatusColor = (status) => {
     const map = {
-        'Programado': 'info',
-        'En proceso': 'primary',
-        'En espera': 'warning',
-        'Revisión': 'warning',
-        'Completado': 'success',
+        'Borrador': 'secondary',
+        'Levantamiento': 'info',
+        'Catálogo': 'primary',
+        'Proceso de ejecución': 'warning',
+        'Ejecutado': 'warning',
+        'Facturado': 'success',
+        'Pagado': 'success',
         'Cancelado': 'danger'
     };
     return map[status] || 'info';
 };
+
+async function handleStatusChange(newStatus) {
+    // v-model already updated currentStatus, so compare against the original prop value
+    if (props.ticket.status === newStatus) return;
+
+    // If changing to Catálogo and no budget exists, require confirmation
+    if (newStatus === 'Catálogo' && !hasBudget.value) {
+        try {
+            await ElMessageBox.confirm(
+                'Para mover este ticket a Cotización (Catálogo) es necesario tener un presupuesto registrado. ¿Deseas crear uno ahora?',
+                'Presupuesto requerido',
+                {
+                    confirmButtonText: 'Crear presupuesto',
+                    cancelButtonText: 'Cancelar',
+                    type: 'warning',
+                }
+            );
+            // Change status first, then redirect to budget creation
+            router.put(route('tickets.update-status', props.ticket.id), {
+                status: newStatus
+            }, {
+                preserveScroll: true,
+                preserveState: true,
+                onSuccess: () => {
+                    router.visit(route('budgets.create', { ticket_id: props.ticket.id }));
+                },
+                onError: () => {
+                    currentStatus.value = props.ticket.status;
+                    ElMessage.error('Error al actualizar el estatus.');
+                }
+            });
+            return;
+        } catch {
+            // User cancelled — revert to previous status
+            currentStatus.value = props.ticket.status;
+            return;
+        }
+    }
+
+    router.put(route('tickets.update-status', props.ticket.id), {
+        status: newStatus
+    }, {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            ElMessage.success('Estatus actualizado correctamente.');
+        },
+        onError: () => {
+            currentStatus.value = props.ticket.status;
+            ElMessage.error('Error al actualizar el estatus.');
+        }
+    });
+}
 </script>
 
 <template>
-    <AppLayout :title="`Ticket #${ticket.id}`">
+    <AppLayout :title="`Ticket ${ticket.folio}`">
         <template #header>
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div class="flex items-center gap-3">
                     <h2 class="font-semibold text-gray-800 dark:text-white leading-tight">
-                        Ticket de servicio #{{ ticket.id }}
+                        Ticket {{ ticket.folio }}
                     </h2>
-                    <el-tag :type="getStatusColor(ticket.status)" effect="dark" size="large">
-                        {{ ticket.status }}
-                    </el-tag>
+                    <el-select
+                        v-model="currentStatus"
+                        value-key="value"
+                        class="!w-56"
+                        @change="handleStatusChange"
+                    >
+                        <el-option
+                            v-for="opt in statusOptions"
+                            :key="opt.value"
+                            :label="opt.label"
+                            :value="opt.value"
+                        >
+                            <div class="flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-full inline-block" :style="{ backgroundColor: opt.color }"></span>
+                                <span>{{ opt.label }}</span>
+                            </div>
+                        </el-option>
+                    </el-select>
                 </div>
                 
                 <div class="flex gap-2">
@@ -68,24 +155,14 @@ const getStatusColor = (status) => {
                         </div>
                         <div>
                             <h3 class="text-lg font-bold text-gray-800 dark:text-white leading-tight">
-                                {{ ticket.budget?.service_type }}
+                                {{ ticket.name }}
                             </h3>
                             <p class="text-sm text-gray-500 dark:text-gray-400">
-                                Cliente: {{ ticket.budget?.customer?.name }}
+                                {{ ticket.customer?.name }}
                             </p>
-                        </div>
-                    </div>
-
-                    <!-- Responsable -->
-                    <div class="flex items-center gap-3 w-full md:w-auto bg-gray-50 dark:bg-[#252529] px-4 py-2 rounded-lg border border-gray-100 dark:border-[#3f3f46]">
-                        <span class="text-xs text-gray-400 uppercase font-bold">Supervisor o encargado de obra</span>
-                        <div class="flex items-center gap-2">
-                            <el-avatar :size="28" class="!text-xs bg-white text-gray-600 border">
-                                {{ ticket.responsible?.name?.charAt(0) }}
-                            </el-avatar>
-                            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                {{ ticket.responsible?.name }}
-                            </span>
+                            <p v-if="ticket.seller" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                                Asesor: {{ ticket.seller.name }}
+                            </p>
                         </div>
                     </div>
 
@@ -122,6 +199,13 @@ const getStatusColor = (status) => {
                     <!-- TAB 3: CRONOGRAMA -->
                     <el-tab-pane label="Cronograma" name="timeline">
                         <TicketTimeline :ticket="ticket" />
+                    </el-tab-pane>
+
+                    <!-- TAB 4: PRESUPUESTO -->
+                    <el-tab-pane label="Presupuesto" name="budget">
+                        <div class="pb-4">
+                            <TicketBudgetCard :budget="ticket.budget" :ticket-id="ticket.id" :ticket="ticket" />
+                        </div>
                     </el-tab-pane>
 
                 </el-tabs>

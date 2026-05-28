@@ -9,6 +9,20 @@ defineProps({
 
 const emit = defineEmits(['toggleSidebar']);
 
+// --- LÓGICA DE THEME (DARK/LIGHT) ---
+const isDark = ref(document.documentElement.classList.contains('dark'));
+
+function toggleDark() {
+    isDark.value = !isDark.value;
+    const html = document.documentElement;
+    if (isDark.value) {
+        html.classList.add('dark');
+    } else {
+        html.classList.remove('dark');
+    }
+    localStorage.setItem('theme', isDark.value ? 'dark' : 'light');
+}
+
 // --- LÓGICA DE CALENDARIO ---
 const calendarStatus = ref({
     invitations: 0,
@@ -91,6 +105,21 @@ const handleCommand = (command) => {
                         <el-icon :size="20" class="text-gray-500 dark:text-gray-400 group-hover:text-primary transition-colors"><Calendar /></el-icon>
                     </el-badge>
                 </Link>
+            </el-tooltip>
+
+            <!-- Toggle Dark/Light Mode -->
+            <el-tooltip :content="isDark ? 'Cambiar a modo día' : 'Cambiar a modo noche'" placement="bottom">
+                <el-button
+                    circle
+                    text
+                    @click="toggleDark"
+                    class="!text-gray-500 dark:!text-gray-400 hover:!bg-gray-100 dark:hover:!bg-[#27272a] !p-2"
+                >
+                    <el-icon :size="20">
+                        <Sunny v-if="!isDark" />
+                        <Moon v-else />
+                    </el-icon>
+                </el-button>
             </el-tooltip>
 
             <div class="h-6 w-px bg-gray-200 dark:bg-gray-700 mx-2"></div>

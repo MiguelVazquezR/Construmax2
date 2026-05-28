@@ -5,14 +5,17 @@ namespace App\Http\Controllers;
 use App\Models\Ticket;
 use App\Models\TicketTask;
 use App\Models\User;
+use App\Services\Media\ImageOptimizerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
 use Inertia\Inertia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
-use Illuminate\Validation\ValidationException;
 
 class TicketTaskController extends Controller
 {
+    public function __construct(
+        private readonly ImageOptimizerService $imageOptimizer,
+    ) {}
     // --- GESTIÓN INTERNA (AUTH) ---
 
     public function store(Request $request, Ticket $ticket)
@@ -25,11 +28,15 @@ class TicketTaskController extends Controller
             'due_date' => 'required|date|after:start_date', // Requerido y debe ser posterior al inicio
         ]);
 
-        // Validar Disponibilidad
-        $this->checkForOverlaps($validated['user_id'], $validated['start_date'], $validated['due_date']);
+        // Validar Disponibilidad (advierte si hay cruce, pero permite guardar)
+        $warning = $this->checkForOverlaps($validated['user_id'], $validated['start_date'], $validated['due_date']);
 
         $ticket->tasks()->create($validated);
         $ticket->updateStatusBasedOnTasks();
+
+        if ($warning) {
+            return back()->with('warning', $warning);
+        }
 
         return back()->with('success', 'Tarea creada y agendada correctamente.');
     }
@@ -44,10 +51,15 @@ class TicketTaskController extends Controller
             'due_date' => 'required|date|after:start_date',
         ]);
 
-        // Validar Disponibilidad (excluyendo la tarea actual)
-        $this->checkForOverlaps($validated['user_id'], $validated['start_date'], $validated['due_date'], $task->id);
+        // Validar Disponibilidad (excluyendo la tarea actual, advierte pero permite guardar)
+        $warning = $this->checkForOverlaps($validated['user_id'], $validated['start_date'], $validated['due_date'], $task->id);
 
         $task->update($validated);
+
+        if ($warning) {
+            return back()->with('warning', $warning);
+        }
+
         return back()->with('success', 'Tarea actualizada.');
     }
 
@@ -79,7 +91,11 @@ class TicketTaskController extends Controller
         ]);
 
         if ($request->hasFile('file')) {
-            $task->addMediaFromRequest('file')->toMediaCollection('task_evidence');
+            $file = $request->file('file');
+            $optimizedPath = $this->imageOptimizer->optimize($file);
+            $task->addMedia($optimizedPath)
+                ->usingFileName($file->getClientOriginalName())
+                ->toMediaCollection('task_evidence');
         }
 
         return back()->with('success', 'Evidencia subida.');
@@ -87,7 +103,11 @@ class TicketTaskController extends Controller
 
     // --- HELPER: VALIDACIÓN DE TRASLAPE DE HORARIOS ---
     
-    private function checkForOverlaps($userId, $start, $end, $ignoreTaskId = null)
+    /**
+     * Check for scheduling overlaps for a given technician.
+     * Returns a warning message string if a conflict is found, null otherwise.
+     */
+    private function checkForOverlaps($userId, $start, $end, $ignoreTaskId = null): ?string
     {
         // Buscamos tareas del MISMO técnico que se crucen en el tiempo
         // Lógica de cruce: (InicioA < FinB) y (FinA > InicioB)
@@ -99,7 +119,7 @@ class TicketTaskController extends Controller
             ->when($ignoreTaskId, function($query, $id) {
                 $query->where('id', '!=', $id);
             })
-            ->with(['ticket.budget.customer']) // Cargamos datos para el mensaje de error
+            ->with(['ticket.budget.customer']) // Cargamos datos para el mensaje de advertencia
             ->first();
 
         if ($conflict) {
@@ -109,18 +129,17 @@ class TicketTaskController extends Controller
             $project = $conflict->ticket->budget->name ?? 'Ticket #' . $conflict->ticket_id;
             $customer = $conflict->ticket->budget->customer->name ?? 'N/A';
 
-            throw ValidationException::withMessages([
-                'start_date' => "Agenda ocupada: $techName ya tiene la tarea '{$conflict->name}' asignada en este horario ($startDate | $endDate) para el proyecto '$project' ($customer).",
-                'overlap' => true // Flag para el frontend
-            ]);
+            return "Conflicto de agenda: $techName ya tiene la tarea '{$conflict->name}' asignada en este horario ($startDate | $endDate) para el proyecto '$project' ($customer). La tarea se guardó de todos modos.";
         }
+
+        return null;
     }
 
     // --- GESTIÓN PÚBLICA (SIGNED URL) ---
 
     public function publicJobOrder(Request $request, Ticket $ticket, User $user)
     {
-        $ticket->load(['budget.customer', 'budget.contact']);
+        $ticket->load(['budget.customer']);
 
         $tasks = $ticket->tasks()
             ->where('user_id', $user->id)
@@ -163,7 +182,11 @@ class TicketTaskController extends Controller
         ]);
 
         if ($request->hasFile('file')) {
-            $task->addMediaFromRequest('file')->toMediaCollection('task_evidence');
+            $file = $request->file('file');
+            $optimizedPath = $this->imageOptimizer->optimize($file);
+            $task->addMedia($optimizedPath)
+                ->usingFileName($file->getClientOriginalName())
+                ->toMediaCollection('task_evidence');
         }
 
         return back()->with('success', 'Evidencia compartida correctamente.');

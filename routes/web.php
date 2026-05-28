@@ -8,6 +8,40 @@ use Illuminate\Support\Facades\Http;
 // Redirección inicial
 Route::redirect('/', '/login');
 
+// Proxy de mapas GeoJSON (evita CORS)
+Route::get('/maps/{country}', function ($country) {
+    $sources = [
+        'usa' => [
+            'https://echarts.apache.org/examples/data/asset/geo/USA.json',
+        ],
+        'mexico' => [
+            'https://geo.datav.aliyun.com/areas_v3/bound/484_full.json',
+            'https://raw.githubusercontent.com/echarts-maps/map-json/main/json/Mexico.json',
+        ],
+    ];
+
+    if (!isset($sources[$country])) {
+        abort(404);
+    }
+
+    $lastError = null;
+    foreach ($sources[$country] as $url) {
+        try {
+            $response = Http::timeout(8)->get($url);
+            if ($response->successful()) {
+                return response($response->body(), 200)
+                    ->header('Content-Type', 'application/json')
+                    ->header('Access-Control-Allow-Origin', '*');
+            }
+            $lastError = "HTTP {$response->status()}";
+        } catch (\Exception $e) {
+            $lastError = $e->getMessage();
+        }
+    }
+
+    abort(502, "No se pudo obtener el mapa: {$lastError}");
+})->name('maps.proxy');
+
 // Grupo Autenticado
 Route::middleware([
     'auth:sanctum',
@@ -40,6 +74,8 @@ require __DIR__ . '/web/crm.php';
 require __DIR__ . '/web/tickets.php';
 require __DIR__ . '/web/calendar.php';
 require __DIR__ . '/web/technicians.php';
+require __DIR__ . '/web/invoices.php';
+require __DIR__ . '/web/costs.php';
 
 // --- SOLUCIÓN PARA HOSTING SIN SYMLINK ---
 // Esta ruta intercepta las peticiones a imágenes y documentos

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -52,10 +53,14 @@ class User extends Authenticatable
         return $this->hasOne(Employee::class);
     }
     
-    // --- RELACIÓN NUEVA ---
     public function technician(): HasOne
     {
         return $this->hasOne(Technician::class);
+    }
+
+    public function ticketsAsSeller(): HasMany
+    {
+        return $this->hasMany(Ticket::class, 'seller_id');
     }
     
     public function scopeFilter($query, array $filters)

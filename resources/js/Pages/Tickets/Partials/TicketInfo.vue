@@ -64,20 +64,26 @@ const deleteEvidence = (mediaId) => {
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <p class="text-xs text-blue-500 uppercase font-bold">Cliente</p>
-                        <p class="text-blue-900 dark:text-blue-100 font-medium">{{ ticket.budget?.customer?.name }}</p>
+                        <p class="text-blue-900 dark:text-blue-100 font-medium">{{ ticket.customer?.name || 'Sin asignar' }}</p>
                     </div>
                     <div>
                         <p class="text-xs text-blue-500 uppercase font-bold">Contacto</p>
-                        <p class="text-blue-900 dark:text-blue-100 font-medium">{{ ticket.budget?.contact?.name }}</p>
-                        <p class="text-xs text-blue-700 dark:text-blue-300">{{ ticket.budget?.contact?.phone }}</p>
+                        <p class="text-blue-900 dark:text-blue-100 font-medium">{{ ticket.contact?.name || 'Sin asignar' }}</p>
+                        <p class="text-xs text-blue-700 dark:text-blue-300">{{ ticket.contact?.phone || '---' }}</p>
                     </div>
                     <div>
                         <p class="text-xs text-blue-500 uppercase font-bold">Sucursal / Ubicación</p>
-                        <p class="text-blue-900 dark:text-blue-100 font-medium">{{ ticket.budget?.branch }}</p>
+                        <p class="text-blue-900 dark:text-blue-100 font-medium">
+                            {{ ticket.branch ? `${ticket.branch.branch_name} (${ticket.branch.unit || ticket.branch.region})` : 'Sin asignar' }}
+                        </p>
                     </div>
                     <div>
-                        <p class="text-xs text-blue-500 uppercase font-bold">Presupuesto Origen</p>
-                        <p class="text-blue-900 dark:text-blue-100 font-medium">{{ ticket.budget?.name }}</p>
+                        <p class="text-xs text-blue-500 uppercase font-bold">Tipo de Servicio</p>
+                        <p class="text-blue-900 dark:text-blue-100 font-medium">{{ ticket.service_type || 'Sin especificar' }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-blue-500 uppercase font-bold">Vendedor / Asesor</p>
+                        <p class="text-blue-900 dark:text-blue-100 font-medium">{{ ticket.seller?.name || 'Sin asignar' }}</p>
                     </div>
                 </div>
             </div>

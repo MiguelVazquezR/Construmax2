@@ -1,196 +1,245 @@
 <template>
   <Head :title="`Orden de Trabajo #${ticket.id}`" />
   
-  <div class="job-order-container">
-    
-    <!-- 1. AVISO DE SEGURIDAD (IMPORTANTE) -->
-    <el-alert
-        title="⚠️ AVISO DE SEGURIDAD INDUSTRIAL"
-        type="warning"
-        effect="dark"
-        :closable="false"
-        class="mb-6 sticky-header"
-    >
-        <div class="text-sm">
-            <p class="font-bold mb-1">REGLAS OBLIGATORIAS PARA INICIAR LABORES:</p>
-            <ul class="list-disc pl-4 space-y-1">
-                <li>Usar equipo de protección personal (EPP) completo.</li>
-                <li>Verificar riesgos eléctricos o de altura.</li>
-                <li>Reportar condiciones inseguras antes de iniciar.</li>
-            </ul>
-        </div>
-    </el-alert>
-
-    <!-- HEADER DEL TICKET -->
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5 mb-6">
-        <div class="flex justify-between items-start mb-4">
+  <div class="min-h-screen bg-gray-50/50">
+    <div class="max-w-3xl mx-auto p-4 sm:p-6 lg:p-8">
+      
+      <!-- 1. AVISO DE SEGURIDAD (IMPORTANTE) -->
+      <div class="sticky top-4 z-50 mb-8">
+        <div class="bg-orange-50 border border-orange-200 rounded-xl shadow-sm p-4 backdrop-blur-sm bg-opacity-95">
+          <div class="flex items-start gap-3">
+            <el-icon class="text-orange-500 mt-0.5" :size="20"><Warning /></el-icon>
             <div>
-                <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Ticket #{{ ticket.id }}</span>
-                <h1 class="text-xl font-bold text-gray-900 mt-1">{{ ticket.budget?.customer?.name }}</h1>
-                <p class="text-sm text-gray-600">{{ ticket.budget?.customer?.business_name }}</p>
+              <h3 class="text-sm font-bold text-orange-800 mb-2 uppercase tracking-wide">Aviso de Seguridad Industrial</h3>
+              <p class="text-xs font-semibold text-orange-700 mb-2">Reglas obligatorias para iniciar labores:</p>
+              <ul class="text-xs text-orange-700 list-disc pl-4 space-y-1">
+                  <li>Usar equipo de protección personal (EPP) completo.</li>
+                  <li>Verificar riesgos eléctricos o de altura.</li>
+                  <li>Reportar condiciones inseguras antes de iniciar.</li>
+              </ul>
             </div>
-            <el-tag effect="dark" :type="getPriorityColor(ticket.priority)">Prioridad {{ ticket.priority }}</el-tag>
+          </div>
+        </div>
+      </div>
+
+      <!-- HEADER DEL TICKET -->
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8 mb-10 relative overflow-hidden">
+        <!-- Decoración sutil de fondo -->
+        <div class="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-gray-50 rounded-full opacity-50 pointer-events-none"></div>
+        
+        <div class="flex flex-col sm:flex-row justify-between items-start gap-4 mb-6 relative z-10">
+            <div>
+                <div class="flex items-center gap-3 mb-2">
+                  <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">Ticket {{ ticket.folio }}</span>
+                  <el-tag effect="light" :type="getPriorityColor(ticket.priority)" size="small" class="!rounded-full !border-none !px-3 font-semibold">
+                    Prioridad {{ ticket.priority }}
+                  </el-tag>
+                </div>
+                <h1 class="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight leading-tight">{{ ticket.budget?.customer?.name }}</h1>
+                <p class="text-sm text-gray-500 mt-1 font-medium">{{ ticket.budget?.customer?.business_name }}</p>
+            </div>
         </div>
         
-        <el-descriptions :column="1" border size="small">
-            <el-descriptions-item label="Responsable">
-                <div class="flex items-center gap-2">
-                    <el-avatar :size="20" :src="technician.profile_photo_url">{{ technician.name.charAt(0) }}</el-avatar>
-                    {{ technician.name }}
-                </div>
-            </el-descriptions-item>
-            <el-descriptions-item label="Instrucciones">
-                {{ ticket.instructions || 'Sin instrucciones generales.' }}
-            </el-descriptions-item>
-        </el-descriptions>
-    </div>
-
-    <!-- LISTA DE TAREAS SECUENCIALES -->
-    <div class="space-y-8 relative">
-        <!-- Línea conectora vertical -->
-        <div class="absolute left-4 top-4 bottom-4 w-0.5 bg-gray-200 z-0"></div>
-
-        <div 
-            v-for="(task, index) in tasks" 
-            :key="task.id" 
-            class="relative z-10 pl-12 transition-all duration-300"
-            :class="{ 'opacity-60 grayscale': isTaskLocked(index) }"
-        >
-            <!-- Badge Circular del Paso -->
-            <div 
-                class="absolute left-0 top-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-white shadow-sm border-2 border-white"
-                :class="getStepColorClass(task, index)"
-            >
-                <el-icon v-if="task.status === 'Completada'"><Check /></el-icon>
-                <span v-else>{{ index + 1 }}</span>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-gray-100 relative z-10">
+          <div>
+            <span class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Asesor / Vendedor asignado</span>
+            <div class="flex items-center gap-3">
+                <el-avatar :size="32" :src="technician.profile_photo_url" class="border border-gray-100 shadow-sm">{{ technician.name.charAt(0) }}</el-avatar>
+                <span class="text-sm font-semibold text-gray-700">{{ technician.name }}</span>
             </div>
+          </div>
+          <div>
+            <span class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Instrucciones Generales</span>
+            <p class="text-sm text-gray-600 leading-relaxed bg-gray-50 p-3 rounded-lg border border-gray-100">
+              {{ ticket.instructions || 'No se proporcionaron instrucciones específicas para esta orden.' }}
+            </p>
+          </div>
+        </div>
+      </div>
 
-            <!-- Tarjeta de Tarea -->
-            <el-card class="box-card" :shadow="isTaskLocked(index) ? 'never' : 'hover'">
-                <template #header>
-                    <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
-                        <span class="font-bold text-gray-800 leading-tight">{{ task.name }}</span>
-                        <el-tag size="small" :type="getStatusType(task.status)" class="w-fit">{{ task.status }}</el-tag>
+      <!-- LISTA DE TAREAS SECUENCIALES -->
+      <div class="mb-8">
+        <h2 class="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+          <el-icon class="text-primary"><List /></el-icon> Plan de Trabajo
+        </h2>
+        
+        <div class="space-y-6 relative">
+            <!-- Línea conectora vertical sutil -->
+            <div class="absolute left-[1.15rem] top-4 bottom-4 w-px bg-gray-200 z-0 hidden sm:block"></div>
+
+            <div 
+                v-for="(task, index) in tasks" 
+                :key="task.id" 
+                class="relative z-10 sm:pl-12 transition-all duration-300 group"
+                :class="{ 'opacity-50 grayscale': isTaskLocked(index) }"
+            >
+                <!-- Badge Circular del Paso -->
+                <div 
+                    class="hidden sm:flex absolute left-0 top-6 w-10 h-10 rounded-full items-center justify-center font-bold text-sm shadow-sm border-4 border-gray-50 transition-colors"
+                    :class="getStepColorClass(task, index)"
+                >
+                    <el-icon v-if="task.status === 'Completada'" :size="16"><Check /></el-icon>
+                    <span v-else>{{ index + 1 }}</span>
+                </div>
+
+                <!-- Tarjeta de Tarea -->
+                <el-card class="!rounded-2xl !border-gray-100 !shadow-sm hover:!shadow-md transition-shadow" :shadow="isTaskLocked(index) ? 'never' : 'hover'">
+                    <template #header>
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b-0 pb-0">
+                            <div class="flex items-center gap-3">
+                              <span class="sm:hidden flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold text-white" :class="getStepColorClass(task, index).replace('border-4 border-gray-50', '')">
+                                <el-icon v-if="task.status === 'Completada'" :size="12"><Check /></el-icon>
+                                <span v-else>{{ index + 1 }}</span>
+                              </span>
+                              <h3 class="text-base font-bold text-gray-800 leading-tight m-0">{{ task.name }}</h3>
+                            </div>
+                            <el-tag size="small" effect="light" :type="getStatusType(task.status)" class="!rounded-full !px-3 font-medium !border-none bg-opacity-20">{{ task.status }}</el-tag>
+                        </div>
+                    </template>
+
+                    <div class="text-sm text-gray-600 mb-6 leading-relaxed whitespace-pre-line">
+                        {{ task.description || 'Sin detalles adicionales para esta tarea.' }}
                     </div>
-                </template>
-
-                <div class="text-sm text-gray-600 mb-4 whitespace-pre-line">
-                    {{ task.description || 'Sin detalles adicionales.' }}
-                </div>
-                
-                <div class="text-xs text-gray-500 mb-4 flex flex-col sm:flex-row gap-2 sm:gap-4">
-                    <span class="flex items-center gap-1"><el-icon><Calendar /></el-icon> {{ formatDate(task.start_date) }}</span>
-                    <span class="flex items-center gap-1"><el-icon><Timer /></el-icon> Límite: {{ formatDate(task.due_date) }}</span>
-                </div>
-
-                <!-- SECCIÓN DE EVIDENCIAS -->
-                <div class="bg-gray-50 rounded p-3 mb-4 border border-gray-100">
-                    <p class="text-xs font-bold text-gray-500 mb-3 uppercase flex items-center gap-1">
-                        <el-icon><Camera /></el-icon> Evidencias Fotográficas
-                    </p>
                     
-                    <!-- Galería -->
-                    <div v-if="task.media && task.media.length > 0" class="flex flex-wrap gap-3 mb-3">
-                        <div 
-                            v-for="(img, imgIndex) in task.media" 
-                            :key="img.id" 
-                            class="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200 shadow-sm bg-white"
-                        >
-                            <el-image 
-                                :src="img.original_url" 
-                                class="w-full h-full" 
-                                fit="cover"
-                                :preview-src-list="getTaskImageUrls(task)"
-                                :initial-index="imgIndex"
-                                preview-teleported
-                                hide-on-click-modal
-                            >
-                                <template #error>
-                                    <div class="flex items-center justify-center w-full h-full bg-gray-100 text-gray-400">
-                                        <el-icon><icon-picture /></el-icon>
-                                    </div>
-                                </template>
-                            </el-image>
-
-                            <!-- Botón borrar MEJORADO -->
-                            <el-popconfirm
-                                v-if="task.status !== 'Completada'"
-                                title="¿Eliminar?"
-                                confirm-button-text="Sí"
-                                cancel-button-text="No"
-                                width="160"
-                                @confirm="deleteEvidence(img.delete_url)"
-                            >
-                                <template #reference>
-                                    <div class="absolute top-1 right-1 bg-white text-red-500 rounded-full p-1 shadow-md cursor-pointer hover:bg-red-50 transition-colors z-10 flex items-center justify-center w-6 h-6">
-                                        <el-icon :size="14"><Delete /></el-icon>
-                                    </div>
-                                </template>
-                            </el-popconfirm>
+                    <div class="flex flex-wrap gap-4 mb-6 pb-6 border-b border-gray-50">
+                        <div class="flex items-center gap-2 text-xs font-medium text-gray-500 bg-gray-50/80 px-3 py-1.5 rounded-md">
+                          <el-icon class="text-gray-400"><Calendar /></el-icon> 
+                          <span>Inicio: {{ formatDate(task.start_date) }}</span>
+                        </div>
+                        <div class="flex items-center gap-2 text-xs font-medium text-gray-500 bg-gray-50/80 px-3 py-1.5 rounded-md">
+                          <el-icon class="text-gray-400"><Timer /></el-icon> 
+                          <span>Límite: {{ formatDate(task.due_date) }}</span>
                         </div>
                     </div>
-                    <div v-else class="text-xs text-gray-400 italic mb-3 ml-1">
-                        No hay fotos adjuntas.
+
+                    <!-- SECCIÓN DE EVIDENCIAS -->
+                    <div class="mb-6">
+                        <div class="flex items-center justify-between mb-4">
+                          <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                              <el-icon><Camera /></el-icon> Evidencias Fotográficas
+                          </h4>
+                          <el-upload
+                              v-if="task.status !== 'Completada' && !isTaskLocked(index)"
+                              action="#"
+                              :auto-upload="true"
+                              :show-file-list="false"
+                              :http-request="(opts) => handleUpload(opts, task)"
+                              accept="image/*"
+                          >
+                              <el-button size="small" :icon="Camera" :loading="uploadingTaskId === task.id" plain type="primary" class="!rounded-full">
+                                  Subir Foto
+                              </el-button>
+                          </el-upload>
+                        </div>
+                        
+                        <!-- Galería -->
+                        <div v-if="task.media && task.media.length > 0" class="flex flex-wrap gap-3">
+                            <div 
+                                v-for="(img, imgIndex) in task.media" 
+                                :key="img.id" 
+                                class="relative w-24 h-24 rounded-xl overflow-hidden border border-gray-100 shadow-sm group/img"
+                            >
+                                <el-image 
+                                    :src="img.original_url" 
+                                    class="w-full h-full transition-transform duration-300 group-hover/img:scale-110" 
+                                    fit="cover"
+                                    :preview-src-list="getTaskImageUrls(task)"
+                                    :initial-index="imgIndex"
+                                    preview-teleported
+                                    hide-on-click-modal
+                                >
+                                    <template #error>
+                                        <div class="flex items-center justify-center w-full h-full bg-gray-50 text-gray-300">
+                                            <el-icon :size="24"><icon-picture /></el-icon>
+                                        </div>
+                                    </template>
+                                </el-image>
+
+                                <!-- Botón borrar -->
+                                <el-popconfirm
+                                    v-if="task.status !== 'Completada'"
+                                    title="¿Eliminar foto?"
+                                    confirm-button-text="Sí"
+                                    cancel-button-text="No"
+                                    width="180"
+                                    @confirm="deleteEvidence(img.delete_url)"
+                                >
+                                    <template #reference>
+                                        <div class="absolute top-1.5 right-1.5 bg-white/90 backdrop-blur-sm text-red-500 rounded-full p-1.5 shadow-sm cursor-pointer hover:bg-red-50 hover:text-red-600 transition-colors z-10 flex items-center justify-center opacity-0 group-hover/img:opacity-100 sm:opacity-100">
+                                            <el-icon :size="14"><Delete /></el-icon>
+                                        </div>
+                                    </template>
+                                </el-popconfirm>
+                            </div>
+                        </div>
+                        <div v-else class="flex flex-col items-center justify-center py-6 px-4 text-center bg-gray-50 border border-dashed border-gray-200 rounded-xl">
+                            <el-icon class="text-gray-300 mb-2" :size="24"><PictureFilled /></el-icon>
+                            <span class="text-sm font-medium text-gray-500">Sin evidencias registradas</span>
+                            <span class="text-xs text-gray-400 mt-1">Sube fotos del antes, durante y después.</span>
+                        </div>
                     </div>
 
-                    <!-- Upload Button -->
-                    <el-upload
-                        v-if="task.status !== 'Completada' && !isTaskLocked(index)"
-                        action="#"
-                        :auto-upload="true"
-                        :show-file-list="false"
-                        :http-request="(opts) => handleUpload(opts, task)"
-                        accept="image/*"
+                    <!-- ACCIÓN PRINCIPAL -->
+                    <el-button 
+                        v-if="!isTaskLocked(index)"
+                        :type="task.status === 'Completada' ? 'info' : 'success'" 
+                        class="w-full !py-6 !text-base !font-bold !rounded-xl transition-all"
+                        :plain="task.status === 'Completada'"
+                        :icon="task.status === 'Completada' ? RefreshLeft : Select"
+                        @click="toggleStatus(task)"
+                        :loading="togglingTaskId === task.id"
                     >
-                        <el-button size="small" :icon="Camera" :loading="uploadingTaskId === task.id" plain type="primary">
-                            Adjuntar Foto
-                        </el-button>
-                    </el-upload>
-                </div>
+                        {{ task.status === 'Completada' ? 'Reabrir tarea para edición' : 'Marcar tarea como completada' }}
+                    </el-button>
+                    
+                    <div v-else class="flex items-center justify-center gap-2 p-4 bg-gray-50 rounded-xl border border-gray-100 text-sm font-medium text-gray-400">
+                        <el-icon><Lock /></el-icon> Completa el paso anterior para desbloquear
+                    </div>
 
-                <!-- ACCIÓN PRINCIPAL -->
-                <el-button 
-                    v-if="!isTaskLocked(index)"
-                    :type="task.status === 'Completada' ? 'warning' : 'success'" 
-                    class="w-full !py-5"
-                    :icon="task.status === 'Completada' ? RefreshLeft : Select"
-                    @click="toggleStatus(task)"
-                    :loading="togglingTaskId === task.id"
-                >
-                    {{ task.status === 'Completada' ? 'Reabrir tarea' : 'Finalizar tarea' }}
-                </el-button>
-                <div v-else class="text-xs text-orange-500 italic flex items-center gap-1 p-2 bg-orange-50 rounded border border-orange-100">
-                    <el-icon><Lock /></el-icon> Completa la tarea anterior para desbloquear.
-                </div>
-
-            </el-card>
+                </el-card>
+            </div>
         </div>
-    </div>
+      </div>
 
-    <!-- 3. RECORDATORIO FINAL (CHECKLIST DE CIERRE) -->
-    <div class="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-5">
-        <h3 class="text-blue-800 font-bold flex items-center gap-2 mb-3">
-            <el-icon><DocumentChecked /></el-icon> REQUISITOS PARA LIBERACIÓN DE PAGO
-        </h3>
-        <ul class="text-sm text-blue-700 space-y-2 list-none">
-            <li class="flex items-start gap-2">
-                <el-icon class="mt-1"><Check /></el-icon> 
-                <span>Subir evidencias claras del <strong>Antes, Durante y Después</strong>.</span>
-            </li>
-            <li class="flex items-start gap-2">
-                <el-icon class="mt-1"><Check /></el-icon> 
-                <span>Firma de conformidad del cliente (Hoja de servicio).</span>
-            </li>
-            <li class="flex items-start gap-2">
-                <el-icon class="mt-1"><Check /></el-icon> 
-                <span>Área limpia y libre de escombro.</span>
-            </li>
-        </ul>
-        <div class="mt-4 text-xs text-blue-500 font-semibold border-t border-blue-200 pt-2">
-            * Construmax de Occidente validará estos puntos antes de procesar la estimación.
-        </div>
-    </div>
+      <!-- 3. RECORDATORIO FINAL (CHECKLIST DE CIERRE) -->
+      <div class="bg-blue-50/50 border border-blue-100 rounded-2xl p-6 sm:p-8 mt-12 relative overflow-hidden">
+          <div class="absolute -right-6 -top-6 text-blue-100 opacity-50">
+            <el-icon :size="120"><DocumentChecked /></el-icon>
+          </div>
+          
+          <div class="relative z-10">
+            <h3 class="text-blue-900 text-base font-bold flex items-center gap-2 mb-4">
+                <el-icon class="text-blue-500"><List /></el-icon> Requisitos para liberación de pago
+            </h3>
+            <div class="bg-white rounded-xl p-5 border border-blue-100 shadow-sm mb-4">
+              <ul class="text-sm text-blue-800 space-y-4 list-none">
+                  <li class="flex items-start gap-3">
+                      <div class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <el-icon :size="12"><Check /></el-icon>
+                      </div>
+                      <span class="font-medium leading-relaxed">Subir evidencias fotográficas claras del <strong class="text-blue-900">Antes, Durante y Después</strong>.</span>
+                  </li>
+                  <li class="flex items-start gap-3">
+                      <div class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <el-icon :size="12"><Check /></el-icon>
+                      </div>
+                      <span class="font-medium leading-relaxed">Firma de conformidad del cliente en la <strong class="text-blue-900">Hoja de servicio</strong>.</span>
+                  </li>
+                  <li class="flex items-start gap-3">
+                      <div class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <el-icon :size="12"><Check /></el-icon>
+                      </div>
+                      <span class="font-medium leading-relaxed">Área de trabajo completamente <strong class="text-blue-900">limpia y libre de escombro</strong>.</span>
+                  </li>
+              </ul>
+            </div>
+            <div class="text-xs text-blue-600/70 font-medium">
+                * Construmax de Occidente validará estos puntos antes de procesar la estimación correspondiente.
+            </div>
+          </div>
+      </div>
 
+    </div>
   </div>
 </template>
 
@@ -207,6 +256,9 @@ import {
     Lock,
     Select,
     DocumentChecked,
+    Warning,
+    List,
+    PictureFilled,
     Picture as IconPicture
 } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
@@ -235,9 +287,9 @@ const isTaskLocked = (index) => {
 // --- HELPERS ---
 
 const getStepColorClass = (task, index) => {
-    if (task.status === 'Completada') return 'bg-green-500 border-green-500';
-    if (isTaskLocked(index)) return 'bg-gray-300 border-gray-300 text-gray-500';
-    return 'bg-blue-600 border-blue-600'; 
+    if (task.status === 'Completada') return 'bg-emerald-500 text-white border-white';
+    if (isTaskLocked(index)) return 'bg-gray-100 text-gray-400 border-white';
+    return 'bg-blue-600 text-white border-blue-50'; 
 };
 
 const getStatusType = (status) => {
@@ -273,11 +325,11 @@ const toggleStatus = (task) => {
     router.put(task.urls.toggle, {}, {
         preserveScroll: true,
         onSuccess: () => {
-            ElMessage.success(task.status === 'Completada' ? 'Tarea reabierta' : 'Tarea finalizada');
+            ElMessage.success(task.status === 'Completada' ? 'Tarea reabierta exitosamente' : 'Tarea finalizada correctamente');
             togglingTaskId.value = null;
         },
         onError: () => {
-            ElMessage.error('Error al actualizar');
+            ElMessage.error('Error al actualizar el estado de la tarea');
             togglingTaskId.value = null;
         }
     });
@@ -290,7 +342,7 @@ const handleUpload = (options, task) => {
     const isLt15M = file.size / 1024 / 1024 < 15;
 
     if (!isImage || !isLt15M) {
-        ElMessage.error('Solo imágenes menores a 15MB');
+        ElMessage.error('Solo se permiten imágenes menores a 15MB');
         return;
     }
 
@@ -300,11 +352,11 @@ const handleUpload = (options, task) => {
     form.post(task.urls.evidence, {
         preserveScroll: true,
         onSuccess: () => {
-            ElMessage.success('Evidencia subida');
+            ElMessage.success('Evidencia fotográfica subida correctamente');
             uploadingTaskId.value = null;
         },
         onError: () => {
-            ElMessage.error('Error al subir imagen');
+            ElMessage.error('Ocurrió un error al subir la imagen');
             uploadingTaskId.value = null;
         }
     });
@@ -313,35 +365,19 @@ const handleUpload = (options, task) => {
 const deleteEvidence = (url) => {
     router.delete(url, {
         preserveScroll: true,
-        onSuccess: () => ElMessage.success('Imagen eliminada')
+        onSuccess: () => ElMessage.success('Imagen eliminada correctamente')
     });
 };
 </script>
 
 <style scoped>
-.job-order-container {
-  max-width: 600px;
-  margin: 0 auto;
-  padding: 15px;
-  background-color: #f8fafc;
-  min-height: 100vh;
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-}
-
-.sticky-header {
-    position: sticky;
-    top: 0;
-    z-index: 50;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
+/* Ajustes específicos para Element Plus en este contexto */
 :deep(.el-card__header) {
-    padding: 12px 15px;
-    background-color: #fff;
-    border-bottom: 1px solid #f1f5f9;
+    padding: 20px 24px 0;
+    border-bottom: none;
 }
 
 :deep(.el-card__body) {
-    padding: 15px;
+    padding: 24px;
 }
 </style>

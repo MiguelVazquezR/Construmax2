@@ -18,7 +18,7 @@ class Customer extends Model
         'payment_method',
         'invoice_usage',
         'currency',
-        'payment_days', // Campo numérico
+        'payment_days',
         'is_active',
     ];
 
@@ -27,26 +27,38 @@ class Customer extends Model
         'payment_days' => 'integer',
     ];
 
-    // Relación: Un cliente tiene muchos contactos
+    public function branches(): HasMany
+    {
+        return $this->hasMany(CustomerBranch::class);
+    }
+
     public function contacts(): HasMany
     {
         return $this->hasMany(CustomerContact::class);
     }
 
-    // Relación: Un cliente tiene muchos presupuestos
-    public function budgets(): HasMany
+    public function tickets(): HasMany
     {
-        return $this->hasMany(Budget::class);
+        return $this->hasMany(Ticket::class);
     }
-    
-    // Scope para búsquedas
+
     public function scopeFilter($query, array $filters)
     {
         $query->when($filters['search'] ?? null, function ($query, $search) {
             $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', '%'.$search.'%')
-                  ->orWhere('business_name', 'like', '%'.$search.'%')
-                  ->orWhere('rfc', 'like', '%'.$search.'%');
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('business_name', 'like', "%{$search}%")
+                    ->orWhere('rfc', 'like', "%{$search}%");
+            });
+        })->when($filters['region'] ?? null, function ($query, $region) {
+            $query->whereHas('branches', function ($q) use ($region) {
+                $q->where('region', 'like', "%{$region}%")
+                    ->orWhere('branch_name', 'like', "%{$region}%")
+                    ->orWhere('unit', 'like', "%{$region}%");
+            });
+        })->when($filters['contact'] ?? null, function ($query, $contact) {
+            $query->whereHas('contacts', function ($q) use ($contact) {
+                $q->where('name', 'like', "%{$contact}%");
             });
         });
     }
