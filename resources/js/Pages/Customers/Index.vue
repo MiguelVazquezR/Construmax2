@@ -13,7 +13,9 @@ import {
     Edit, 
     Delete,
     Check,
-    Close 
+    Close,
+    User,
+    Location
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
@@ -25,26 +27,36 @@ const props = defineProps({
 });
 
 const search = ref(props.filters.search || '');
+const region = ref(props.filters.region || '');
+const contact = ref(props.filters.contact || '');
 const perPage = ref(parseInt(props.filters.perPage) || 10);
 
 // Sincronización con el servidor
-const handleSearch = debounce((val) => {
-    router.get(route('customers.index'), { search: val, perPage: perPage.value }, {
+const handleSearch = debounce(() => {
+    router.get(route('customers.index'), { 
+        search: search.value, 
+        region: region.value,
+        contact: contact.value,
+        perPage: perPage.value 
+    }, {
         preserveState: true,
         replace: true,
     });
-}, 300);
+}, 400);
 
 const handleSizeChange = (val) => {
     perPage.value = val;
-    router.get(route('customers.index'), { search: search.value, perPage: val }, {
-        preserveState: true,
-        preserveScroll: true,
-    });
+    handleSearch();
 };
 
 const handlePageChange = (val) => {
-    router.get(route('customers.index'), { search: search.value, perPage: perPage.value, page: val }, {
+    router.get(route('customers.index'), { 
+        search: search.value, 
+        region: region.value,
+        contact: contact.value,
+        perPage: perPage.value, 
+        page: val 
+    }, {
         preserveState: true,
         preserveScroll: true,
     });
@@ -52,11 +64,10 @@ const handlePageChange = (val) => {
 
 // Navegación al detalle
 const handleRowClick = (row) => {
-    // Evitamos navegar si el clic fue en un switch o acción
     router.visit(route('customers.show', row.id));
 };
 
-// NUEVA FUNCIÓN: Toggle Status
+// Toggle Status
 const toggleStatus = (customer) => {
     router.put(route('customers.toggle-status', customer.id), {}, {
         preserveScroll: true,
@@ -64,7 +75,6 @@ const toggleStatus = (customer) => {
             ElMessage.success(`Cliente ${customer.is_active ? 'activado' : 'inactivado'} correctamente`);
         },
         onError: () => {
-            // Revertir cambio visual si falla (opcional, Inertia recarga el estado normalmente)
             customer.is_active = !customer.is_active;
             ElMessage.error('No se pudo actualizar el estatus');
         }
@@ -74,7 +84,7 @@ const toggleStatus = (customer) => {
 // Acciones
 const deleteCustomer = (customer) => {
     ElMessageBox.confirm(
-        `¿Estás seguro de eliminar al cliente "${customer.name}"? Esta acción borrará también sus contactos asociados.`,
+        `¿Estás seguro de eliminar al cliente "${customer.name}"? Esta acción borrará también sus contactos y sucursales.`,
         'Eliminar cliente',
         {
             confirmButtonText: 'Eliminar',
@@ -95,8 +105,9 @@ const deleteCustomer = (customer) => {
     .catch(() => {});
 };
 
-watch(search, (val) => {
-    handleSearch(val);
+// Observamos los 3 filtros principales
+watch([search, region, contact], () => {
+    handleSearch();
 });
 </script>
 
@@ -104,17 +115,32 @@ watch(search, (val) => {
     <AppLayout title="Gestión de clientes">
         <div class="space-y-4">
             <!-- Barra de Herramientas -->
-            <div class="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e]">
-                <div class="w-full sm:w-1/3">
+            <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e]">
+                
+                <!-- Filtros -->
+                <div class="w-full xl:flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
                     <el-input
                         v-model="search"
-                        placeholder="Buscar por nombre, razón social o RFC..."
+                        placeholder="Buscar por cliente o RFC..."
                         clearable
                         :prefix-icon="Search"
-                        class="w-full"
+                    />
+                    <el-input
+                        v-model="contact"
+                        placeholder="Filtrar por encargado..."
+                        clearable
+                        :prefix-icon="User"
+                    />
+                    <el-input
+                        v-model="region"
+                        placeholder="Filtrar por región o sucursal..."
+                        clearable
+                        :prefix-icon="Location"
                     />
                 </div>
-                <div class="flex gap-2 w-full sm:w-auto justify-end">
+
+                <!-- Paginador y Botón Nuevo -->
+                <div class="flex gap-2 w-full xl:w-auto justify-end xl:shrink-0">
                     <el-select v-model="perPage" placeholder="Mostrar" style="width: 110px" @change="handleSizeChange">
                         <el-option label="10 / pág" :value="10" />
                         <el-option label="20 / pág" :value="20" />
@@ -137,12 +163,83 @@ watch(search, (val) => {
                         :data="customers.data" 
                         style="width: 100%" 
                         stripe
-                        @row-click="handleRowClick"
+                        row-key="id"
                         row-class-name="cursor-pointer hover:bg-gray-50 dark:hover:bg-[#27272a] transition-colors"
+                        @row-click="handleRowClick"
                     >
+                        <!-- Columna Expandible para Sucursales y Contactos -->
+                        <el-table-column type="expand">
+                            <template #default="scope">
+                                <div class="m-6 p-5 bg-gray-50/80 dark:bg-[#252529] border border-gray-200 dark:border-gray-800 rounded-xl cursor-default" @click.stop>
+                                    <h4 class="text-sm font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2">
+                                        <el-icon class="text-primary"><User /></el-icon> 
+                                        Contactos y sucursales asignadas
+                                    </h4>
+                                    
+                                    <div v-if="scope.row.contacts && scope.row.contacts.length > 0" class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                                        <div 
+                                            v-for="(contacto, idx) in scope.row.contacts" 
+                                            :key="idx" 
+                                            class="p-5 bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm"
+                                        >
+                                            <div class="flex justify-between items-start mb-4">
+                                                <div>
+                                                    <p class="font-bold text-sm text-gray-900 dark:text-white">{{ contacto.name }}</p>
+                                                    <p class="text-xs font-medium text-primary">{{ contacto.position }}</p>
+                                                </div>
+                                                <div class="text-right text-xs text-gray-500 space-y-0.5">
+                                                    <p>{{ contacto.phone }}</p>
+                                                    <p>{{ contacto.email }}</p>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 space-y-3">
+                                                <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+                                                    Sucursales a cargo:
+                                                </p>
+                                                
+                                                <div v-if="contacto.branches && contacto.branches.length > 0">
+                                                    <div 
+                                                        v-for="sucursal in contacto.branches" 
+                                                        :key="sucursal.id" 
+                                                        class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs bg-gray-50 dark:bg-[#2b2b2e] p-3 rounded-lg border border-gray-100 dark:border-gray-700 hover:bg-orange-50/50 dark:hover:bg-[#2a2a2d] transition-colors mb-2 last:mb-0"
+                                                    >
+                                                        <div class="flex items-center gap-3">
+                                                            <div class="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 p-1.5 rounded-md shrink-0">
+                                                                <el-icon :size="16"><Location /></el-icon>
+                                                            </div>
+                                                            <div class="flex flex-col gap-0.5">
+                                                                <span class="font-bold text-gray-800 dark:text-gray-200 text-sm">
+                                                                    {{ sucursal.branch_name || 'Sin nombre definido' }}
+                                                                </span>
+                                                                <span class="text-gray-500 dark:text-gray-400">
+                                                                    <span class="font-medium text-gray-600 dark:text-gray-300">Unidad:</span> {{ sucursal.unit }}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div class="flex flex-col sm:items-end pl-10 sm:pl-0 text-gray-500 dark:text-gray-400">
+                                                            <span class="font-medium">{{ sucursal.region }}</span>
+                                                            <span>{{ sucursal.country }}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div v-else class="text-xs text-gray-500 italic">
+                                                    No hay sucursales asignadas a este contacto.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div v-else class="text-sm text-gray-500 italic py-2">
+                                        No hay contactos registrados para este cliente.
+                                    </div>
+                                </div>
+                            </template>
+                        </el-table-column>
+
                         <el-table-column prop="id" label="ID" width="60" />
                         
-                        <el-table-column label="Cliente" min-width="250">
+                        <el-table-column label="Cliente" min-width="220">
                             <template #default="scope">
                                 <div class="flex items-center gap-3">
                                     <div class="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 p-2 rounded-lg">
@@ -156,7 +253,7 @@ watch(search, (val) => {
                             </template>
                         </el-table-column>
 
-                        <el-table-column prop="rfc" label="RFC" width="150">
+                        <el-table-column prop="rfc" label="RFC" width="140">
                             <template #default="scope">
                                 <span class="font-mono text-gray-600 dark:text-gray-400 text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
                                     {{ scope.row.rfc }}
@@ -164,15 +261,18 @@ watch(search, (val) => {
                             </template>
                         </el-table-column>
 
-                        <el-table-column label="Condición de pago" min-width="160">
+                        <el-table-column label="Sucursales" min-width="120">
                             <template #default="scope">
-                                <span class="text-sm text-gray-600 dark:text-gray-400">{{ scope.row.payment_condition }}</span>
+                                <el-tag size="small" type="info" effect="light" class="mr-1">
+                                    <span>
+                                        {{ scope.row.branches?.length || 0 }} registradas
+                                    </span>
+                                </el-tag>
                             </template>
                         </el-table-column>
 
                         <el-table-column label="Estado" width="120" align="center">
                             <template #default="scope">
-                                <!-- SWITCH DE ESTADO -->
                                 <div @click.stop>
                                     <el-switch
                                         v-if="can('customers.edit')"
@@ -193,7 +293,7 @@ watch(search, (val) => {
                         </el-table-column>
 
                         <!-- Acciones -->
-                        <el-table-column label="Acciones" width="100" align="center" fixed="right">
+                        <el-table-column label="Acciones" width="90" align="center" fixed="right">
                             <template #default="scope">
                                 <div @click.stop>
                                     <el-dropdown trigger="click">
@@ -236,7 +336,6 @@ watch(search, (val) => {
                                 </div>
                             </div>
                             
-                            <!-- Switch móvil -->
                             <div @click.stop>
                                  <el-switch
                                     v-if="can('customers.edit')"
@@ -251,14 +350,14 @@ watch(search, (val) => {
                             </div>
                         </div>
                         
-                        <div class="flex flex-col gap-1 text-sm text-gray-600 dark:text-gray-400 mb-4 pt-2 border-t border-gray-50 dark:border-gray-800">
+                        <div class="flex flex-col gap-1 text-sm text-gray-600 dark:text-gray-400 mb-3 pt-2 border-t border-gray-50 dark:border-gray-800">
                             <p class="flex justify-between">
                                 <span class="text-gray-400 text-xs uppercase">RFC:</span> 
                                 <span class="font-mono text-xs">{{ customer.rfc }}</span>
                             </p>
                             <p class="flex justify-between">
-                                <span class="text-gray-400 text-xs uppercase">Pago:</span> 
-                                <span>{{ customer.payment_condition }}</span>
+                                <span class="text-gray-400 text-xs uppercase">Sucursales:</span> 
+                                <span class="text-xs">{{ customer.branches?.length || 0 }} registradas</span>
                             </p>
                         </div>
 
@@ -296,6 +395,11 @@ watch(search, (val) => {
 <style scoped>
 :deep(.el-table .cursor-pointer) {
     cursor: pointer;
+}
+
+:deep(.el-table__expanded-cell) {
+    padding: 0 !important;
+    background-color: transparent !important;
 }
 
 .el-dropdown-link:focus {

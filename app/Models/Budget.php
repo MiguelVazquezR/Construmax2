@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
@@ -16,43 +17,44 @@ class Budget extends Model implements HasMedia
     use InteractsWithMedia;
 
     protected $fillable = [
-        'name',
-        'service_type',
+        'ticket_id',
         'status',
         'description',
-        'duration',
-        'priority',
-        'currency',      
-        'exchange_rate', 
+        'currency',
+        'exchange_rate',
         'user_id',
-        'customer_id',
-        'customer_contact_id',
-        'branch',
+        'invoice_date',
+        'invoice_number',
     ];
 
     protected $casts = [
         'exchange_rate' => 'decimal:4',
+        'invoice_date'  => 'date',
     ];
 
+    protected $appends = ['total_cost', 'total_paid', 'balance_due', 'total_catalog_cost'];
+
     // Relaciones
-    public function customer(): BelongsTo
+    public function ticket(): BelongsTo
     {
-        return $this->belongsTo(Customer::class);
+        return $this->belongsTo(Ticket::class);
     }
 
-    public function contact(): BelongsTo
+    public function customer(): HasOneThrough
     {
-        return $this->belongsTo(CustomerContact::class, 'customer_contact_id');
+        return $this->hasOneThrough(
+            Customer::class,
+            Ticket::class,
+            'id',            // tickets.id = budgets.ticket_id
+            'id',            // customers.id = tickets.customer_id
+            'ticket_id',     // budgets.ticket_id
+            'customer_id'    // tickets.customer_id
+        );
     }
 
     public function responsible(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
-    }
-
-    public function ticket(): HasOne
-    {
-        return $this->hasOne(Ticket::class);
     }
 
     public function concepts(): HasMany
@@ -64,25 +66,54 @@ class Budget extends Model implements HasMedia
     {
         return $this->hasMany(BudgetPayment::class);
     }
-    
+
     // --- NUEVA RELACIÓN ---
     public function technicianPayments(): HasMany
     {
         return $this->hasMany(TechnicianPayment::class);
     }
 
-    // Atributos Calculados
-    public function getTotalCostAttribute()
+    public function catalogs(): HasMany
     {
-        return $this->concepts->sum('amount');
+        return $this->hasMany(BudgetCatalog::class);
+    }
+ 
+    public function latestCatalog(): HasOne
+    {
+        return $this->hasOne(BudgetCatalog::class)->latestOfMany('version');
     }
 
-    public function getTotalPaidAttribute()
+    public function registerMediaCollections(): void
     {
-        return $this->payments->sum('amount');
+        $this->addMediaCollection('invoice_document')->singleFile();
+        $this->addMediaCollection('survey_images');
     }
-    
-    public function getBalanceDueAttribute()
+
+    // Atributos Calculados
+    public function getTotalCatalogCostAttribute(): float
+    {
+        $catalog = $this->relationLoaded('latestCatalog')
+            ? $this->latestCatalog
+            : $this->latestCatalog()->first();
+
+        return $catalog ? (float) $catalog->total : 0;
+    }
+
+    public function getTotalCostAttribute(): float
+    {
+        $catalogTotal = $this->getTotalCatalogCostAttribute();
+
+        return $catalogTotal > 0
+            ? $catalogTotal
+            : (float) $this->concepts->sum('amount');
+    }
+
+    public function getTotalPaidAttribute(): float
+    {
+        return (float) $this->payments->sum('amount');
+    }
+
+    public function getBalanceDueAttribute(): float
     {
         return $this->total_cost - $this->total_paid;
     }
@@ -91,13 +122,17 @@ class Budget extends Model implements HasMedia
     public function scopeFilter($query, array $filters)
     {
         $query->when($filters['search'] ?? null, function ($query, $search) {
-            $query->where('name', 'like', '%'.$search.'%')
-                  ->orWhereHas('customer', function($q) use ($search){
-                      $q->where('name', 'like', '%'.$search.'%');
-                  });
+            $query->whereHas('ticket', function ($q) use ($search) {
+                $q->where('name', 'like', '%' . $search . '%')
+                    ->orWhereHas('customer', function ($q) use ($search) {
+                        $q->where('name', 'like', '%' . $search . '%');
+                    });
+            });
         })->when($filters['status'] ?? null, function ($query, $status) {
-            if($status !== 'all') {
-                $query->where('status', $status);
+            if ($status !== 'all') {
+                $query->whereHas('ticket', function ($q) use ($status) {
+                    $q->where('status', $status);
+                });
             }
         })->when($filters['user_id'] ?? null, function ($query, $userId) {
             if ($userId !== 'all' && !empty($userId)) {
@@ -107,6 +142,13 @@ class Budget extends Model implements HasMedia
                     $query->where('user_id', $userId);
                 }
             }
+        })->when($filters['branch'] ?? null, function ($query, $branch) {
+            $query->whereHas('ticket.branch', function ($q) use ($branch) {
+                $q->where('branch_name', 'like', '%' . $branch . '%')
+                    ->orWhere('region', 'like', '%' . $branch . '%')
+                    ->orWhere('unit', 'like', '%' . $branch . '%')
+                    ->orWhere('country', 'like', '%' . $branch . '%');
+            });
         });
     }
 }

@@ -5,9 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\Budget;
 use App\Models\BudgetPayment;
 use App\Models\Calendar;
-use App\Models\Customer;
+use App\Models\Ticket;
 use App\Models\User;
 use App\Models\TechnicianPayment;
+use App\Services\Media\ImageOptimizerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -15,18 +16,22 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class BudgetController extends Controller
 {
+    public function __construct(
+        private readonly ImageOptimizerService $imageOptimizer,
+    ) {}
+
     public function index(Request $request)
     {
         $perPage = $request->input('perPage', 10);
         
-        $filters = $request->only(['search', 'status', 'perPage', 'user_id']);
+        $filters = $request->only(['search', 'status', 'perPage', 'user_id', 'branch']);
 
-        if (!$request->has('user_id') && !$request->has('search') && !$request->has('status') && !$request->has('page')) {
+        if (!$request->has('user_id') && !$request->has('search') && !$request->has('status') && !$request->has('page') && !$request->has('branch')) {
             $filters['user_id'] = [auth()->id()];
         }
 
         return Inertia::render('Budgets/Index', [
-            'budgets' => Budget::with(['customer', 'responsible'])
+            'budgets' => Budget::with(['ticket.customer', 'ticket.branch', 'responsible'])
                 ->withSum('concepts', 'amount')
                 ->filter($filters)
                 ->orderBy('id', 'desc')
@@ -37,58 +42,67 @@ class BudgetController extends Controller
         ]);
     }
 
-    public function create()
+    public function create(Request $request)
     {
+        $tickets = Ticket::with(['customer', 'contact', 'branch'])
+            ->where(function ($query) use ($request) {
+                $query->whereDoesntHave('budget');
+                // Always include the requested ticket even if it already has a budget
+                if ($request->filled('ticket_id')) {
+                    $query->orWhere('id', $request->input('ticket_id'));
+                }
+            })
+            ->orderBy('id', 'desc')
+            ->get();
+
         return Inertia::render('Budgets/Create', [
-            'customers' => Customer::where('is_active', true)->with('contacts')->get(),
+            'tickets' => $tickets,
             'users' => User::where('is_active', true)->get(),
+            'preselectedTicketId' => $request->input('ticket_id') ? (int) $request->input('ticket_id') : null,
         ]);
     }
 
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'service_type' => 'required|string',
-            'status' => 'required|string',
-            'user_id' => 'required|exists:users,id',
-            'customer_id' => 'required|exists:customers,id',
-            'customer_contact_id' => 'required|exists:customer_contacts,id',
-            'branch' => 'required|string',
-            'duration' => 'nullable|string',
-            'priority' => 'required|string',
+            'ticket_id' => 'required|exists:tickets,id',
             'description' => 'nullable|string',
             'currency' => 'required|string|in:MXN,USD',
             'exchange_rate' => 'required|numeric|min:0.0001',
+            'user_id' => 'required|exists:users,id',
             'concepts' => 'array|min:1',
             'concepts.*.concept' => 'required|string',
             'concepts.*.amount' => 'required|numeric|min:0',
+            'survey_images' => 'nullable|array',
+            'survey_images.*' => 'image|max:10240',
         ]);
 
         $budget = null;
 
         DB::transaction(function () use ($validated, &$budget) {
             $budget = Budget::create([
-                'name' => $validated['name'],
-                'service_type' => $validated['service_type'],
-                'status' => $validated['status'],
-                'user_id' => $validated['user_id'],
-                'customer_id' => $validated['customer_id'],
-                'customer_contact_id' => $validated['customer_contact_id'],
-                'branch' => $validated['branch'],
-                'duration' => $validated['duration'],
-                'priority' => $validated['priority'],
+                'ticket_id' => $validated['ticket_id'],
                 'description' => $validated['description'],
-                 'currency' => $validated['currency'],
+                'currency' => $validated['currency'],
                 'exchange_rate' => $validated['exchange_rate'],
+                'user_id' => $validated['user_id'],
             ]);
 
             $budget->concepts()->createMany($validated['concepts']);
         });
 
+        if ($request->hasFile('survey_images')) {
+            foreach ($request->file('survey_images') as $image) {
+                $optimizedPath = $this->imageOptimizer->optimize($image);
+                $budget?->addMedia($optimizedPath)
+                    ->usingFileName($image->getClientOriginalName())
+                    ->toMediaCollection('survey_images');
+            }
+        }
+
         if ($request->boolean('quick_create')) {
             return response()->json([
-                'budget' => $budget?->load('customer'),
+                'budget' => $budget?->load('ticket.customer'),
                 'message' => 'Presupuesto creado exitosamente.'
             ], 201);
         }
@@ -98,21 +112,21 @@ class BudgetController extends Controller
 
     public function show(Budget $budget)
     {
-        // Cargamos ticket.tasks para calcular progreso
-        // Cargamos technicianPayments para ver historial de pagos a técnicos
         $budget->load([
-            'customer', 
-            'contact', 
-            'responsible', 
-            'concepts', 
-            'payments.media', 
-            'media', 
-            'ticket.tasks.assignee', // Necesario para identificar a los técnicos
-            'technicianPayments.media', // Historial de pagos a técnicos
-            'technicianPayments.technician' // Datos del técnico pagado
+            'ticket.customer',
+            'ticket.contact',
+            'ticket.branch',
+            'responsible',
+            'concepts',
+            'payments.media',
+            'media',
+            'ticket.tasks.assignee.technician',
+            'technicianPayments.media',
+            'technicianPayments.technician',
+            'latestCatalog',
         ]);
-        
-        $budget->append(['total_cost', 'total_paid', 'balance_due']);
+
+        $budget->append(['total_cost', 'total_paid', 'balance_due', 'total_catalog_cost']);
 
         return Inertia::render('Budgets/Show', [
             'budget' => $budget,
@@ -121,11 +135,19 @@ class BudgetController extends Controller
 
     public function edit(Budget $budget)
     {
-        $budget->load('concepts');
+        $budget->load(['concepts', 'ticket.customer', 'ticket.contact', 'ticket.branch']);
+
+        $tickets = Ticket::with(['customer', 'contact', 'branch'])
+            ->where(function ($q) use ($budget) {
+                $q->whereDoesntHave('budget')
+                  ->orWhere('id', $budget->ticket_id);
+            })
+            ->orderBy('id', 'desc')
+            ->get();
 
         return Inertia::render('Budgets/Edit', [
             'budget' => $budget,
-            'customers' => Customer::where('is_active', true)->with('contacts')->get(),
+            'tickets' => $tickets,
             'users' => User::where('is_active', true)->get(),
         ]);
     }
@@ -133,81 +155,53 @@ class BudgetController extends Controller
     public function update(Request $request, Budget $budget)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'service_type' => 'required|string',
-            'status' => 'required|string',
-            'user_id' => 'required|exists:users,id',
-            'customer_id' => 'required|exists:customers,id',
-            'customer_contact_id' => 'required|exists:customer_contacts,id',
-            'branch' => 'required|string',
-            'duration' => 'nullable|string',
-            'priority' => 'required|string',
+            'ticket_id' => 'required|exists:tickets,id',
             'description' => 'nullable|string',
             'currency' => 'required|string|in:MXN,USD',
             'exchange_rate' => 'required|numeric|min:0.0001',
+            'user_id' => 'required|exists:users,id',
             'concepts' => 'array|min:1',
             'concepts.*.concept' => 'required|string',
             'concepts.*.amount' => 'required|numeric|min:0',
+            'survey_images' => 'nullable|array',
+            'survey_images.*' => 'image|max:10240',
         ]);
 
         DB::transaction(function () use ($validated, $budget) {
             $budget->update([
-                'name' => $validated['name'],
-                'service_type' => $validated['service_type'],
-                'status' => $validated['status'],
-                'user_id' => $validated['user_id'],
-                'customer_id' => $validated['customer_id'],
-                'customer_contact_id' => $validated['customer_contact_id'],
-                'branch' => $validated['branch'],
-                'duration' => $validated['duration'],
-                'priority' => $validated['priority'],
+                'ticket_id' => $validated['ticket_id'],
                 'description' => $validated['description'],
                 'currency' => $validated['currency'],
                 'exchange_rate' => $validated['exchange_rate'],
+                'user_id' => $validated['user_id'],
             ]);
 
             $budget->concepts()->delete();
             $budget->concepts()->createMany($validated['concepts']);
         });
 
-        return redirect()->route('budgets.index')->with('success', 'Presupuesto actualizado correctamente.');
-    }
-
-    public function updateStatus(Request $request, Budget $budget)
-    {
-        $request->validate([
-            'status' => 'required|string',
-        ]);
-
-        $oldStatus = $budget->status;
-        $newStatus = $request->status;
-
-        $budget->update(['status' => $newStatus]);
-
-        // --- AUTOMATIZACIÓN CALENDARIO (COBRANZA) ---
-        // Si el estado cambia a 'Facturado', verificamos si el cliente tiene días de crédito
-        if ($newStatus === 'Facturado' && $oldStatus !== 'Facturado') {
-            $budget->load('customer');
-            $paymentDays = $budget->customer->payment_days;
-
-            if ($paymentDays && $paymentDays > 0) {
-                // Calculamos fecha de recordatorio (Hoy + días de crédito)
-                // Fijamos la hora a las 9:00 AM para que sea visible al iniciar el día
-                $reminderDate = now()->addDays($paymentDays)->setTime(9, 0, 0);
-                
-                Calendar::create([
-                    'user_id' => $budget->user_id, // Asignamos el recordatorio al responsable del presupuesto
-                    'type' => 'Recordatorio',
-                    'title' => "Cobranza: {$budget->name}",
-                    'description' => "Vencimiento de plazo de pago ({$paymentDays} días) para el cliente {$budget->customer->name}.\nPresupuesto #{$budget->id}.",
-                    'start_time' => $reminderDate,
-                    'end_time' => $reminderDate->copy()->addHour(), // Duración de 1 hora por defecto
-                    'is_completed' => false,
-                ]);
+        if ($request->hasFile('survey_images')) {
+            foreach ($request->file('survey_images') as $image) {
+                $optimizedPath = $this->imageOptimizer->optimize($image);
+                $budget->addMedia($optimizedPath)
+                    ->usingFileName($image->getClientOriginalName())
+                    ->toMediaCollection('survey_images');
             }
         }
 
-        return back()->with('success', 'Estatus actualizado.');
+        return redirect()->route('budgets.index')->with('success', 'Presupuesto actualizado correctamente.');
+    }
+
+    /** El estatus ahora lo gestiona el ticket. Redirige al ticket relacionado. */
+    public function updateStatus(Request $request, Budget $budget)
+    {
+        $request->validate(['status' => 'required|string']);
+
+        if ($budget->ticket) {
+            $budget->ticket->update(['status' => $request->status]);
+        }
+
+        return back()->with('success', 'Estatus actualizado en el ticket.');
     }
 
     public function destroy(Budget $budget)
@@ -234,7 +228,24 @@ class BudgetController extends Controller
         ]);
 
         if ($request->hasFile('proof')) {
-            $payment->addMediaFromRequest('proof')->toMediaCollection('payment_proofs');
+            $file = $request->file('proof');
+            if (str_starts_with($file->getMimeType(), 'image/')) {
+                $optimizedPath = $this->imageOptimizer->optimize($file);
+                $payment->addMedia($optimizedPath)
+                    ->usingFileName($file->getClientOriginalName())
+                    ->toMediaCollection('payment_proofs');
+            } else {
+                $payment->addMediaFromRequest('proof')->toMediaCollection('payment_proofs');
+            }
+        }
+
+        // Check if total paid covers the latest catalog total → mark ticket as Pagado
+        $budget->loadMissing(['payments', 'latestCatalog', 'ticket']);
+        $totalPaid = (float) $budget->payments->sum('amount');
+        $totalCost = $budget->total_cost; // Uses latest catalog total if available
+
+        if ($totalCost > 0 && $totalPaid >= $totalCost && $budget->ticket && $budget->ticket->status !== 'Pagado') {
+            $budget->ticket->update(['status' => 'Pagado']);
         }
 
         return back()->with('success', 'Pago registrado exitosamente.');
@@ -242,7 +253,18 @@ class BudgetController extends Controller
 
     public function destroyPayment(BudgetPayment $payment)
     {
+        $budget = $payment->budget;
         $payment->delete();
+
+        // If total paid drops below total cost and ticket was Pagado, revert
+        $budget->loadMissing(['payments', 'latestCatalog', 'ticket']);
+        $totalPaid = (float) $budget->payments->sum('amount');
+        $totalCost = $budget->total_cost;
+
+        if ($totalPaid < $totalCost && $budget->ticket && $budget->ticket->status === 'Pagado') {
+            $budget->ticket->update(['status' => 'Facturado']);
+        }
+
         return back()->with('success', 'Pago eliminado.');
     }
 
@@ -255,7 +277,14 @@ class BudgetController extends Controller
 
         if ($request->hasFile('files')) {
             foreach ($request->file('files') as $file) {
-                $budget->addMedia($file)->toMediaCollection('budget_files');
+                if (str_starts_with($file->getMimeType(), 'image/')) {
+                    $optimizedPath = $this->imageOptimizer->optimize($file);
+                    $budget->addMedia($optimizedPath)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('budget_files');
+                } else {
+                    $budget->addMedia($file)->toMediaCollection('budget_files');
+                }
             }
         }
 

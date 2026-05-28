@@ -18,11 +18,13 @@ const formatDate = (dateString) => {
 
 const getTicketStatusType = (status) => {
     const map = {
-        'Programado': 'info',
-        'En proceso': 'warning', // Naranja para llamar la atención
-        'En espera': 'warning',
-        'Revisión': 'primary',
-        'Completado': 'success',
+        'Borrador': 'info',
+        'Levantamiento': 'warning',
+        'Catálogo': 'primary',
+        'Proceso de ejecución': 'warning',
+        'Ejecutado': 'success',
+        'Facturado': 'primary',
+        'Pagado': 'success',
         'Cancelado': 'danger'
     };
     return map[status] || 'info';

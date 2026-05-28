@@ -194,35 +194,30 @@ class PermissionSeeder extends Seeder
                 'description' => 'Marcar tareas como completadas o pendientes de cualquier usuario'
             ],
 
-            // --- MÓDULO: CALENDARIO ---
-            // [
-            //     'name' => 'calendar.index',
-            //     'category' => 'Calendario',
-            //     'description' => 'Acceso al módulo de calendario'
-            // ],
-            // [
-            //     'name' => 'calendar.create',
-            //     'category' => 'Calendario',
-            //     'description' => 'Agendar eventos y tareas'
-            // ],
-            // Editar/Eliminar en calendario generalmente se limita a "propios",
-            // pero este permiso puede permitir editar eventos de otros si se requiere.
-            // [
-            //     'name' => 'calendar.manage-all', 
-            //     'category' => 'Calendario',
-            //     'description' => 'Editar o eliminar eventos de otros usuarios'
-            // ],
-
             // --- MÓDULO: ANALÍTICAS (DASHBOARDS) ---
-            [
-                'name' => 'crm.analytics',
-                'category' => 'Analíticas',
-                'description' => 'Ver tablero financiero y comercial (CRM)'
-            ],
             [
                 'name' => 'tickets.analytics',
                 'category' => 'Analíticas',
                 'description' => 'Ver tablero de rendimiento operativo'
+            ],
+
+            // --- MÓDULO: FACTURACIÓN ---
+            [
+                'name' => 'invoices.index',
+                'category' => 'Facturación',
+                'description' => 'Permite ver la lista de presupuestos que requieren facturación o seguimiento con los pagos'
+            ],
+            [
+                'name' => 'invoices.upload',
+                'category' => 'Facturación',
+                'description' => 'Permite marcar como factura emitida a un presupuesto y también subir la factura'
+            ],
+
+            // --- MÓDULO: COSTOS ---
+            [
+                'name' => 'costs.index',
+                'category' => 'Costos',
+                'description' => 'Ver listado de presupuestos y costos'
             ],
         ];
 

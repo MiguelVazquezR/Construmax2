@@ -17,11 +17,11 @@ watch(() => props.budgets.data, (newVal) => {
 
 // Configuración de Columnas con colores fijos (Hex)
 const columns = [
-    { id: 'Borrador', label: 'Borrador', color: '#9ca3af' }, // Gray
-    { id: 'Presupuesto enviado', label: 'Enviado', color: '#60a5fa' }, // Blue
+    { id: 'Cotización', label: 'Cotización (catálogo)', color: '#a78bfa' }, // Purple
+    { id: 'Presupuesto enviado', label: 'Catálogo enviado a cliente', color: '#60a5fa' }, // Blue
+    { id: 'Trabajo en proceso', label: 'Ticket en ejecución', color: '#3b82f6' }, // Sky
+    { id: 'Facturación', label: 'Facturación', color: '#f97316' }, // Orange-dark
     { id: 'Facturado', label: 'Facturado', color: '#facc15' }, // Yellow
-    { id: 'Trabajo en proceso', label: 'En Proceso', color: '#fb923c' }, // Orange
-    { id: 'Trabajo terminado', label: 'Terminado', color: '#4ade80' }, // Green
     { id: 'Pagado', label: 'Pagado', color: '#34d399' }, // Emerald
     { id: 'Perdido', label: 'Perdido', color: '#f87171' }, // Red
 ];
@@ -153,21 +153,27 @@ const handlePageChange = (val) => {
                                 <span class="text-[10px] font-mono text-gray-400">#{{ budget.id }}</span>
                                 <span 
                                     class="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                                    :class="budget.priority === 'Urgente' ? 'bg-red-100 text-red-600' : 'bg-gray-50 text-gray-500 dark:bg-[#27272a]'"
+                                    :class="budget.ticket?.priority === 'Urgente' ? 'bg-red-100 text-red-600' : 'bg-gray-50 text-gray-500 dark:bg-[#27272a]'"
                                 >
-                                    {{ budget.priority }}
+                                    {{ budget.ticket?.priority }}
                                 </span>
                             </div>
                             
                             <!-- Título -->
                             <h4 class="font-bold text-gray-800 dark:text-gray-200 text-sm leading-tight mb-1 group-hover:text-primary transition-colors">
-                                {{ budget.name }}
+                                {{ budget.ticket?.name }}
                             </h4>
                             
                             <!-- Cliente -->
-                            <div class="text-xs text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-1">
+                            <div class="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1">
                                 <el-icon :size="12"><OfficeBuilding /></el-icon>
-                                <span class="truncate">{{ budget.customer?.name }}</span>
+                                <span class="truncate">{{ budget.ticket?.customer?.name }}</span>
+                            </div>
+
+                            <!-- Sucursal -->
+                            <div class="text-[10px] text-gray-400 mb-2 truncate" v-if="budget.ticket?.branch">
+                                {{ budget.ticket.branch.branch_name }}
+                                <template v-if="budget.ticket.branch.unit"> · {{ budget.ticket.branch.unit }}</template>
                             </div>
 
                             <!-- Footer: Costo y Responsable -->

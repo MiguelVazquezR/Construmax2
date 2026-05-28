@@ -3,9 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Ticket;
-use App\Models\Budget;
 use App\Models\User;
 use App\Models\Customer;
+use App\Models\TaskTemplate;
+use App\Services\Media\ImageOptimizerService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\URL;
@@ -13,124 +14,148 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class TicketController extends Controller
 {
+    public function __construct(
+        private readonly ImageOptimizerService $imageOptimizer,
+    ) {}
     public function index(Request $request)
     {
-        $perPage = $request->input('perPage', 10);
-        $sort = $request->input('sort', 'delay'); // Por defecto ordenamos por "Atraso/Urgencia"
+        $perPage = $request->input('perPage', 20);
+        $sort = $request->input('sort', 'delay'); 
 
-        $query = Ticket::with(['budget.customer', 'responsible', 'tasks.assignee']);
+        $query = Ticket::with(['customer', 'contact', 'branch', 'tasks.assignee', 'budget', 'seller']);
 
-        // Filtros de búsqueda y estado
-        if ($request->has('search')) {
-            $search = $request->input('search');
-            $query->where(function($q) use ($search) {
-                $q->where('id', 'like', "%{$search}%")
-                  ->orWhereHas('budget', function($b) use ($search) {
-                      $b->where('service_type', 'like', "%{$search}%")
-                        ->orWhereHas('customer', function($c) use ($search) {
-                            $c->where('name', 'like', "%{$search}%");
-                        });
-                  })
-                  ->orWhereHas('responsible', function($u) use ($search) {
-                      $u->where('name', 'like', "%{$search}%");
+        // BÚSQUEDA POR FOLIO
+        if ($request->filled('folio')) {
+            $folio = $request->input('folio');
+            preg_match('/\d+/', $folio, $matches);
+            if (!empty($matches[0])) {
+                $query->where('id', $matches[0]);
+            }
+        }
+
+        // FILTROS AVANZADOS
+        if ($request->filled('customer')) {
+            $query->where('customer_id', $request->input('customer'));
+        }
+
+        if ($request->filled('region')) {
+            $like = '%' . $request->input('region') . '%';
+
+            // utf8mb4_unicode_ci es insensible a acentos y mayúsculas, así que un solo LIKE basta
+            $query->whereHas('branch', function($q) use ($like) {
+                $q->whereRaw('region COLLATE utf8mb4_unicode_ci LIKE ?', [$like])
+                  ->orWhereRaw('branch_name COLLATE utf8mb4_unicode_ci LIKE ?', [$like])
+                  ->orWhereRaw('unit COLLATE utf8mb4_unicode_ci LIKE ?', [$like])
+                  ->orWhereRaw('country COLLATE utf8mb4_unicode_ci LIKE ?', [$like]);
+            });
+        }
+
+        if ($request->filled('priority')) {
+            $query->where('priority', $request->input('priority'));
+        }
+
+        if ($request->filled('technician')) {
+            $techId = $request->input('technician');
+            $query->where(function($q) use ($techId) {
+                $q->whereJsonContains('technicians', (string)$techId)
+                  ->orWhereJsonContains('technicians', (int)$techId)
+                  ->orWhereHas('tasks', function($t) use ($techId) {
+                      $t->where('user_id', $techId);
                   });
             });
         }
 
-        if ($request->has('status') && $request->input('status') !== 'all') {
+        if ($request->filled('seller')) {
+            $query->where('seller_id', $request->input('seller'));
+        }
+
+        if ($request->filled('status') && $request->input('status') !== 'all') {
             $query->where('status', $request->input('status'));
         }
 
-        // --- LÓGICA DE ORDENAMIENTO ---
+        // ORDENAMIENTO
         if ($sort === 'start_date') {
-            // Ordenar por fecha de inicio (Lo más nuevo primero)
             $query->orderBy('scheduled_start', 'desc');
         } else {
-            // Ordenar por "Atraso" (Urgencia)
-            $query->orderByRaw("CASE WHEN status = 'Completado' OR status = 'Cancelado' THEN 2 ELSE 1 END")
+            $query->orderByRaw("CASE WHEN status IN ('Ejecutado', 'Facturado', 'Pagado', 'Cancelado') THEN 2 ELSE 1 END")
                   ->orderBy('scheduled_end', 'asc');
         }
 
         return Inertia::render('Tickets/Index', [
             'tickets' => $query->paginate($perPage)->withQueryString(),
-            'filters' => $request->only(['search', 'status', 'perPage', 'sort']),
+            'customers' => Customer::where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'technicians' => User::whereHas('technician')->orderBy('name')->get(['id', 'name']),
+            'sellers' => User::whereHas('ticketsAsSeller')->orderBy('name')->get(['id', 'name']),
+            'filters' => [
+                'folio' => $request->input('folio'),
+                'customer' => $request->input('customer'),
+                'region' => $request->input('region'),
+                'priority' => $request->input('priority'),
+                'technician' => $request->input('technician'),
+                'seller' => $request->input('seller'),
+                'status' => $request->input('status', 'all'),
+                'perPage' => $perPage,
+                'sort' => $sort,
+            ],
         ]);
     }
 
-     public function create()
+    public function create()
     {
-        $budgets = Budget::whereIn('status', ['Facturado', 'Trabajo en proceso', 'Pagado', 'Presupuesto enviado'])
-            ->with('customer')
-            ->doesntHave('ticket')
-            ->orderBy('id', 'desc')
-            ->get();
-
         return Inertia::render('Tickets/Create', [
-            'budgets' => $budgets,
-            // Enviamos TODOS los usuarios activos (excepto soporte) cargando sus relaciones
             'users' => User::where('id', '!=', 1)->with(['employee', 'technician'])->get(),
-            'customers' => Customer::where('is_active', true)->with('contacts')->get(),
+            'customers' => Customer::where('is_active', true)->with(['contacts', 'branches'])->get(),
+            'templates' => TaskTemplate::where('is_active', true)->with('items')->get(),
         ]);
     }
 
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'budget_id' => 'required|exists:budgets,id|unique:tickets,budget_id',
-            'user_id' => 'required|exists:users,id',
+            'customer_id' => 'required|exists:customers,id',
+            'customer_contact_id' => 'required|exists:customer_contacts,id',
+            'customer_branch_id' => 'nullable|exists:customer_branches,id',
+            'seller_id' => 'nullable|exists:users,id',
+            'name' => 'required|string|max:255',
+            'service_type' => 'required|string|max:255',
+            'duration' => 'nullable|string',
+            'technicians' => 'nullable|array',
+            'technicians.*' => 'exists:users,id',
             'priority' => 'required|string',
             'scheduled_start' => 'nullable|date',
             'scheduled_end' => 'nullable|date|after_or_equal:scheduled_start',
             'instructions' => 'nullable|string',
+            'task_template_id' => 'nullable|exists:task_templates,id',
         ]);
 
-        $ticket = Ticket::create([
-            'budget_id' => $validated['budget_id'],
-            'user_id' => $validated['user_id'],
-            'priority' => $validated['priority'],
-            'status' => 'Programado',
-            'scheduled_start' => $validated['scheduled_start'],
-            'scheduled_end' => $validated['scheduled_end'],
-            'instructions' => $validated['instructions'],
-        ]);
+        $ticket = Ticket::create($validated); //status Borrador por defecto
+
+        if (!empty($validated['task_template_id']) && !empty($validated['technicians'])) {
+            $ticket->generateTasksFromTemplate($validated['task_template_id'], $validated['technicians']);
+        }
 
         return redirect()->route('tickets.show', $ticket->id)
             ->with('success', 'Ticket operativo generado correctamente.');
     }
 
-    public function storeFromBudget(Request $request, Budget $budget)
-    {
-        if ($budget->ticket) {
-            return back()->with('error', 'Este presupuesto ya tiene un ticket asociado.');
-        }
-
-        $ticket = Ticket::create([
-            'budget_id' => $budget->id,
-            'user_id' => $budget->user_id,
-            'priority' => $budget->priority,
-            'status' => 'Programado',
-            'scheduled_start' => now(),
-            'scheduled_end' => now()->addWeeks(2),
-            'instructions' => 'Ticket generado automáticamente a partir del Presupuesto #' . $budget->id . '. ' . $budget->name,
-        ]);
-
-        return back()->with('success', 'Ticket generado automáticamente.');
-    }
-
     public function show(Ticket $ticket)
     {
         $ticket->load([
-            'budget.customer', 
-            'budget.contact', 
-            'responsible', 
+            'customer', 
+            'contact', 
+            'branch',
+            'seller',
+            'budget.concepts',
+            'budget.payments',
+            'budget.responsible',
+            'budget.technicianPayments.technician.technician',
             'tasks.assignee', 
             'tasks.media', 
             'media'
         ]);
         
-        $ticket->append('progress');
+        $ticket->append('progress', 'folio'); 
 
-        // Generar enlace de "Orden de Trabajo" para cada tarea
         $ticket->tasks->transform(function ($task) use ($ticket) {
             if ($task->user_id) {
                 $task->share_url = URL::signedRoute('tickets.public.job-order', [
@@ -143,7 +168,6 @@ class TicketController extends Controller
 
         return Inertia::render('Tickets/Show', [
             'ticket' => $ticket,
-            // Enviamos TODOS los usuarios para poder asignarlos a las tareas operativas
             'users' => User::where('id', '!=', 1)->with(['employee', 'technician'])->get(),
         ]);
     }
@@ -158,16 +182,25 @@ class TicketController extends Controller
     public function edit(Ticket $ticket)
     {
         return Inertia::render('Tickets/Edit', [
-            'ticket' => $ticket->load('budget'),
-            // Enviamos TODOS los usuarios
+            'ticket' => $ticket->load(['customer', 'contact', 'branch', 'seller']),
             'users' => User::where('id', '!=', 1)->with(['employee', 'technician'])->get(),
+            'customers' => Customer::where('is_active', true)->with(['contacts', 'branches'])->get(),
+            'templates' => TaskTemplate::where('is_active', true)->with('items')->get(),
         ]);
     }
 
     public function update(Request $request, Ticket $ticket)
     {
         $validated = $request->validate([
-            'user_id' => 'required|exists:users,id',
+            'customer_id' => 'required|exists:customers,id',
+            'customer_contact_id' => 'required|exists:customer_contacts,id',
+            'customer_branch_id' => 'nullable|exists:customer_branches,id',
+            'seller_id' => 'nullable|exists:users,id',
+            'name' => 'required|string|max:255',
+            'service_type' => 'required|string|max:255',
+            'duration' => 'nullable|string',
+            'technicians' => 'nullable|array',
+            'technicians.*' => 'exists:users,id',
             'priority' => 'required|string',
             'status' => 'required|string',
             'scheduled_start' => 'nullable|date',
@@ -186,7 +219,6 @@ class TicketController extends Controller
         return redirect()->route('tickets.index')->with('success', 'Ticket eliminado.');
     }
 
-    // --- EVIDENCIAS GENERALES ---
     public function storeEvidence(Request $request, Ticket $ticket)
     {
         $request->validate([
@@ -196,7 +228,14 @@ class TicketController extends Controller
         
         if ($request->hasFile('files')) {
             foreach ($request->file('files') as $file) {
-                $ticket->addMedia($file)->toMediaCollection('ticket_evidence');
+                if (str_starts_with($file->getMimeType(), 'image/')) {
+                    $optimizedPath = $this->imageOptimizer->optimize($file);
+                    $ticket->addMedia($optimizedPath)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('ticket_evidence');
+                } else {
+                    $ticket->addMedia($file)->toMediaCollection('ticket_evidence');
+                }
             }
         }
         return back()->with('success', 'Archivo general agregado.');
