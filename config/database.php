@@ -83,6 +83,41 @@ return [
             ]) : [],
         ],
 
+        'mysql_production' => [
+            'driver' => 'mysql',
+            'url' => env('PROD_DB_URL'),
+            'host' => env('PROD_DB_HOST', '127.0.0.1'),
+            'port' => env('PROD_DB_PORT', '3306'),
+            'database' => env('PROD_DB_DATABASE', 'forge'),
+            'username' => env('PROD_DB_USERNAME', 'forge'),
+            'password' => env('PROD_DB_PASSWORD', ''),
+            'unix_socket' => env('PROD_DB_SOCKET', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                (PHP_VERSION_ID >= 80500 ? \Pdo\Mysql::ATTR_SSL_CA : \PDO::MYSQL_ATTR_SSL_CA) => env('PROD_MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
+        'mysql_old_local' => [
+            'driver' => 'mysql',
+            'host' => env('OLD_DB_HOST', '127.0.0.1'),
+            'port' => env('OLD_DB_PORT', '3306'),
+            'database' => env('OLD_DB_DATABASE', 'construmax_old'),
+            'username' => env('OLD_DB_USERNAME', 'root'),
+            'password' => env('OLD_DB_PASSWORD', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+        ],
+
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),

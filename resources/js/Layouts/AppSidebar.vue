@@ -1,9 +1,10 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import ApplicationMark from '@/Components/ApplicationMark.vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
+import SupportModal from '@/Components/SupportModal.vue';
 // Iconos
 import {  
     Money, Document 
@@ -14,6 +15,7 @@ defineProps({
 });
 
 const { can } = usePermissions();
+const showSupportModal = ref(false);
 const route = window.route; // Acceso directo al helper route de Ziggy
 
 // Lógica para determinar qué menú está activo (incluyendo sub-rutas)
@@ -170,11 +172,44 @@ const activeMenu = computed(() => {
             </el-menu>
         </el-scrollbar>
 
-        <!-- Footer del Sidebar -->
-        <div v-if="!isCollapse"
-            class="p-4 border-t border-gray-100 dark:border-[#2b2b2e] text-xs text-center text-gray-400">
-            v1.0.0
+        <!-- Footer del Sidebar (colapsado) -->
+        <div v-if="isCollapse"
+            class="p-3 border-t border-gray-100 dark:border-[#2b2b2e] flex justify-center">
+            <el-button
+                text
+                size="small"
+                class="!text-gray-400 hover:!text-[#f26c17]"
+                @click="showSupportModal = true"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                    stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                </svg>
+            </el-button>
         </div>
+
+        <!-- Footer del Sidebar (desplegado) -->
+        <div v-else
+            class="p-4 border-t border-gray-100 dark:border-[#2b2b2e] flex flex-col items-center gap-2">
+            <span class="text-xs text-gray-400">v1.3.0</span>
+            <el-button
+                text
+                size="small"
+                class="!text-gray-400 hover:!text-[#f26c17]"
+                @click="showSupportModal = true"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                    stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                </svg>
+                Soporte técnico
+            </el-button>
+        </div>
+
+        <!-- Support Modal -->
+        <SupportModal v-model="showSupportModal" />
     </div>
 </template>
 

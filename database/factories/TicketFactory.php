@@ -32,10 +32,12 @@ class TicketFactory extends Factory
         $scheduledStart = fake()->dateTimeBetween('-6 months', '+2 months');
         $scheduledEnd   = (clone $scheduledStart)->modify('+' . fake()->numberBetween(1, 30) . ' days');
 
+        $customer = Customer::factory()->create();
+
         return [
-            'customer_id'         => Customer::factory(),
-            'customer_contact_id' => CustomerContact::factory(),
-            'customer_branch_id'  => CustomerBranch::factory(),
+            'customer_id'         => $customer->id,
+            'customer_contact_id' => CustomerContact::factory()->create(['customer_id' => $customer->id])->id,
+            'customer_branch_id'  => CustomerBranch::factory()->create(['customer_id' => $customer->id])->id,
             'seller_id'           => User::factory(),
             'name'                => fake()->sentence(3),
             'service_type'        => fake()->randomElement(self::$serviceTypes),
