@@ -46,6 +46,7 @@ const initContacts = () => {
             }
 
             return {
+                id: c.id,
                 name: c.name,
                 email: c.email,
                 phone: c.phone,

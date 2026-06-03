@@ -252,7 +252,7 @@ class TicketAnalyticsController extends Controller
             )
             ->groupBy('customer_branches.region', 'customer_branches.country')
             ->orderByDesc('total')
-            ->limit(12)
+            ->limit(30)
             ->get();
 
         // ================================================================

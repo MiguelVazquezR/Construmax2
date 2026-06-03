@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { 
     MoreFilled, View, Edit, Delete, 
     OfficeBuilding, Warning, InfoFilled, Minus,
-    Timer, Check, Location, UserFilled
+    Timer, Check, Location
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
@@ -195,10 +195,6 @@ const deleteTicket = (ticket) => {
                                     <el-icon><OfficeBuilding /></el-icon>
                                     <span class="truncate font-medium">{{ scope.row.customer?.name }}</span>
                                 </div>
-                                <div v-if="scope.row.seller" class="flex items-center gap-1 text-xs text-gray-500">
-                                    <el-icon><UserFilled /></el-icon>
-                                    <span class="truncate">{{ scope.row.seller.name }}</span>
-                                </div>
                                 <div class="flex items-center gap-1 text-[11px] text-gray-500" v-if="scope.row.branch">
                                     <el-icon><Location /></el-icon>
                                     <span class="truncate" :title="getBranchDetails(scope.row)">
@@ -207,6 +203,22 @@ const deleteTicket = (ticket) => {
                                 </div>
                             </div>
                         </div>
+                    </template>
+                </el-table-column>
+
+                <el-table-column label="Asesor" width="150">
+                    <template #default="scope">
+                        <div v-if="scope.row.seller" class="flex items-center gap-2">
+                            <el-avatar :size="28" :src="scope.row.seller.profile_photo_url" class="bg-gray-100 text-gray-500 text-xs shrink-0">
+                                {{ scope.row.seller.name.charAt(0) }}
+                            </el-avatar>
+                            <div class="flex flex-col leading-tight">
+                                <span class="text-sm font-medium text-gray-700 dark:text-gray-300 truncate max-w-[90px]">
+                                    {{ scope.row.seller.name }}
+                                </span>
+                            </div>
+                        </div>
+                        <span v-else class="text-xs text-gray-400 italic">Sin asignar</span>
                     </template>
                 </el-table-column>
 
@@ -322,14 +334,17 @@ const deleteTicket = (ticket) => {
                             <el-icon><OfficeBuilding /></el-icon> 
                             {{ ticket.customer?.name }}
                         </p>
-                        <p v-if="ticket.seller" class="text-xs text-gray-500 flex items-center gap-1">
-                            <el-icon><UserFilled /></el-icon>
-                            {{ ticket.seller.name }}
-                        </p>
                         <p class="text-[11px] text-gray-400 flex items-center gap-1" v-if="ticket.branch">
                             <el-icon><Location /></el-icon> 
                             <span class="truncate">{{ getBranchDetails(ticket) }}</span>
                         </p>
+                    </div>
+
+                    <div v-if="ticket.seller" class="mt-2 flex items-center gap-1.5 pl-3">
+                        <el-avatar :size="20" :src="ticket.seller.profile_photo_url" class="bg-gray-100 text-gray-500 text-[10px] shrink-0">
+                            {{ ticket.seller.name.charAt(0) }}
+                        </el-avatar>
+                        <span class="text-xs text-gray-500">Asesor: <span class="font-medium">{{ ticket.seller.name }}</span></span>
                     </div>
                 </div>
 

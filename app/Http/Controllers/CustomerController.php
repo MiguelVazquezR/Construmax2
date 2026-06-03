@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Customer;
+use App\Models\Ticket;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -126,12 +127,14 @@ class CustomerController extends Controller
             'payment_days' => 'nullable|integer|min:0|max:365',
             
             'branches' => 'required|array|min:1',
+            'branches.*.id' => 'nullable|integer|exists:customer_branches,id',
             'branches.*.country' => 'required|string|max:100',
             'branches.*.region' => 'required|string|max:100',
             'branches.*.unit' => 'required|string|max:255',
             'branches.*.branch_name' => 'required|string|max:255',
 
             'contacts' => 'required|array|min:1',
+            'contacts.*.id' => 'nullable|integer|exists:customer_contacts,id',
             'contacts.*.name' => 'required|string|max:255',
             'contacts.*.email' => 'required|email|max:255',
             'contacts.*.phone' => 'required|string|max:20',
@@ -152,25 +155,66 @@ class CustomerController extends Controller
                 'payment_days' => $validated['payment_days'] ?? 0,
             ]);
 
-            $customer->contacts()->delete();
-            $customer->branches()->delete();
+            // ── Sync branches (upsert instead of delete + recreate) ──
+            $existingBranchIds = $customer->branches()->pluck('id')->toArray();
+            $incomingBranchIds = [];
+            $createdBranches = []; // index => Branch model
 
-            $createdBranches = [];
             foreach ($validated['branches'] as $index => $branchData) {
-                $createdBranches[$index] = $customer->branches()->create($branchData);
+                $branchId = $branchData['id'] ?? null;
+                unset($branchData['id']);
+
+                if ($branchId && in_array($branchId, $existingBranchIds)) {
+                    $branch = $customer->branches()->find($branchId);
+                    $branch->update($branchData);
+                } else {
+                    $branch = $customer->branches()->create($branchData);
+                }
+
+                $createdBranches[$index] = $branch;
+                $incomingBranchIds[] = $branch->id;
             }
 
+            // Delete branches removed by the user
+            $branchesToDelete = array_diff($existingBranchIds, $incomingBranchIds);
+            if (!empty($branchesToDelete)) {
+                Ticket::whereIn('customer_branch_id', $branchesToDelete)
+                    ->update(['customer_branch_id' => null]);
+                $customer->branches()->whereIn('id', $branchesToDelete)->delete();
+            }
+
+            // ── Sync contacts (upsert instead of delete + recreate) ──
+            $existingContactIds = $customer->contacts()->pluck('id')->toArray();
+            $incomingContactIds = [];
+
             foreach ($validated['contacts'] as $contactData) {
+                $contactId = $contactData['id'] ?? null;
                 $branchIndices = $contactData['branch_indices'];
-                unset($contactData['branch_indices']);
+                unset($contactData['id'], $contactData['branch_indices']);
 
-                $contact = $customer->contacts()->create($contactData);
+                if ($contactId && in_array($contactId, $existingContactIds)) {
+                    $contact = $customer->contacts()->find($contactId);
+                    $contact->update($contactData);
+                } else {
+                    $contact = $customer->contacts()->create($contactData);
+                }
 
+                $incomingContactIds[] = $contact->id;
+
+                // Map branch indices to actual branch IDs
                 $branchIds = collect($branchIndices)->map(function ($idx) use ($createdBranches) {
                     return $createdBranches[$idx]->id ?? null;
                 })->filter()->toArray();
 
-                $contact->branches()->attach($branchIds);
+                $contact->branches()->sync($branchIds);
+            }
+
+            // Delete contacts removed by the user
+            $contactsToDelete = array_diff($existingContactIds, $incomingContactIds);
+            if (!empty($contactsToDelete)) {
+                Ticket::whereIn('customer_contact_id', $contactsToDelete)
+                    ->update(['customer_contact_id' => null]);
+                $customer->contacts()->whereIn('id', $contactsToDelete)->delete();
             }
         });
 
