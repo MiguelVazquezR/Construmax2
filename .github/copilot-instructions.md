@@ -1,4 +1,4 @@
-# ERP — Project guidelines for Claude
+# ERP — Project guidelines for deepseek
 
 ## Stack
 
