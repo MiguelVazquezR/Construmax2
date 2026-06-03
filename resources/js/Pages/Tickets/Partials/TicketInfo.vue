@@ -74,7 +74,7 @@ const deleteEvidence = (mediaId) => {
                     <div>
                         <p class="text-xs text-blue-500 uppercase font-bold">Sucursal / Ubicación</p>
                         <p class="text-blue-900 dark:text-blue-100 font-medium">
-                            {{ ticket.branch ? `${ticket.branch.branch_name} (${ticket.branch.unit || ticket.branch.region})` : 'Sin asignar' }}
+                            {{ ticket.branch ? `${ticket.branch.branch_name} (${ticket.branch.region + ' - unidad: ' + ticket.branch.unit})` : 'Sin asignar' }}
                         </p>
                     </div>
                     <div>

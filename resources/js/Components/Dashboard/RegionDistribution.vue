@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { Loading } from '@element-plus/icons-vue';
 import VChart from 'vue-echarts';
 import { use } from 'echarts/core';
@@ -16,6 +16,7 @@ const props = defineProps({
 
 const loading = ref(true);
 const error = ref(null);
+const mapsReady = ref(false);
 
 const usaOption = ref({});
 const mexicoOption = ref({});
@@ -96,6 +97,18 @@ function buildOption(title, mapName, data) {
     };
 }
 
+// ── Build chart options from current regions data ──
+function refreshCharts() {
+    if (!mapsReady.value) return;
+    usaOption.value = buildOption('Estados Unidos', 'USA', usaData.value);
+    mexicoOption.value = buildOption('México', 'Mexico', mexicoData.value);
+}
+
+// ── React to prop changes (filters update) ──
+watch(() => props.regions, () => {
+    refreshCharts();
+}, { deep: true });
+
 onMounted(async () => {
     const loadMap = async (name, url, specialAreas = {}) => {
         try {
@@ -126,13 +139,12 @@ onMounted(async () => {
         loadMap('Mexico', 'https://raw.githubusercontent.com/angelnmara/geojson/master/mexicoHigh.json'),
     ]);
 
-    if (usaOk) usaOption.value = buildOption('Estados Unidos', 'USA', usaData.value);
-    if (mexOk) mexicoOption.value = buildOption('México', 'Mexico', mexicoData.value);
-
     if (!usaOk && !mexOk) {
         error.value = 'No se pudieron cargar los mapas';
     }
 
+    mapsReady.value = true;
+    refreshCharts();
     loading.value = false;
 });
 </script>
@@ -140,7 +152,8 @@ onMounted(async () => {
 <template>
     <div class="bg-white dark:bg-[#1e1e20] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-[#2b2b2e]">
         <h3 class="text-lg font-bold text-gray-800 dark:text-white">Distribución geográfica</h3>
-        <h6 class="text-xs text-gray-500 mt-0">Hacer scroll para hacer más grande o pequeño el mapa. Mantén presionado el clic para mover el mapa.</h6>
+        <h5 class="text-sm text-gray-600 mt-0">Muestra los tickets activos durante el periodo seleccionado</h5>
+        <h6 class="text-xs text-gray-400 mt-0">Hacer scroll para hacer más grande o pequeño el mapa. Mantén presionado el clic para mover el mapa.</h6>
         <div v-if="loading" class="flex items-center justify-center h-80">
             <el-icon class="is-loading text-gray-400" :size="32"><Loading /></el-icon>
         </div>
