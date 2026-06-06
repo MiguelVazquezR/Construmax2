@@ -1,8 +1,8 @@
 <script setup>
-import { ref, reactive } from 'vue';
-import { useForm, Link } from '@inertiajs/vue3';
-import { ElMessage } from 'element-plus';
-import { OfficeBuilding, User, Plus, Delete, LocationInformation } from '@element-plus/icons-vue';
+import { ref, reactive, computed } from 'vue';
+import { useForm, Link, router } from '@inertiajs/vue3';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { OfficeBuilding, User, Plus, Delete, LocationInformation, Picture, Folder, UploadFilled, Download, Close } from '@element-plus/icons-vue';
 
 const props = defineProps({
     customer: {
@@ -24,11 +24,12 @@ const initBranches = () => {
             id: b.id,
             country: b.country || 'México',
             region: b.region || '',
+            city: b.city || '',
             unit: b.unit || '',
             branch_name: b.branch_name || ''
         }));
     }
-    return [{ country: 'México', region: '', unit: '', branch_name: '' }];
+    return [{ country: 'México', region: '', city: '', unit: '', branch_name: '' }];
 };
 
 // Inicializar Contactos y mapear sus sucursales correspondientes
@@ -75,7 +76,21 @@ const form = useForm({
     currency: props.customer?.currency || 'MXN',
     payment_days: props.customer?.payment_days || 0,
     branches: initBranches(),
-    contacts: initContacts()
+    contacts: initContacts(),
+    logo: null,
+    files: [],
+});
+
+// Computed para media del cliente (en edición)
+const logoUrl = computed(() => {
+    if (!props.isEdit || !props.customer?.media) return null;
+    const logoMedia = props.customer.media.find(m => m.collection_name === 'logo');
+    return logoMedia ? logoMedia.original_url : null;
+});
+
+const customerFiles = computed(() => {
+    if (!props.isEdit || !props.customer?.media) return [];
+    return props.customer.media.filter(m => m.collection_name === 'customer_files');
 });
 
 // Reglas de validación generales
@@ -98,7 +113,7 @@ const emailRules = [
 
 // Métodos para Sucursales
 const addBranch = () => {
-    form.branches.push({ country: 'México', region: '', unit: '', branch_name: '' });
+    form.branches.push({ country: 'México', region: '', city: '', unit: '', branch_name: '' });
 };
 
 const removeBranch = (index) => {
@@ -129,6 +144,53 @@ const removeContact = (index) => {
     }
 };
 
+const logoPreviewUrl = ref(null);
+
+const handleLogoChange = (file) => {
+    form.logo = file.raw;
+    if (logoPreviewUrl.value) {
+        URL.revokeObjectURL(logoPreviewUrl.value);
+    }
+    logoPreviewUrl.value = URL.createObjectURL(file.raw);
+};
+
+const handleFilesChange = (uploadFile, fileList) => {
+    form.files = fileList.map(f => f.raw);
+};
+
+const removeExistingFile = (mediaId) => {
+    ElMessageBox.confirm('¿Eliminar este archivo permanentemente?', 'Confirmar', {
+        type: 'warning',
+        confirmButtonText: 'Eliminar',
+        cancelButtonText: 'Cancelar',
+    }).then(() => {
+        router.delete(route('customers.media.destroy', [props.customer.id, mediaId]), {
+            onSuccess: () => ElMessage.success('Archivo eliminado'),
+        });
+    }).catch(() => {});
+};
+
+const openFile = (url) => {
+    window.open(url, '_blank');
+};
+
+const removeLogo = () => {
+    if (!props.isEdit) {
+        form.logo = null;
+        logoPreviewUrl.value = null;
+        return;
+    }
+    ElMessageBox.confirm('¿Eliminar el logo del cliente?', 'Confirmar', {
+        type: 'warning',
+        confirmButtonText: 'Eliminar',
+        cancelButtonText: 'Cancelar',
+    }).then(() => {
+        router.delete(route('customers.logo.destroy', props.customer.id), {
+            onSuccess: () => ElMessage.success('Logo eliminado'),
+        });
+    }).catch(() => {});
+};
+
 const submit = () => {
     if (!formRef.value) return;
     
@@ -141,19 +203,80 @@ const submit = () => {
                 return false;
             }
 
+            const hasFiles = !!form.logo || (form.files && form.files.length > 0);
+
             if (props.isEdit) {
+                // En edición: enviamos solo datos (JSON), los archivos se suben aparte
+                form.transform((data) => ({
+                    name: data.name,
+                    business_name: data.business_name,
+                    rfc: data.rfc,
+                    payment_condition: data.payment_condition,
+                    payment_method: data.payment_method,
+                    invoice_usage: data.invoice_usage,
+                    currency: data.currency,
+                    payment_days: data.payment_days,
+                    branches: data.branches,
+                    contacts: data.contacts,
+                }));
+
                 form.put(route('customers.update', props.customer.id), {
-                    onSuccess: () => ElMessage.success('Cliente actualizado correctamente')
+                    onSuccess: () => {
+                        if (hasFiles) {
+                            uploadCustomerFiles(props.customer.id);
+                        } else {
+                            ElMessage.success('Cliente actualizado correctamente');
+                        }
+                    },
                 });
             } else {
+                // En creación: enviamos todo junto (incluyendo archivos si hay)
+                form.transform((data) => ({
+                    name: data.name,
+                    business_name: data.business_name,
+                    rfc: data.rfc,
+                    payment_condition: data.payment_condition,
+                    payment_method: data.payment_method,
+                    invoice_usage: data.invoice_usage,
+                    currency: data.currency,
+                    payment_days: data.payment_days,
+                    branches: data.branches,
+                    contacts: data.contacts,
+                    logo: data.logo || undefined,
+                    files: (data.files && data.files.length > 0) ? data.files : undefined,
+                }));
+
                 form.post(route('customers.store'), {
-                    onSuccess: () => ElMessage.success('Cliente registrado correctamente')
+                    forceFormData: hasFiles,
+                    onSuccess: () => {
+                        ElMessage.success('Cliente registrado correctamente');
+                    },
                 });
             }
         } else {
             ElMessage.error('Por favor revisa los campos marcados en rojo.');
             return false;
         }
+    });
+};
+
+const uploadCustomerFiles = (customerId) => {
+    const uploadForm = new FormData();
+    if (form.logo) {
+        uploadForm.append('logo', form.logo);
+    }
+    if (form.files && form.files.length > 0) {
+        form.files.forEach((file) => {
+            uploadForm.append('files[]', file);
+        });
+    }
+
+    router.post(route('customers.upload-files', customerId), uploadForm, {
+        forceFormData: true,
+        preserveState: false,
+        onSuccess: () => {
+            ElMessage.success('Cliente actualizado correctamente');
+        },
     });
 };
 </script>
@@ -237,6 +360,64 @@ const submit = () => {
                 </div>
             </div>
 
+            <!-- TARJETA 1.5: LOGO DEL CLIENTE -->
+            <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
+                <div class="p-6 border-b border-gray-100 dark:border-[#2b2b2e] bg-gray-50/50 dark:bg-[#252529]">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        <el-icon class="text-primary"><Picture /></el-icon> 
+                        Logo del cliente
+                    </h3>
+                </div>
+                
+                <div class="p-6">
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+                        <!-- Previsualización del logo -->
+                        <div class="shrink-0">
+                            <div v-if="form.logo" class="relative w-32 h-32 rounded-lg border-2 border-dashed border-primary/50 overflow-hidden bg-gray-50 dark:bg-[#252529] flex items-center justify-center">
+                                <img :src="logoPreviewUrl" alt="Logo preview" class="w-full h-full object-contain" />
+                                <div class="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
+                                    <el-button type="danger" size="small" circle @click="form.logo = null; logoPreviewUrl = null">
+                                        <el-icon><Delete /></el-icon>
+                                    </el-button>
+                                </div>
+                            </div>
+                            <div v-else-if="logoUrl" class="relative w-32 h-32 rounded-lg border-2 border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-50 dark:bg-[#252529]">
+                                <img :src="logoUrl" alt="Logo" class="w-full h-full object-contain" />
+                                <div class="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
+                                    <el-button type="danger" size="small" circle @click="removeLogo">
+                                        <el-icon><Delete /></el-icon>
+                                    </el-button>
+                                </div>
+                            </div>
+                            <div v-else class="w-32 h-32 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-[#252529] flex flex-col items-center justify-center text-gray-400">
+                                <el-icon :size="32"><Picture /></el-icon>
+                                <span class="text-xs mt-1">Sin logo</span>
+                            </div>
+                        </div>
+
+                        <!-- Upload -->
+                        <div class="flex flex-col gap-2">
+                            <p class="text-sm text-gray-500 dark:text-gray-400">
+                                Sube un logo para identificar al cliente. Formatos: JPG, PNG, WEBP. Máx. 2 MB.
+                            </p>
+                            <el-upload
+                                :show-file-list="false"
+                                :auto-upload="false"
+                                :on-change="handleLogoChange"
+                                accept="image/jpeg,image/png,image/webp"
+                            >
+                                <el-button type="primary" plain :icon="UploadFilled">
+                                    {{ logoUrl || form.logo ? 'Cambiar logo' : 'Seleccionar logo' }}
+                                </el-button>
+                            </el-upload>
+                            <el-button v-if="logoUrl" type="danger" plain size="small" @click="removeLogo">
+                                <el-icon><Delete /></el-icon> Eliminar logo
+                            </el-button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- TARJETA 2: SUCURSALES (Globales del cliente) -->
             <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
                 <div class="p-6 border-b border-gray-100 dark:border-[#2b2b2e] bg-gray-50/50 dark:bg-[#252529] flex justify-between items-center flex-wrap gap-4">
@@ -276,7 +457,7 @@ const submit = () => {
                             />
                         </div>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 w-full">
                             <el-form-item 
                                 label="País" 
                                 :prop="'branches.' + bIndex + '.country'" 
@@ -293,6 +474,15 @@ const submit = () => {
                                 class="mb-0"
                             >
                                 <el-input v-model="branch.region" placeholder="Ej. Jalisco" />
+                            </el-form-item>
+
+                            <el-form-item 
+                                label="Ciudad" 
+                                :prop="'branches.' + bIndex + '.city'" 
+                                :rules="requiredRules"
+                                class="mb-0"
+                            >
+                                <el-input v-model="branch.city" placeholder="Ej. Zapopan" />
                             </el-form-item>
 
                             <el-form-item 
@@ -392,6 +582,123 @@ const submit = () => {
                             </el-form-item>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- TARJETA 4: ARCHIVOS ADJUNTOS -->
+            <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
+                <div class="p-6 border-b border-gray-100 dark:border-[#2b2b2e] bg-gray-50/50 dark:bg-[#252529] flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                            <el-icon class="text-primary"><Folder /></el-icon> 
+                            Archivos adjuntos
+                        </h3>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                            Sube documentos adicionales relacionados con el cliente (PDF, Word, Excel, imágenes).
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <el-upload
+                            :show-file-list="false"
+                            :auto-upload="false"
+                            :on-change="handleFilesChange"
+                            multiple
+                            accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp"
+                        >
+                            <el-button type="primary" plain icon="Plus">
+                                Agregar archivos
+                            </el-button>
+                        </el-upload>
+                        <el-button
+                            v-if="form.files.length > 0"
+                            type="success"
+                            :icon="UploadFilled"
+                            @click="submit"
+                            :loading="form.processing"
+                        >
+                            Subir ({{ form.files.length }})
+                        </el-button>
+                    </div>
+                </div>
+
+                <div class="p-6">
+                    <!-- Archivos existentes (solo en edición) -->
+                    <div v-if="customerFiles.length > 0" class="mb-6">
+                        <h4 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+                            Archivos subidos anteriormente
+                        </h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            <div
+                                v-for="file in customerFiles"
+                                :key="file.id"
+                                class="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#252529]/50 border border-gray-200 dark:border-gray-700 rounded-lg group hover:border-primary/30 transition-colors"
+                            >
+                                <div class="flex items-center gap-3 min-w-0">
+                                    <el-icon class="text-primary shrink-0"><Document /></el-icon>
+                                    <div class="min-w-0">
+                                        <p class="text-sm font-medium text-gray-700 dark:text-gray-300 truncate" :title="file.file_name">
+                                            {{ file.file_name }}
+                                        </p>
+                                        <p class="text-xs text-gray-400">
+                                            {{ (file.size / 1024).toFixed(1) }} KB
+                                        </p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-1 shrink-0">
+                                    <el-button
+                                        size="small"
+                                        link
+                                        @click="openFile(file.original_url)"
+                                    >
+                                        <el-icon><Download /></el-icon>
+                                    </el-button>
+                                    <el-button
+                                        size="small"
+                                        type="danger"
+                                        link
+                                        @click="removeExistingFile(file.id)"
+                                    >
+                                        <el-icon><Delete /></el-icon>
+                                    </el-button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Nuevos archivos por subir -->
+                    <div v-if="form.files.length > 0">
+                        <h4 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+                            Archivos nuevos por subir
+                        </h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            <div
+                                v-for="(file, fIndex) in form.files"
+                                :key="fIndex"
+                                class="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg"
+                            >
+                                <div class="flex items-center gap-3 min-w-0">
+                                    <el-icon class="text-primary shrink-0"><Document /></el-icon>
+                                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
+                                        {{ file.name }}
+                                    </span>
+                                </div>
+                                <el-button
+                                    size="small"
+                                    type="danger"
+                                    link
+                                    @click="form.files.splice(fIndex, 1)"
+                                >
+                                    <el-icon><Close /></el-icon>
+                                </el-button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <el-empty
+                        v-if="customerFiles.length === 0 && form.files.length === 0"
+                        description="No hay archivos adjuntos aún"
+                        :image-size="60"
+                    />
                 </div>
             </div>
 

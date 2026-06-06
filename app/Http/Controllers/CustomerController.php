@@ -15,7 +15,7 @@ class CustomerController extends Controller
         $perPage = $request->input('perPage', 10);
 
         return Inertia::render('Customers/Index', [
-            'customers' => Customer::with(['contacts.branches', 'branches'])
+            'customers' => Customer::with(['contacts.branches', 'branches', 'media'])
                 ->filter($request->only(['search', 'region', 'contact'])) 
                 ->orderBy('id', 'desc')
                 ->paginate($perPage)
@@ -44,6 +44,7 @@ class CustomerController extends Controller
             'branches' => 'required|array|min:1',
             'branches.*.country' => 'required|string|max:100',
             'branches.*.region' => 'required|string|max:100',
+            'branches.*.city' => 'required|string|max:100',
             'branches.*.unit' => 'required|string|max:255',
             'branches.*.branch_name' => 'required|string|max:255',
 
@@ -54,9 +55,13 @@ class CustomerController extends Controller
             'contacts.*.position' => 'required|string|max:100',
             'contacts.*.branch_indices' => 'required|array|min:1',
             'contacts.*.branch_indices.*' => 'integer',
+
+            'logo' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
+            'files' => 'nullable|array',
+            'files.*' => 'nullable|file|mimes:pdf,doc,docx,xls,xlsx,jpeg,png,jpg,webp|max:10240',
         ]);
 
-        DB::transaction(function () use ($validated) {
+        DB::transaction(function () use ($validated, $request) {
             $customer = Customer::create([
                 'name' => $validated['name'],
                 'business_name' => $validated['business_name'],
@@ -86,6 +91,21 @@ class CustomerController extends Controller
 
                 $contact->branches()->attach($branchIds);
             }
+
+            // Handle logo upload
+            if ($request->hasFile('logo')) {
+                $customer->addMediaFromRequest('logo')
+                    ->toMediaCollection('logo');
+            }
+
+            // Handle file attachments
+            if ($request->hasFile('files')) {
+                foreach ($request->file('files') as $file) {
+                    $customer->addMedia($file)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('customer_files');
+                }
+            }
         });
 
         return redirect()->route('customers.index')->with('success', 'Cliente registrado exitosamente.');
@@ -96,6 +116,7 @@ class CustomerController extends Controller
         $customer->load([
             'branches',
             'contacts.branches', 
+            'media',
             'tickets' => function ($query) {
                 $query->orderBy('id', 'desc')
                       ->with(['seller:id,name,profile_photo_path', 'branch']);
@@ -110,7 +131,7 @@ class CustomerController extends Controller
     public function edit(Customer $customer)
     {
         return Inertia::render('Customers/Edit', [
-            'customer' => $customer->load(['branches', 'contacts.branches']),
+            'customer' => $customer->load(['branches', 'contacts.branches', 'media']),
         ]);
     }
 
@@ -130,6 +151,7 @@ class CustomerController extends Controller
             'branches.*.id' => 'nullable|integer|exists:customer_branches,id',
             'branches.*.country' => 'required|string|max:100',
             'branches.*.region' => 'required|string|max:100',
+            'branches.*.city' => 'required|string|max:100',
             'branches.*.unit' => 'required|string|max:255',
             'branches.*.branch_name' => 'required|string|max:255',
 
@@ -158,7 +180,7 @@ class CustomerController extends Controller
             // ── Sync branches (upsert instead of delete + recreate) ──
             $existingBranchIds = $customer->branches()->pluck('id')->toArray();
             $incomingBranchIds = [];
-            $createdBranches = []; // index => Branch model
+            $createdBranches = [];
 
             foreach ($validated['branches'] as $index => $branchData) {
                 $branchId = $branchData['id'] ?? null;
@@ -201,7 +223,6 @@ class CustomerController extends Controller
 
                 $incomingContactIds[] = $contact->id;
 
-                // Map branch indices to actual branch IDs
                 $branchIds = collect($branchIndices)->map(function ($idx) use ($createdBranches) {
                     return $createdBranches[$idx]->id ?? null;
                 })->filter()->toArray();
@@ -231,5 +252,44 @@ class CustomerController extends Controller
     {
         $customer->delete();
         return back()->with('success', 'Cliente eliminado correctamente.');
+    }
+
+    public function deleteMedia(Customer $customer, $mediaId)
+    {
+        $media = $customer->media()->findOrFail($mediaId);
+        $media->delete();
+
+        return back()->with('success', 'Archivo eliminado correctamente.');
+    }
+
+    public function deleteLogo(Customer $customer)
+    {
+        $customer->clearMediaCollection('logo');
+        return back()->with('success', 'Logo eliminado correctamente.');
+    }
+
+    public function uploadFiles(Request $request, Customer $customer)
+    {
+        $request->validate([
+            'logo' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
+            'files' => 'nullable|array',
+            'files.*' => 'nullable|file|mimes:pdf,doc,docx,xls,xlsx,jpeg,png,jpg,webp|max:10240',
+        ]);
+
+        if ($request->hasFile('logo')) {
+            $customer->clearMediaCollection('logo');
+            $customer->addMediaFromRequest('logo')
+                ->toMediaCollection('logo');
+        }
+
+        if ($request->hasFile('files')) {
+            foreach ($request->file('files') as $file) {
+                $customer->addMedia($file)
+                    ->usingFileName($file->getClientOriginalName())
+                    ->toMediaCollection('customer_files');
+            }
+        }
+
+        return back()->with('success', 'Archivos subidos correctamente.');
     }
 }

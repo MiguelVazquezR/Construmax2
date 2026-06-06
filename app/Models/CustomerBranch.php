@@ -17,6 +17,7 @@ class CustomerBranch extends Model
         'customer_id',
         'country',
         'region',
+        'city',
         'unit',
         'branch_name',
     ];

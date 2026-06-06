@@ -30,8 +30,13 @@ const form = useForm({
     exchange_rate: isEdit ? (parseFloat(props.budget?.exchange_rate) || 1) : 1,
     user_id: isEdit ? props.budget?.user_id : (page.props.auth.user.id || null),
     concepts: isEdit && props.budget?.concepts?.length > 0
-        ? props.budget.concepts.map(c => ({ concept: c.concept, amount: parseFloat(c.amount) }))
-        : [{ concept: '', amount: 0 }],
+        ? props.budget.concepts.map(c => ({ 
+            concept: c.concept, 
+            amount: parseFloat(c.amount), 
+            paid_to_technician: c.paid_to_technician ?? false,
+            payment_date: c.payment_date || null,
+        }))
+        : [{ concept: '', amount: 0, paid_to_technician: false, payment_date: null }],
     survey_images: [],
 });
 
@@ -119,7 +124,7 @@ const formatCurrency = (value) => {
 };
 
 const addConcept = () => {
-    form.concepts.push({ concept: '', amount: 0 });
+    form.concepts.push({ concept: '', amount: 0, paid_to_technician: false, payment_date: null });
 };
 
 const removeConcept = (index) => {
@@ -374,7 +379,7 @@ defineExpose({ form });
                             <div class="flex-1 w-full">
                                 <el-input v-model="item.concept" placeholder="Concepto" />
                             </div>
-                            <div class="w-full sm:w-40">
+                            <div class="w-full sm:w-36">
                                 <el-input-number
                                     v-model="item.amount"
                                     :min="0"
@@ -385,6 +390,19 @@ defineExpose({ form });
                                 >
                                     <template #prefix>$</template>
                                 </el-input-number>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <el-checkbox v-model="item.paid_to_technician" label="Pago a técnico" />
+                                <el-date-picker
+                                    v-if="item.paid_to_technician"
+                                    v-model="item.payment_date"
+                                    type="date"
+                                    placeholder="Fecha pago"
+                                    class="!w-36"
+                                    format="DD/MM/YYYY"
+                                    value-format="YYYY-MM-DD"
+                                    size="small"
+                                />
                             </div>
                             <el-button
                                 type="danger"
@@ -501,6 +519,15 @@ defineExpose({ form });
                     </div>
 
                     <div class="mt-8 pt-4 border-t border-gray-100 dark:border-gray-700">
+                        <!-- Info message: only for new budgets -->
+                        <el-alert
+                            v-if="!isEdit"
+                            class="mb-4"
+                            title="Al guardar, el ticket pasará a estado Catálogo para que el área de costos genere el catálogo correspondiente."
+                            type="info"
+                            :closable="false"
+                            show-icon
+                        />
                         <el-button
                             type="primary"
                             native-type="submit"

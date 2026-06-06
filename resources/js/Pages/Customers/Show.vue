@@ -1,12 +1,14 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { usePermissions } from '@/Composables/usePermissions';
+import { ElMessageBox, ElMessage } from 'element-plus';
 import { 
     OfficeBuilding, User, Message, Phone, Location, 
     ArrowDown, ChatDotRound, Edit, Back, List, Timer,
-    Ticket, MapLocation, Suitcase
+    Ticket, MapLocation, Suitcase, Picture, Folder, Document,
+    Download, Delete
 } from '@element-plus/icons-vue';
 
 const { can } = usePermissions();
@@ -16,6 +18,41 @@ const props = defineProps({
 });
 
 const activeTab = ref('general');
+
+// --- MEDIA HELPERS ---
+const logoUrl = computed(() => {
+    if (!props.customer?.media) return null;
+    const logoMedia = props.customer.media.find(m => m.collection_name === 'logo');
+    return logoMedia ? logoMedia.original_url : null;
+});
+
+const customerFiles = computed(() => {
+    if (!props.customer?.media) return [];
+    return props.customer.media.filter(m => m.collection_name === 'customer_files');
+});
+
+const openFile = (url) => {
+    window.open(url, '_blank');
+};
+
+const deleteFile = (mediaId) => {
+    ElMessageBox.confirm('¿Eliminar este archivo permanentemente?', 'Confirmar', {
+        type: 'warning',
+        confirmButtonText: 'Eliminar',
+        cancelButtonText: 'Cancelar',
+    }).then(() => {
+        router.delete(route('customers.media.destroy', [props.customer.id, mediaId]), {
+            onSuccess: () => ElMessage.success('Archivo eliminado'),
+        });
+    }).catch(() => {});
+};
+
+const formatSize = (bytes) => {
+    if (!bytes) return '0 KB';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(2) + ' MB';
+};
 
 // --- HELPERS ---
 const formatDate = (dateString) => {
@@ -91,7 +128,10 @@ const navigateToTicket = (row) => {
             <!-- HEADER RESUMEN (HERO CARD) -->
             <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div class="flex items-center gap-5">
-                    <div class="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 p-4 rounded-2xl shrink-0">
+                    <div v-if="logoUrl" class="w-16 h-16 rounded-2xl overflow-hidden border-2 border-gray-200 dark:border-gray-700 shrink-0 bg-white">
+                        <img :src="logoUrl" alt="Logo" class="w-full h-full object-contain" />
+                    </div>
+                    <div v-else class="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 p-4 rounded-2xl shrink-0">
                         <el-icon :size="36"><OfficeBuilding /></el-icon>
                     </div>
                     <div>
@@ -186,7 +226,7 @@ const navigateToTicket = (row) => {
                                     </p>
                                     <div class="pt-4 border-t border-gray-200 dark:border-gray-700/50 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                                         <el-icon class="text-primary"><Location /></el-icon>
-                                        {{ branch.region }}, {{ branch.country }}
+                                        {{ branch.city }}, {{ branch.region }}, {{ branch.country }}
                                     </div>
                                 </div>
                             </div>
@@ -272,7 +312,49 @@ const navigateToTicket = (row) => {
                         </div>
                     </el-tab-pane>
 
-                    <!-- PESTAÑA 4: HISTORIAL DE TICKETS -->
+                    <!-- PESTAÑA 4: ARCHIVOS ADJUNTOS -->
+                    <el-tab-pane name="files">
+                        <template #label>
+                            <span class="flex items-center gap-2 px-2">
+                                <el-icon><Folder /></el-icon> Archivos adjuntos
+                                <el-tag v-if="customerFiles.length" size="small" type="warning" class="ml-1 rounded-full">{{ customerFiles.length }}</el-tag>
+                            </span>
+                        </template>
+                        <div class="p-6">
+                            <div v-if="customerFiles.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div
+                                    v-for="file in customerFiles"
+                                    :key="file.id"
+                                    class="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#252529]/50 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-primary/30 transition-colors group"
+                                >
+                                    <div class="flex items-center gap-3 min-w-0">
+                                        <div class="bg-primary/10 text-primary p-2 rounded-lg shrink-0">
+                                            <el-icon :size="20"><Document /></el-icon>
+                                        </div>
+                                        <div class="min-w-0">
+                                            <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate" :title="file.file_name">
+                                                {{ file.file_name }}
+                                            </p>
+                                            <p class="text-xs text-gray-400">
+                                                {{ formatSize(file.size) }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <el-button size="small" circle @click="openFile(file.original_url)">
+                                            <el-icon><Download /></el-icon>
+                                        </el-button>
+                                        <el-button v-if="can('customers.edit')" size="small" type="danger" circle @click="deleteFile(file.id)">
+                                            <el-icon><Delete /></el-icon>
+                                        </el-button>
+                                    </div>
+                                </div>
+                            </div>
+                            <el-empty v-else description="No hay archivos adjuntos para este cliente." :image-size="80" />
+                        </div>
+                    </el-tab-pane>
+
+                    <!-- PESTAÑA 5: HISTORIAL DE TICKETS -->
                     <el-tab-pane name="tickets">
                         <template #label>
                             <span class="flex items-center gap-2 px-2">

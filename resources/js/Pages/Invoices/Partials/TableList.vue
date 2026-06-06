@@ -153,14 +153,20 @@ const submitInvoice = () => {
                             <a v-if="scope.row.has_invoice_file" :href="scope.row.invoice_url" download title="Descargar factura">
                                 <el-button type="info" size="small" icon="Download" circle />
                             </a>
-                            <el-button
-                                v-if="scope.row.status === 'Ejecutado' && can('invoices.upload')"
-                                type="primary"
-                                size="small"
-                                @click="openUploadModal(scope.row)"
+                            <el-tooltip
+                                v-if="scope.row.status === 'Ejecutado'"
+                                :content="can('invoices.upload') ? 'Subir factura' : 'No tienes permiso para subir facturas'"
+                                placement="top"
                             >
-                                Subir
-                            </el-button>
+                                <el-button
+                                    :type="can('invoices.upload') ? 'primary' : 'info'"
+                                    size="small"
+                                    :disabled="!can('invoices.upload')"
+                                    @click="can('invoices.upload') && openUploadModal(scope.row)"
+                                >
+                                    Subir
+                                </el-button>
+                            </el-tooltip>
                         </div>
                     </template>
                 </el-table-column>

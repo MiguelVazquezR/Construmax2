@@ -57,6 +57,62 @@
         </div>
       </div>
 
+      <!-- INFORMACIÓN DE PAGOS AL TÉCNICO -->
+      <div v-if="ticket.budget?.technician_payments?.length > 0 || totalTechnicianAmount > 0" class="mb-8">
+        <h2 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <el-icon class="text-green-500"><Money /></el-icon> Información de pagos
+        </h2>
+        
+        <div v-if="totalTechnicianAmount > 0" class="bg-white rounded-xl border border-gray-100 p-4 mb-4 shadow-sm">
+          <div class="flex justify-between items-center mb-2">
+            <span class="text-sm font-medium text-gray-600">Progreso de pagos</span>
+            <span class="text-sm font-bold">{{ formatPaymentCurrency(totalTechnicianPaid) }} / {{ formatPaymentCurrency(totalTechnicianAmount) }}</span>
+          </div>
+          <el-progress
+            :percentage="technicianPaymentProgress"
+            :status="technicianPaymentProgress >= 100 ? 'success' : ''"
+            :stroke-width="14"
+          >
+            <span class="text-xs font-bold">{{ technicianPaymentProgress }}%</span>
+          </el-progress>
+        </div>
+
+        <div v-if="ticket.budget?.technician_payments?.length > 0" class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+          <h3 class="text-sm font-bold text-gray-700 mb-3">Historial de pagos</h3>
+          <div class="space-y-2">
+            <div v-for="pay in ticket.budget.technician_payments" :key="pay.id" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 text-sm">
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-green-600">{{ formatPaymentCurrency(pay.amount) }}</span>
+                <span class="text-xs text-gray-400">{{ dayjs(pay.payment_date).format('DD MMM YYYY') }}</span>
+                <el-tag v-if="pay.reference" size="small" type="info" class="scale-75">{{ pay.reference }}</el-tag>
+              </div>
+              <div>
+                <el-tooltip v-if="pay.media?.length" content="Ver comprobante">
+                  <el-button circle size="small" icon="Document" @click="showImage(pay.media[0].original_url)" />
+                </el-tooltip>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+       <!-- RECURSOS DEL TICKET (Imágenes de apoyo subidas desde la oficina) -->
+      <div v-if="ticket.media && ticket.media.length > 0" class="mb-8">
+        <h2 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <el-icon class="text-primary"><IconPicture /></el-icon> Recursos e imágenes de apoyo
+        </h2>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div v-for="file in ticket.media" :key="file.id" class="border border-gray-200 rounded-lg overflow-hidden bg-white">
+            <div class="aspect-video bg-gray-100 flex items-center justify-center">
+              <img v-if="file.mime_type?.startsWith('image/')" :src="file.original_url" class="w-full h-full object-cover cursor-pointer" @click="showImage(file.original_url)" />
+              <el-icon v-else :size="32" class="text-gray-400"><Document /></el-icon>
+            </div>
+            <p class="text-xs p-2 truncate text-gray-500">{{ file.file_name }}</p>
+          </div>
+        </div>
+      </div>
+
+
       <!-- LISTA DE TAREAS SECUENCIALES -->
       <div class="mb-8">
         <h2 class="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
@@ -179,6 +235,29 @@
                         </div>
                     </div>
 
+                    <!-- SECCIÓN DE COMENTARIOS DEL TÉCNICO -->
+                    <div class="mb-6">
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                                <el-icon><ChatDotSquare /></el-icon> Notas y comentarios del técnico
+                            </h4>
+                        </div>
+                        <div class="bg-gray-50 rounded-xl border border-gray-100 p-3">
+                            <el-input
+                                v-model="task.technician_notes"
+                                type="textarea"
+                                :rows="3"
+                                placeholder="Escribe aquí tus notas, observaciones o comentarios sobre esta tarea..."
+                                @blur="saveNotes(task)"
+                            />
+                            <div class="flex justify-end mt-2">
+                                <el-button size="small" type="primary" plain @click="saveNotes(task)" :loading="savingNotesId === task.id">
+                                    Guardar notas
+                                </el-button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- ACCIÓN PRINCIPAL -->
                     <el-button 
                         v-if="!isTaskLocked(index)"
@@ -244,7 +323,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { Head, useForm, router } from '@inertiajs/vue3';
 import { 
     Check, 
@@ -259,7 +338,10 @@ import {
     Warning,
     List,
     PictureFilled,
-    Picture as IconPicture
+    Picture as IconPicture,
+    Document,
+    Money,
+    ChatDotSquare
 } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import dayjs from 'dayjs'; 
@@ -276,6 +358,24 @@ const props = defineProps({
 
 const togglingTaskId = ref(null);
 const uploadingTaskId = ref(null);
+const savingNotesId = ref(null);
+
+const saveNotes = (task) => {
+    savingNotesId.value = task.id;
+    router.put(task.urls.notes, {
+        technician_notes: task.technician_notes,
+    }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            ElMessage.success('Notas guardadas');
+            savingNotesId.value = null;
+        },
+        onError: () => {
+            ElMessage.error('Error al guardar notas');
+            savingNotesId.value = null;
+        },
+    });
+};
 
 // Lógica de Bloqueo Secuencial
 const isTaskLocked = (index) => {
@@ -317,6 +417,31 @@ const getTaskImageUrls = (task) => {
     if (!task.media) return [];
     return task.media.map(m => m.original_url);
 };
+
+// --- PAGOS A TÉCNICO ---
+const formatPaymentCurrency = (value) => {
+    return new Intl.NumberFormat('es-MX', {
+        style: 'currency',
+        currency: props.ticket.budget?.currency || 'MXN',
+    }).format(value || 0);
+};
+
+const totalTechnicianAmount = computed(() => {
+    if (!props.ticket.budget?.concepts) return 0;
+    return props.ticket.budget.concepts
+        .filter(c => c.paid_to_technician)
+        .reduce((sum, c) => sum + parseFloat(c.amount), 0);
+});
+
+const totalTechnicianPaid = computed(() => {
+    if (!props.ticket.budget?.technician_payments) return 0;
+    return props.ticket.budget.technician_payments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
+});
+
+const technicianPaymentProgress = computed(() => {
+    if (totalTechnicianAmount.value <= 0) return 100;
+    return Math.min(Math.round((totalTechnicianPaid.value / totalTechnicianAmount.value) * 100), 100);
+});
 
 // --- ACCIONES ---
 
@@ -367,6 +492,10 @@ const deleteEvidence = (url) => {
         preserveScroll: true,
         onSuccess: () => ElMessage.success('Imagen eliminada correctamente')
     });
+};
+
+const showImage = (url) => {
+    window.open(url, '_blank');
 };
 </script>
 

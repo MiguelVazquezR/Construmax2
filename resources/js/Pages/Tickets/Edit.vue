@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive } from 'vue';
-import { useForm, Link } from '@inertiajs/vue3';
+import { useForm, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage } from 'element-plus';
 import { Back } from '@element-plus/icons-vue';
@@ -34,6 +34,7 @@ const form = useForm({
     scheduled_start: props.ticket.scheduled_start,
     scheduled_end: props.ticket.scheduled_end,
     instructions: props.ticket.instructions,
+    uploaded_files: [],
 });
 
 const rules = reactive({
@@ -56,12 +57,52 @@ const submit = () => {
     
     formRef.value.validate((valid) => {
         if (valid) {
+            const hasFiles = form.uploaded_files && form.uploaded_files.length > 0;
+
+            form.transform((data) => ({
+                customer_id: data.customer_id,
+                customer_contact_id: data.customer_contact_id,
+                customer_branch_id: data.customer_branch_id,
+                seller_id: data.seller_id,
+                name: data.name,
+                service_type: data.service_type,
+                duration: data.duration,
+                user_id: data.user_id,
+                technicians: data.technicians,
+                priority: data.priority,
+                status: data.status,
+                scheduled_start: data.scheduled_start,
+                scheduled_end: data.scheduled_end,
+                instructions: data.instructions,
+            }));
+
             form.put(route('tickets.update', props.ticket.id), {
-                onSuccess: () => ElMessage.success('Ticket actualizado correctamente')
+                onSuccess: () => {
+                    if (hasFiles) {
+                        uploadTicketFiles(props.ticket.id);
+                    } else {
+                        ElMessage.success('Ticket actualizado correctamente');
+                    }
+                },
             });
         } else {
             ElMessage.error('Por favor revisa los campos marcados');
         }
+    });
+};
+
+const uploadTicketFiles = (ticketId) => {
+    const uploadForm = new FormData();
+    form.uploaded_files.forEach((file) => {
+        uploadForm.append('files[]', file);
+    });
+
+    router.post(route('tickets.evidence.store', ticketId), uploadForm, {
+        forceFormData: true,
+        preserveState: false,
+        onSuccess: () => {
+            ElMessage.success('Ticket actualizado correctamente');
+        },
     });
 };
 </script>

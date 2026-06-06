@@ -10,6 +10,11 @@ const props = defineProps({
 
 const currentVersion = ref(null);
 
+const conceptsTotal = computed(() => {
+    if (!props.budget.concepts || !props.budget.concepts.length) return 0;
+    return props.budget.concepts.reduce((sum, c) => sum + Number(c.amount || 0), 0);
+});
+
 const formatCurrency = (value, currency = 'MXN') => {
     return new Intl.NumberFormat('es-MX', {
         style: 'currency',
@@ -83,6 +88,9 @@ const submitCatalog = () => {
         form.post(route('costs.store-catalog', props.budget.id), {
             preserveScroll: true,
             onSuccess: () => {
+                // Props already have the updated catalog from the server,
+                // so just sync currentVersion to the actual latest version
+                currentVersion.value = props.budget.latest_catalog?.version;
                 ElMessage.success('Catálogo actualizado correctamente.');
             },
         });
@@ -182,7 +190,7 @@ const openPrintView = () => {
                         </el-table-column>
                     </el-table>
                     <div class="mt-3 text-right text-sm text-gray-600 dark:text-gray-400">
-                        Total cotizado: <span class="font-bold">{{ formatCurrency(budget.subtotal, budget.currency)
+                        Total cotizado: <span class="font-bold">{{ formatCurrency(conceptsTotal, budget.currency)
                         }}</span>
                     </div>
                 </div>

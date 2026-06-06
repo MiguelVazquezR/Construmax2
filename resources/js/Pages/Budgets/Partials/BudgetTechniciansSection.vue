@@ -90,8 +90,19 @@ const techniciansData = computed(() => {
 
     return Object.values(techs).map(tech => ({
         ...tech,
-        progress: tech.total_tasks > 0 ? Math.round((tech.completed_tasks / tech.total_tasks) * 100) : 0,
+        amount_to_pay: totalTechnicianAmount.value,
+        payment_progress: totalTechnicianAmount.value > 0
+            ? Math.min(Math.round((tech.total_paid / totalTechnicianAmount.value) * 100), 100)
+            : 0,
     }));
+});
+
+// Monto total de conceptos marcados como pago a técnico
+const totalTechnicianAmount = computed(() => {
+    if (!props.budget.concepts) return 0;
+    return props.budget.concepts
+        .filter(c => c.paid_to_technician)
+        .reduce((sum, c) => sum + parseFloat(c.amount), 0);
 });
 
 const openTechPaymentModal = (tech) => {
@@ -155,10 +166,10 @@ const openPreview = (file) => {
 
                     <div class="w-full md:w-1/3 px-2">
                         <div class="flex justify-between text-xs mb-1">
-                            <span class="text-gray-400">Progreso</span>
-                            <span class="font-bold text-gray-700 dark:text-gray-300">{{ tech.progress }}%</span>
+                            <span class="text-gray-400">Pago</span>
+                            <span class="font-bold text-gray-700 dark:text-gray-300">{{ formatCurrency(tech.total_paid) }} / {{ formatCurrency(tech.amount_to_pay) }}</span>
                         </div>
-                        <el-progress :percentage="tech.progress" :show-text="false" :status="tech.progress === 100 ? 'success' : ''" />
+                        <el-progress :percentage="tech.payment_progress" :show-text="false" :status="tech.payment_progress >= 100 ? 'success' : ''" />
                     </div>
 
                     <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">

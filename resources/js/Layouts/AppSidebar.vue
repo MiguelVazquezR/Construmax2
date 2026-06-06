@@ -167,6 +167,10 @@ const activeMenu = computed(() => {
                         <el-menu-item class="!bg-dark" index="config.roles-permissions.index">Roles y
                             Permisos</el-menu-item>
                     </Link>
+
+                    <Link v-if="can('config.notifications')" :href="route('config.notifications.index')">
+                        <el-menu-item class="!bg-dark" index="config.notifications.index">Notificaciones</el-menu-item>
+                    </Link>
                 </el-sub-menu>
 
             </el-menu>
