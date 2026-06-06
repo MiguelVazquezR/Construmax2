@@ -1,8 +1,14 @@
 <script setup>
+import { computed } from 'vue';
 import { Money } from '@element-plus/icons-vue';
 
 const props = defineProps({
     budget: Object,
+});
+
+const conceptsTotal = computed(() => {
+    if (!props.budget.concepts || !props.budget.concepts.length) return 0;
+    return props.budget.concepts.reduce((sum, c) => sum + Number(c.amount || 0), 0);
 });
 
 const formatCurrency = (value) => {
@@ -44,7 +50,7 @@ const formatCurrency = (value) => {
         </el-table>
         <div class="p-4 text-right bg-gray-50 dark:bg-[#252529] border-t border-gray-100 dark:border-[#2b2b2e]">
             <span class="text-sm font-bold text-gray-600 mr-4">TOTAL:</span>
-            <span class="text-xl font-bold text-primary">{{ formatCurrency(budget.total_cost) }}</span>
+            <span class="text-xl font-bold text-primary">{{ formatCurrency(conceptsTotal) }}</span>
         </div>
     </div>
 </template>

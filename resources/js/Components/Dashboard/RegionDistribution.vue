@@ -18,19 +18,9 @@ const loading = ref(true);
 const error = ref(null);
 const mapsReady = ref(false);
 
-const usaOption = ref({});
 const mexicoOption = ref({});
 
-// Separar datos por país — normalizar nombres de país
-const usaData = computed(() =>
-    props.regions
-        .filter(r => {
-            const c = (r.country || '').toLowerCase();
-            return c === 'usa' || c === 'us' || c === 'united states' || c === 'estados unidos';
-        })
-        .map(r => ({ name: r.region, value: r.total }))
-);
-
+// Filtrar solo datos de México
 const mexicoData = computed(() =>
     props.regions
         .filter(r => {
@@ -41,7 +31,7 @@ const mexicoData = computed(() =>
 );
 
 const globalMax = computed(() => {
-    const all = [...usaData.value, ...mexicoData.value];
+    const all = [...mexicoData.value];
     return all.length ? Math.max(...all.map(d => d.value), 1) : 1;
 });
 
@@ -77,15 +67,15 @@ function buildOption(title, mapName, data) {
             type: 'map',
             map: mapName,
             roam: true,
-            zoom: 1.2,
-            center: mapName === 'Mexico' ? [-102, 23] : undefined,
+            zoom: 1.4,
+            center: [-102, 23],
             label: {
                 show: true,
-                fontSize: 7,
+                fontSize: 9,
                 color: '#4b5563',
             },
             emphasis: {
-                label: { show: true, fontSize: 10, fontWeight: 'bold' },
+                label: { show: true, fontSize: 12, fontWeight: 'bold' },
                 itemStyle: { areaColor: '#fbbf24' },
             },
             itemStyle: {
@@ -100,7 +90,6 @@ function buildOption(title, mapName, data) {
 // ── Build chart options from current regions data ──
 function refreshCharts() {
     if (!mapsReady.value) return;
-    usaOption.value = buildOption('Estados Unidos', 'USA', usaData.value);
     mexicoOption.value = buildOption('México', 'Mexico', mexicoData.value);
 }
 
@@ -130,17 +119,10 @@ onMounted(async () => {
         }
     };
 
-    const [usaOk, mexOk] = await Promise.all([
-        loadMap('USA', '/maps/usa', {
-            Alaska: { left: -131, top: 25, width: 15 },
-            Hawaii: { left: -110, top: 28, width: 5 },
-            'Puerto Rico': { left: -76, top: 26, width: 2 },
-        }),
-        loadMap('Mexico', 'https://raw.githubusercontent.com/angelnmara/geojson/master/mexicoHigh.json'),
-    ]);
+    const mexOk = await loadMap('Mexico', 'https://raw.githubusercontent.com/angelnmara/geojson/master/mexicoHigh.json');
 
-    if (!usaOk && !mexOk) {
-        error.value = 'No se pudieron cargar los mapas';
+    if (!mexOk) {
+        error.value = 'No se pudo cargar el mapa';
     }
 
     mapsReady.value = true;
@@ -162,21 +144,10 @@ onMounted(async () => {
             ⚠️ {{ error }}. Mostrando indicador alternativo.
         </div>
 
-        <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <!-- Mapa USA -->
-            <div class="min-h-[380px]">
-                <VChart v-if="usaOption.series" class="h-[380px]" :option="usaOption" autoresize />
-                <div v-else class="h-[380px] flex items-center justify-center text-gray-400 text-sm">
-                    Sin datos para Estados Unidos
-                </div>
-            </div>
-
-            <!-- Mapa México -->
-            <div class="min-h-[380px]">
-                <VChart v-if="mexicoOption.series" class="h-[380px]" :option="mexicoOption" autoresize />
-                <div v-else class="h-[380px] flex items-center justify-center text-gray-400 text-sm">
-                    Sin datos para México
-                </div>
+        <div v-else>
+            <VChart v-if="mexicoOption.series" class="h-[520px] w-full" :option="mexicoOption" autoresize />
+            <div v-else class="h-[520px] flex items-center justify-center text-gray-400 text-sm">
+                Sin datos para México
             </div>
         </div>
     </div>

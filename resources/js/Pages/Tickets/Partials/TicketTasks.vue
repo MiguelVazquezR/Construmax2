@@ -298,52 +298,6 @@ const showPaymentProof = (pay) => {
 
 <template>
     <div class="py-4">
-        <!-- Header y Botón Nueva Tarea -->
-        <div class="flex justify-between items-center mb-6">
-            <div>
-                <h3 class="text-lg font-bold text-gray-800 dark:text-white">Lista de actividades</h3>
-                <p class="text-sm text-gray-500">Planifica las tareas operativas y evita cruces de horarios.</p>
-            </div>
-            <el-button v-if="can('tickets.tasks.create')" type="primary" plain icon="Plus" @click="openCreateModal">
-                Nueva tarea
-            </el-button>
-        </div>
-
-        <!-- Popovers de compartir -->
-        <div v-if="assignedTechnicians.length > 0" class="mb-8">
-            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
-                <el-icon><Share /></el-icon> Compartir Ordenes de Trabajo
-            </h4>
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                <el-popover v-for="tech in assignedTechnicians" :key="tech.id" placement="bottom" :width="280" trigger="click">
-                    <template #reference>
-                        <div class="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors">
-                            <el-avatar :src="tech.profile_photo_url" :size="40">{{ tech.name.charAt(0) }}</el-avatar>
-                            <div class="flex-1 min-w-0">
-                                <p class="text-sm font-bold text-gray-800 dark:text-gray-200 truncate">{{ tech.name }}</p>
-                                <p class="text-xs text-blue-600">{{ tech.task_count }} tareas</p>
-                            </div>
-                        </div>
-                    </template>
-                    <div class="text-center space-y-2">
-                        <!-- Detalles de Desempeño y Estatus -->
-                        <div class="flex justify-center items-center gap-2 pb-3 mb-2 border-b border-gray-100 dark:border-gray-700">
-                            <el-tag :type="getStatusColor(tech.status)" size="small" effect="dark">
-                                {{ tech.status }}
-                            </el-tag>
-                            <span class="flex items-center text-yellow-500 font-bold text-sm bg-yellow-50 dark:bg-yellow-900/20 px-2 py-0.5 rounded">
-                                {{ tech.rating_avg }} <el-icon class="ml-0.5"><StarFilled /></el-icon>
-                            </span>
-                        </div>
-                        
-                        <p class="text-sm font-bold">Compartir acceso externo</p>
-                        <el-button type="success" class="w-full" :icon="ChatDotSquare" @click="shareWhatsApp(tech)">WhatsApp</el-button>
-                        <el-button type="info" plain class="w-full" :icon="CopyDocument" @click="copyToClipboard(tech.share_url)">Copiar link</el-button>
-                    </div>
-                </el-popover>
-            </div>
-        </div>
-
         <!-- SECCIÓN DE PAGO A TÉCNICO -->
         <div v-if="totalTechnicianAmount > 0" class="mb-8">
             <div class="bg-gray-50 dark:bg-[#252529] rounded-lg p-4 border border-gray-200 dark:border-[#3f3f46]">
@@ -393,6 +347,52 @@ const showPaymentProof = (pay) => {
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+        
+        <!-- Header y Botón Nueva Tarea -->
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h3 class="text-lg font-bold text-gray-800 dark:text-white">Lista de actividades</h3>
+                <p class="text-sm text-gray-500">Planifica las tareas operativas y evita cruces de horarios.</p>
+            </div>
+            <el-button v-if="can('tickets.tasks.create')" type="primary" plain icon="Plus" @click="openCreateModal">
+                Nueva tarea
+            </el-button>
+        </div>
+
+        <!-- Popovers de compartir -->
+        <div v-if="assignedTechnicians.length > 0" class="mb-8">
+            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                <el-icon><Share /></el-icon> Compartir Ordenes de Trabajo
+            </h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <el-popover v-for="tech in assignedTechnicians" :key="tech.id" placement="bottom" :width="280" trigger="click">
+                    <template #reference>
+                        <div class="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors">
+                            <el-avatar :src="tech.profile_photo_url" :size="40">{{ tech.name.charAt(0) }}</el-avatar>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-bold text-gray-800 dark:text-gray-200 truncate">{{ tech.name }}</p>
+                                <p class="text-xs text-blue-600">{{ tech.task_count }} tareas</p>
+                            </div>
+                        </div>
+                    </template>
+                    <div class="text-center space-y-2">
+                        <!-- Detalles de Desempeño y Estatus -->
+                        <div class="flex justify-center items-center gap-2 pb-3 mb-2 border-b border-gray-100 dark:border-gray-700">
+                            <el-tag :type="getStatusColor(tech.status)" size="small" effect="dark">
+                                {{ tech.status }}
+                            </el-tag>
+                            <span class="flex items-center text-yellow-500 font-bold text-sm bg-yellow-50 dark:bg-yellow-900/20 px-2 py-0.5 rounded">
+                                {{ tech.rating_avg }} <el-icon class="ml-0.5"><StarFilled /></el-icon>
+                            </span>
+                        </div>
+                        
+                        <p class="text-sm font-bold">Compartir acceso externo</p>
+                        <el-button type="success" class="w-full" :icon="ChatDotSquare" @click="shareWhatsApp(tech)">WhatsApp</el-button>
+                        <el-button type="info" plain class="w-full" :icon="CopyDocument" @click="copyToClipboard(tech.share_url)">Copiar link</el-button>
+                    </div>
+                </el-popover>
             </div>
         </div>
 
