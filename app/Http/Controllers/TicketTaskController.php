@@ -139,7 +139,13 @@ class TicketTaskController extends Controller
 
     public function publicJobOrder(Request $request, Ticket $ticket, User $user)
     {
-        $ticket->load(['budget.customer']);
+        $ticket->load([
+            'budget.customer.media',
+            'budget.technicianPayments.technician',
+            'budget.technicianPayments.media',
+            'budget.concepts',
+            'media',
+        ]);
 
         $tasks = $ticket->tasks()
             ->where('user_id', $user->id)
@@ -157,6 +163,7 @@ class TicketTaskController extends Controller
             $task->urls = [
                 'toggle' => URL::signedRoute('tasks.public.toggle', ['task' => $task->id]),
                 'evidence' => URL::signedRoute('tasks.public.evidence', ['task' => $task->id]),
+                'notes' => URL::signedRoute('tasks.public.notes', ['task' => $task->id]),
             ];
 
             return $task;
@@ -198,5 +205,27 @@ class TicketTaskController extends Controller
         $media->delete();
         
         return back()->with('success', 'Evidencia eliminada correctamente.');
+    }
+
+    public function updateNotes(Request $request, TicketTask $task)
+    {
+        $validated = $request->validate([
+            'technician_notes' => 'nullable|string|max:5000',
+        ]);
+
+        $task->update($validated);
+
+        return back()->with('success', 'Notas actualizadas.');
+    }
+
+    public function publicUpdateNotes(Request $request, TicketTask $task)
+    {
+        $validated = $request->validate([
+            'technician_notes' => 'nullable|string|max:5000',
+        ]);
+
+        $task->update($validated);
+
+        return back()->with('success', 'Notas guardadas.');
     }
 }

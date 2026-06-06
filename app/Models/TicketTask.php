@@ -22,6 +22,7 @@ class TicketTask extends Model implements HasMedia
         'start_date', // Nuevo campo
         'due_date',
         'completed_at',
+        'technician_notes',
     ];
 
     protected $casts = [

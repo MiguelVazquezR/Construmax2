@@ -22,6 +22,7 @@ defineProps({
                 <el-descriptions-item label="Duración estimada">{{ budget.ticket?.duration || 'No especificada' }}</el-descriptions-item>
                 <el-descriptions-item label="País">{{ budget.ticket?.branch?.country || '—' }}</el-descriptions-item>
                 <el-descriptions-item label="Región">{{ budget.ticket?.branch?.region || '—' }}</el-descriptions-item>
+                <el-descriptions-item label="Ciudad">{{ budget.ticket?.branch?.city || '—' }}</el-descriptions-item>
                 <el-descriptions-item label="Unidad">{{ budget.ticket?.branch?.unit || '—' }}</el-descriptions-item>
                 <el-descriptions-item label="Sucursal" :span="2">{{ budget.ticket?.branch?.branch_name || '—' }}</el-descriptions-item>
             </el-descriptions>

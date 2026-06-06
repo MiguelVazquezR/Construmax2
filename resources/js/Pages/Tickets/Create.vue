@@ -40,6 +40,7 @@ const form = useForm({
     scheduled_start: '',
     scheduled_end: '',
     instructions: '',
+    uploaded_files: [],
 });
 
 const rules = reactive({
@@ -56,7 +57,9 @@ const submit = () => {
     
     formRef.value.validate((valid) => {
         if (valid) {
+            const hasFiles = form.uploaded_files && form.uploaded_files.length > 0;
             form.post(route('tickets.store'), {
+                forceFormData: hasFiles,
                 onSuccess: () => ElMessage.success('Ticket creado correctamente')
             });
         } else {

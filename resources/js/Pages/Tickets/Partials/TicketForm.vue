@@ -305,6 +305,46 @@ const sellerUsers = computed(() => {
             </el-form-item>
         </div>
 
+        <!-- SECCIÓN 4: ARCHIVOS ADJUNTOS (Recursos para el técnico) -->
+        <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
+            <div class="flex justify-between items-center mb-4 border-b pb-3 dark:border-gray-700">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                    <el-icon class="text-primary"><FolderOpened /></el-icon> Archivos de apoyo (Recursos para técnico)
+                </h3>
+                <span class="text-xs text-gray-400">Opcional</span>
+            </div>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                Sube planos, manuales, diagramas o cualquier documento que el técnico necesite para ejecutar el trabajo.
+                Estos archivos serán visibles en la orden de trabajo pública del técnico.
+            </p>
+            <el-upload
+                ref="supportUploadRef"
+                :auto-upload="false"
+                :show-file-list="false"
+                :on-change="(file) => { form.uploaded_files.push(file.raw); }"
+                :on-remove="(file) => { form.uploaded_files = form.uploaded_files.filter(f => f.name !== file.name || f.size !== file.size); }"
+                multiple
+                class="w-full"
+            >
+                <el-button type="primary" plain icon="Upload">Seleccionar archivos</el-button>
+                <template #tip>
+                    <div class="el-upload__tip">Archivos PDF, imágenes, documentos (Máx. 10MB c/u)</div>
+                </template>
+            </el-upload>
+            <div v-if="form.uploaded_files.length > 0" class="mt-3 flex flex-wrap gap-2">
+                <el-tag
+                    v-for="(f, i) in form.uploaded_files"
+                    :key="i"
+                    closable
+                    type="info"
+                    effect="plain"
+                    @close="form.uploaded_files.splice(i, 1)"
+                >
+                    {{ f.name }}
+                </el-tag>
+            </div>
+        </div>
+
         <!-- Componente Modal de Plantillas de Tareas -->
         <TaskTemplateModal 
             v-model="showTaskTemplateModal"

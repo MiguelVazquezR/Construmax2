@@ -1,5 +1,5 @@
 <script setup>
-import { useForm, router } from '@inertiajs/vue3';
+import { useForm, router, Link } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 const props = defineProps({
@@ -9,6 +9,23 @@ const props = defineProps({
 const formatDate = (date) => {
     if(!date) return 'No definida';
     return new Date(date).toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+};
+
+const formatCurrency = (value, currency = 'MXN') => {
+    return new Intl.NumberFormat('es-MX', {
+        style: 'currency',
+        currency: currency,
+    }).format(value || 0);
+};
+
+const openEvidenceTemplate = () => {
+    const url = route('tickets.evidence-template', props.ticket.id);
+    window.open(url, '_blank');
+};
+
+const openCostsPrint = () => {
+    const url = route('costs.print', props.ticket.budget.id);
+    window.open(url, '_blank');
 };
 
 // --- EVIDENCIA GENERAL DEL TICKET ---
@@ -74,7 +91,7 @@ const deleteEvidence = (mediaId) => {
                     <div>
                         <p class="text-xs text-blue-500 uppercase font-bold">Sucursal / Ubicación</p>
                         <p class="text-blue-900 dark:text-blue-100 font-medium">
-                            {{ ticket.branch ? `${ticket.branch.branch_name} (${ticket.branch.region + ' - unidad: ' + ticket.branch.unit})` : 'Sin asignar' }}
+                            {{ ticket.branch ? `${ticket.branch.branch_name}${ticket.branch.city ? ' (' + ticket.branch.city : ''}${ticket.branch.region ? ', ' + ticket.branch.region : ''}${ticket.branch.city ? ')' : ''} - Unidad: ${ticket.branch.unit}` : 'Sin asignar' }}
                         </p>
                     </div>
                     <div>
@@ -89,7 +106,66 @@ const deleteEvidence = (mediaId) => {
             </div>
         </div>
 
-        <!-- SECCIÓN 3: ARCHIVOS GENERALES (Planos, Permisos, etc.) -->
+        <!-- SECCIÓN 3: CATÁLOGO DE COSTOS Y PLANTILLA DE EVIDENCIAS -->
+        <div>
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                    <el-icon><FolderOpened /></el-icon> Catálogo de costos y evidencias
+                </h3>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Catálogo de costos -->
+                <div class="bg-gray-50 dark:bg-[#252529] rounded-lg p-4 border border-gray-200 dark:border-[#3f3f46]">
+                    <div class="flex items-center justify-between mb-3">
+                        <h4 class="text-sm font-bold text-gray-700 dark:text-gray-300">Último catálogo de costos</h4>
+                        <el-tag v-if="ticket.budget?.latest_catalog" type="success" size="small" effect="dark">
+                            V{{ ticket.budget.latest_catalog.version }}
+                        </el-tag>
+                        <el-tag v-else type="info" size="small" effect="plain">Sin catálogo</el-tag>
+                    </div>
+                    <div v-if="ticket.budget?.latest_catalog" class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-500">Subtotal:</span>
+                            <span class="font-mono font-bold">{{ formatCurrency(ticket.budget.latest_catalog.subtotal, ticket.budget.currency) }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-500">IVA:</span>
+                            <span class="font-mono font-bold">{{ formatCurrency(ticket.budget.latest_catalog.iva, ticket.budget.currency) }}</span>
+                        </div>
+                        <div class="flex justify-between border-t border-gray-200 dark:border-gray-700 pt-2">
+                            <span class="text-gray-700 dark:text-gray-300 font-bold">Total:</span>
+                            <span class="font-mono font-bold text-primary">{{ formatCurrency(ticket.budget.latest_catalog.total, ticket.budget.currency) }}</span>
+                        </div>
+                        <div class="mt-3 flex gap-2">
+                            <Link :href="route('costs.show', ticket.budget.id)">
+                                <el-button type="primary" size="small" plain>Ver detalle completo</el-button>
+                            </Link>
+                            <el-button type="primary" size="small" @click="openCostsPrint">
+                                Imprimir catálogo
+                            </el-button>
+                        </div>
+                    </div>
+                    <p v-else class="text-sm text-gray-400 italic">
+                        No hay catálogo de costos registrado para este ticket.
+                    </p>
+                </div>
+
+                <!-- Plantilla de evidencias -->
+                <div class="bg-gray-50 dark:bg-[#252529] rounded-lg p-4 border border-gray-200 dark:border-[#3f3f46]">
+                    <h4 class="text-sm font-bold text-gray-700 dark:text-gray-300 mb-3">Recopilación de evidencias</h4>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                        Genera una plantilla imprimible con todas las evidencias subidas por los técnicos, 
+                        ordenadas cronológicamente, incluyendo el logo del cliente.
+                    </p>
+                    <el-button type="primary" @click="openEvidenceTemplate">
+                        Ver plantilla de evidencias
+                    </el-button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 4: ARCHIVOS GENERALES (Planos, Permisos, etc.) -->
         <div>
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
