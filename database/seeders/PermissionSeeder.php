@@ -219,6 +219,13 @@ class PermissionSeeder extends Seeder
                 'category' => 'Costos',
                 'description' => 'Ver listado de presupuestos y costos'
             ],
+
+            // --- MÓDULO: NOTIFICACIONES ---
+            [
+                'name' => 'config.notifications',
+                'category' => 'Configuración',
+                'description' => 'Gestionar configuraciones de notificaciones (quién recibe qué)'
+            ],
         ];
 
         foreach ($permissions as $permission) {

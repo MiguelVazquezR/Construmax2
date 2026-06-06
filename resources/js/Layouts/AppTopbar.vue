@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue';
 import { router, Link, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
+import NotificationBell from '@/Components/NotificationBell.vue';
 
 defineProps({
     title: String,
@@ -106,6 +107,9 @@ const handleCommand = (command) => {
                     </el-badge>
                 </Link>
             </el-tooltip>
+
+            <!-- Notification Bell -->
+            <NotificationBell />
 
             <!-- Toggle Dark/Light Mode -->
             <el-tooltip :content="isDark ? 'Cambiar a modo día' : 'Cambiar a modo noche'" placement="bottom">

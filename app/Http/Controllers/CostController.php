@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Notifications\DispatchNotificationAction;
 use App\Http\Controllers\Controller;
 use App\Models\Budget;
 use App\Services\Costs\CostService;
@@ -14,6 +15,7 @@ class CostController extends Controller
 {
     public function __construct(
         private readonly CostService $costService,
+        private readonly DispatchNotificationAction $dispatchNotification,
     ) {}
 
     public function index(Request $request): Response
@@ -71,6 +73,9 @@ class CostController extends Controller
         ]);
 
         $catalog->items()->createMany($validated['items']);
+
+        // Dispatch notification: catalog created
+        $this->dispatchNotification->catalogCreated($catalog);
 
         return back()->with('success', 'Nueva versión del catálogo guardada correctamente.');
     }

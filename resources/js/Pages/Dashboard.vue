@@ -232,7 +232,7 @@ const getBudgetServiceType = (budget) => {
                     </div>
 
                     <div class="mt-4 pt-4 border-t border-gray-200 dark:border-[#3f3f46] text-center">
-                        <Link :href="route('tickets.dashboard')" class="text-sm text-primary font-medium hover:underline">Ver tablero operativo</Link>
+                        <Link :href="route('tickets.index')" class="text-sm text-primary font-medium hover:underline">Ver tablero operativo</Link>
                     </div>
                 </div>
 

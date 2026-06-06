@@ -31,7 +31,7 @@ const getLogoUrl = () => {
     return logo ? logo.original_url : null;
 };
 
-// Reunir todas las evidencias de todas las tareas, ordenadas cronológicamente
+// Reunir evidencias solo de las tareas de los técnicos, ordenadas cronológicamente
 const allEvidences = computed(() => {
     const items = [];
     if (props.ticket.tasks) {
@@ -45,20 +45,6 @@ const allEvidences = computed(() => {
                         url: media.original_url,
                         file_name: media.file_name,
                     });
-                });
-            }
-        });
-    }
-    // También incluir evidencias generales del ticket
-    if (props.ticket.media) {
-        props.ticket.media.forEach(media => {
-            if (media.mime_type?.startsWith('image/')) {
-                items.push({
-                    task_name: 'Archivo general',
-                    task_status: '',
-                    date: media.created_at,
-                    url: media.original_url,
-                    file_name: media.file_name,
                 });
             }
         });

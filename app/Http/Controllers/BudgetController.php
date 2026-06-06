@@ -93,6 +93,13 @@ class BudgetController extends Controller
             $budget->concepts()->createMany($validated['concepts']);
         });
 
+        // When a budget is created, move the ticket to 'Catálogo' status
+        // to indicate it needs a cost catalog
+        $budget?->load('ticket');
+        if ($budget->ticket && $budget->ticket->status !== 'Catálogo') {
+            $budget->ticket->update(['status' => 'Catálogo']);
+        }
+
         if ($request->hasFile('survey_images')) {
             foreach ($request->file('survey_images') as $image) {
                 $optimizedPath = $this->imageOptimizer->optimize($image);

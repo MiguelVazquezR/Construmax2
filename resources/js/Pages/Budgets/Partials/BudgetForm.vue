@@ -519,6 +519,15 @@ defineExpose({ form });
                     </div>
 
                     <div class="mt-8 pt-4 border-t border-gray-100 dark:border-gray-700">
+                        <!-- Info message: only for new budgets -->
+                        <el-alert
+                            v-if="!isEdit"
+                            class="mb-4"
+                            title="Al guardar, el ticket pasará a estado Catálogo para que el área de costos genere el catálogo correspondiente."
+                            type="info"
+                            :closable="false"
+                            show-icon
+                        />
                         <el-button
                             type="primary"
                             native-type="submit"
