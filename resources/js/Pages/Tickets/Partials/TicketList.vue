@@ -100,7 +100,7 @@ const getBranchDetails = (ticket) => {
     if (!b || typeof b !== 'object') return 'Sucursal no especificada';
 
     const head = [b.branch_name, b.unit].filter(Boolean).join(' - ');
-    const location = [b.region, b.country].filter(Boolean).join(', ');
+    const location = [b.city, b.region, b.country].filter(Boolean).join(', ');
 
     if (head && location) return `${head} (${location})`;
     return head || location || 'Sucursal no especificada';
@@ -201,6 +201,12 @@ const deleteTicket = (ticket) => {
                                         {{ getBranchDetails(scope.row) }}
                                     </span>
                                 </div>
+                            </div>
+                            <!-- Indicador de catálogo de costos -->
+                            <div class="flex items-center gap-2 mt-1.5">
+                                <el-tag v-if="scope.row.budget?.latest_catalog" size="small" type="success" effect="plain" class="!text-[10px] !h-5 !px-1.5">
+                                    Catálogo v{{ scope.row.budget.latest_catalog.version }}
+                                </el-tag>
                             </div>
                         </div>
                     </template>

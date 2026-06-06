@@ -31,7 +31,7 @@ class BudgetController extends Controller
         }
 
         return Inertia::render('Budgets/Index', [
-            'budgets' => Budget::with(['ticket.customer', 'ticket.branch', 'responsible'])
+            'budgets' => Budget::with(['ticket.customer.media', 'ticket.branch', 'responsible'])
                 ->withSum('concepts', 'amount')
                 ->filter($filters)
                 ->orderBy('id', 'desc')
@@ -73,6 +73,8 @@ class BudgetController extends Controller
             'concepts' => 'array|min:1',
             'concepts.*.concept' => 'required|string',
             'concepts.*.amount' => 'required|numeric|min:0',
+            'concepts.*.paid_to_technician' => 'nullable|boolean',
+            'concepts.*.payment_date' => 'nullable|date',
             'survey_images' => 'nullable|array',
             'survey_images.*' => 'image|max:10240',
         ]);
@@ -91,6 +93,13 @@ class BudgetController extends Controller
             $budget->concepts()->createMany($validated['concepts']);
         });
 
+        // When a budget is created, move the ticket to 'Catálogo' status
+        // to indicate it needs a cost catalog
+        $budget?->load('ticket');
+        if ($budget->ticket && $budget->ticket->status !== 'Catálogo') {
+            $budget->ticket->update(['status' => 'Catálogo']);
+        }
+
         if ($request->hasFile('survey_images')) {
             foreach ($request->file('survey_images') as $image) {
                 $optimizedPath = $this->imageOptimizer->optimize($image);
@@ -107,7 +116,7 @@ class BudgetController extends Controller
             ], 201);
         }
 
-        return redirect()->route('budgets.index')->with('success', 'Presupuesto registrado correctamente.');
+        return redirect()->route('budgets.show', $budget->id)->with('success', 'Presupuesto actualizado correctamente.');
     }
 
     public function show(Budget $budget)
@@ -163,6 +172,8 @@ class BudgetController extends Controller
             'concepts' => 'array|min:1',
             'concepts.*.concept' => 'required|string',
             'concepts.*.amount' => 'required|numeric|min:0',
+            'concepts.*.paid_to_technician' => 'nullable|boolean',
+            'concepts.*.payment_date' => 'nullable|date',
             'survey_images' => 'nullable|array',
             'survey_images.*' => 'image|max:10240',
         ]);
@@ -189,7 +200,7 @@ class BudgetController extends Controller
             }
         }
 
-        return redirect()->route('budgets.index')->with('success', 'Presupuesto actualizado correctamente.');
+        return redirect()->route('budgets.show', $budget->id)->with('success', 'Presupuesto actualizado correctamente.');
     }
 
     /** El estatus ahora lo gestiona el ticket. Redirige al ticket relacionado. */

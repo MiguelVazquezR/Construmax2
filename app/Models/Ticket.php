@@ -9,11 +9,30 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
+use App\Actions\Notifications\DispatchNotificationAction;
 
 class Ticket extends Model implements HasMedia
 {
     use HasFactory;
     use InteractsWithMedia;
+
+    /**
+     * Boot the model and register status change notifications.
+     */
+    protected static function booted(): void
+    {
+        static::updated(function (Ticket $ticket) {
+            if ($ticket->wasChanged('status')) {
+                $action = app(DispatchNotificationAction::class);
+
+                match ($ticket->status) {
+                    'Catálogo'  => $action->ticketNeedsCatalog($ticket),
+                    'Ejecutado' => $action->ticketNeedsInvoice($ticket),
+                    default     => null,
+                };
+            }
+        });
+    }
 
     protected $fillable = [
         'customer_id',

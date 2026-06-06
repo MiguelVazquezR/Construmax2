@@ -26,6 +26,13 @@ const props = defineProps({
     filters: Object,
 });
 
+// Obtener URL del logo desde la colección media del cliente
+const getLogoUrl = (customer) => {
+    if (!customer.media || customer.media.length === 0) return null;
+    const logo = customer.media.find(m => m.collection_name === 'logo');
+    return logo ? logo.original_url : null;
+};
+
 const search = ref(props.filters.search || '');
 const region = ref(props.filters.region || '');
 const contact = ref(props.filters.contact || '');
@@ -219,7 +226,7 @@ watch([search, region, contact], () => {
                                                         </div>
                                                         
                                                         <div class="flex flex-col sm:items-end pl-10 sm:pl-0 text-gray-500 dark:text-gray-400">
-                                                            <span class="font-medium">{{ sucursal.region }}</span>
+                                                            <span class="font-medium">{{ sucursal.city }}, {{ sucursal.region }}</span>
                                                             <span>{{ sucursal.country }}</span>
                                                         </div>
                                                     </div>
@@ -242,7 +249,10 @@ watch([search, region, contact], () => {
                         <el-table-column label="Cliente" min-width="220">
                             <template #default="scope">
                                 <div class="flex items-center gap-3">
-                                    <div class="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 p-2 rounded-lg">
+                                    <div v-if="getLogoUrl(scope.row)" class="w-9 h-9 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-white shrink-0">
+                                        <img :src="getLogoUrl(scope.row)" alt="Logo" class="w-full h-full object-contain" />
+                                    </div>
+                                    <div v-else class="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 p-2 rounded-lg shrink-0">
                                         <el-icon :size="20"><OfficeBuilding /></el-icon>
                                     </div>
                                     <div class="flex flex-col">
@@ -327,7 +337,10 @@ watch([search, region, contact], () => {
                     <div v-for="customer in customers.data" :key="customer.id" class="p-4 border-b border-gray-100 dark:border-[#2b2b2e] last:border-0 hover:bg-gray-50 dark:hover:bg-[#252529] transition-colors cursor-pointer" @click="handleRowClick(customer)">
                         <div class="flex justify-between items-start mb-3">
                             <div class="flex items-center gap-3">
-                                <div class="bg-orange-50 dark:bg-orange-900/20 text-orange-500 p-2 rounded-md">
+                                <div v-if="getLogoUrl(customer)" class="w-9 h-9 rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 bg-white shrink-0">
+                                    <img :src="getLogoUrl(customer)" alt="Logo" class="w-full h-full object-contain" />
+                                </div>
+                                <div v-else class="bg-orange-50 dark:bg-orange-900/20 text-orange-500 p-2 rounded-md shrink-0">
                                     <el-icon :size="18"><OfficeBuilding /></el-icon>
                                 </div>
                                 <div>

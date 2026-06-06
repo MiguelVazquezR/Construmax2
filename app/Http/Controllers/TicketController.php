@@ -22,7 +22,7 @@ class TicketController extends Controller
         $perPage = $request->input('perPage', 20);
         $sort = $request->input('sort', 'delay'); 
 
-        $query = Ticket::with(['customer', 'contact', 'branch', 'tasks.assignee', 'budget', 'seller']);
+        $query = Ticket::with(['customer', 'contact', 'branch', 'tasks.assignee', 'budget.latestCatalog', 'seller']);
 
         // BÚSQUEDA POR FOLIO
         if ($request->filled('folio')) {
@@ -126,12 +126,23 @@ class TicketController extends Controller
             'scheduled_end' => 'nullable|date|after_or_equal:scheduled_start',
             'instructions' => 'nullable|string',
             'task_template_id' => 'nullable|exists:task_templates,id',
+            'uploaded_files' => 'nullable|array',
+            'uploaded_files.*' => 'file|max:10240',
         ]);
 
-        $ticket = Ticket::create($validated); //status Borrador por defecto
+        $ticket = Ticket::create($validated);
 
         if (!empty($validated['task_template_id']) && !empty($validated['technicians'])) {
             $ticket->generateTasksFromTemplate($validated['task_template_id'], $validated['technicians']);
+        }
+
+        // Handle file uploads
+        if ($request->hasFile('uploaded_files')) {
+            foreach ($request->file('uploaded_files') as $file) {
+                $ticket->addMedia($file)
+                    ->usingFileName($file->getClientOriginalName())
+                    ->toMediaCollection('ticket_evidence');
+            }
         }
 
         return redirect()->route('tickets.show', $ticket->id)
@@ -147,8 +158,10 @@ class TicketController extends Controller
             'seller',
             'budget.concepts',
             'budget.payments',
+            'budget.latestCatalog',
             'budget.responsible',
             'budget.technicianPayments.technician.technician',
+            'budget.technicianPayments.media',
             'tasks.assignee', 
             'tasks.media', 
             'media'
@@ -245,5 +258,22 @@ class TicketController extends Controller
     {
         Media::findOrFail($mediaId)->delete();
         return back()->with('success', 'Archivo eliminado.');
+    }
+
+    public function evidenceTemplate(Ticket $ticket)
+    {
+        $ticket->load([
+            'customer',
+            'branch',
+            'tasks.media',
+            'media',
+            'budget.customer.media',
+        ]);
+
+        $ticket->tasks = $ticket->tasks->sortBy('start_date');
+
+        return Inertia::render('Tickets/EvidenceTemplate', [
+            'ticket' => $ticket,
+        ]);
     }
 }

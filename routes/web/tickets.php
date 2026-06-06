@@ -12,6 +12,7 @@ Route::middleware(['signed'])->group(function () {
     Route::put('/t/track/{task}/toggle', [TicketTaskController::class, 'publicToggle'])->name('tasks.public.toggle');
     Route::post('/t/track/{task}/evidence', [TicketTaskController::class, 'publicEvidence'])->name('tasks.public.evidence');
     Route::delete('/t/track/evidence/{media}', [TicketTaskController::class, 'publicDestroyEvidence'])->name('tasks.public.evidence.destroy');
+    Route::put('/t/track/{task}/notes', [TicketTaskController::class, 'publicUpdateNotes'])->name('tasks.public.notes');
 });
 
 Route::middleware([
@@ -31,9 +32,11 @@ Route::middleware([
     Route::put('/tickets/tasks/{task}', [TicketTaskController::class, 'update'])->name('tickets.tasks.update');
     Route::delete('/tickets/tasks/{task}', [TicketTaskController::class, 'destroy'])->name('tickets.tasks.destroy');
     Route::put('/tickets/tasks/{task}/toggle', [TicketTaskController::class, 'toggleComplete'])->name('tickets.tasks.toggle');
+    Route::put('/tickets/tasks/{task}/notes', [TicketTaskController::class, 'updateNotes'])->name('tickets.tasks.notes');
 
     // Rutas de Evidencias
     Route::post('/tickets/{ticket}/evidence', [TicketController::class, 'storeEvidence'])->name('tickets.evidence.store');
+    Route::get('/tickets/{ticket}/evidence-template', [TicketController::class, 'evidenceTemplate'])->name('tickets.evidence-template');
     Route::post('/tickets/tasks/{task}/evidence', [TicketTaskController::class, 'storeEvidence'])->name('tickets.tasks.evidence.store');
     Route::delete('/tickets/evidence/{media}', [TicketController::class, 'destroyEvidence'])->name('tickets.evidence.destroy');
 
