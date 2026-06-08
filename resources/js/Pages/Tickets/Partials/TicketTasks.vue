@@ -4,7 +4,8 @@ import { useForm, router, usePage } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus';
 import { 
     Check, Share, CopyDocument, ChatDotSquare, Edit, Delete, VideoPlay, 
-    Calendar, ZoomIn, Camera, Plus, Link as IconLink, StarFilled, Warning
+    Calendar, ZoomIn, Camera, Plus, Link as IconLink, StarFilled, Warning,
+    Phone, Message
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import QuickTechnicianModal from './QuickTechnicianModal.vue';
@@ -112,6 +113,7 @@ const assignedTechnicians = computed(() => {
                 techs.set(task.user_id, {
                     id: task.user_id,
                     name: task.assignee.name,
+                    email: task.assignee.email,
                     profile_photo_url: task.assignee.profile_photo_url,
                     share_url: task.share_url,
                     phone: phone,
@@ -374,6 +376,16 @@ const showPaymentProof = (pay) => {
                             <div class="flex-1 min-w-0">
                                 <p class="text-sm font-bold text-gray-800 dark:text-gray-200 truncate">{{ tech.name }}</p>
                                 <p class="text-xs text-blue-600">{{ tech.task_count }} tareas</p>
+                                <div v-if="tech.phone || tech.email" class="mt-1 space-y-0.5">
+                                    <p v-if="tech.phone" class="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                                        <el-icon style="vertical-align: middle;" :size="12"><Phone /></el-icon>
+                                        <span class="ml-0.5">{{ tech.phone }}</span>
+                                    </p>
+                                    <p v-if="tech.email" class="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                                        <el-icon style="vertical-align: middle;" :size="12"><Message /></el-icon>
+                                        <span class="ml-0.5">{{ tech.email }}</span>
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </template>

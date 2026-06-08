@@ -42,7 +42,7 @@
         
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-gray-100 relative z-10">
           <div>
-            <span class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Asesor / Vendedor asignado</span>
+            <span class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Técnico asignado</span>
             <div class="flex items-center gap-3">
                 <el-avatar :size="32" :src="technician.profile_photo_url" class="border border-gray-100 shadow-sm">{{ technician.name.charAt(0) }}</el-avatar>
                 <span class="text-sm font-semibold text-gray-700">{{ technician.name }}</span>

@@ -127,20 +127,20 @@ const activeMenu = computed(() => {
                     </el-menu-item>
                 </Link>
 
-                <Link v-if="can('invoices.index')" :href="route('invoices.index')">
-                    <el-menu-item class="!bg-dark" index="invoices.index">
-                        <el-icon><Document/></el-icon>
-                        <template #title><span>Facturación</span></template>
-                    </el-menu-item>
-                </Link>
-
-                <!-- Costos -->
+                   <!-- Costos -->
                <Link v-if="can('costs.index')" :href="route('costs.index')">
                    <el-menu-item class="!bg-dark" index="costs.index">
                        <el-icon><Money/></el-icon>
                        <template #title><span>Costos</span></template>
                    </el-menu-item>
                </Link>
+
+                <Link v-if="can('invoices.index')" :href="route('invoices.index')">
+                    <el-menu-item class="!bg-dark" index="invoices.index">
+                        <el-icon><Document/></el-icon>
+                        <template #title><span>Facturación</span></template>
+                    </el-menu-item>
+                </Link>
 
                 <!-- Módulo Configuración -->
                 <el-sub-menu index="settings" v-if="can('users.index') || can('roles.index')">
