@@ -20,8 +20,9 @@ const showQuickTechModal = ref(false);
 const handleTechCreated = (newUser) => {
     localUsers.value.push(newUser);
     form.user_id = newUser.id;
-    if (newUser.technician && !form.technicians.includes(newUser.id)) {
-        form.technicians.push(newUser.id);
+    const id = Number(newUser.id);
+    if (newUser.technician && !form.technicians.includes(id)) {
+        form.technicians.push(id);
     }
 };
 

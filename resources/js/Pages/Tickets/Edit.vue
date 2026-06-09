@@ -28,7 +28,7 @@ const form = useForm({
     service_type: props.ticket.service_type,
     duration: props.ticket.duration || '',
     user_id: props.ticket.user_id,
-    technicians: props.ticket.technicians || [],
+    technicians: (props.ticket.technicians || []).map(Number),
     priority: props.ticket.priority,
     status: props.ticket.status,
     scheduled_start: props.ticket.scheduled_start,
@@ -50,6 +50,9 @@ const rules = reactive({
 const handleTechCreated = (newUser) => {
     localUsers.value.push(newUser);
     form.user_id = newUser.id;
+    if (newUser.technician && !form.technicians.includes(Number(newUser.id))) {
+        form.technicians.push(Number(newUser.id));
+    }
 };
 
 const submit = () => {

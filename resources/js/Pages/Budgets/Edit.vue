@@ -8,6 +8,7 @@ defineProps({
     budget: Object,
     tickets: Array,
     users: Array,
+    technicians: Array,
 });
 </script>
 
@@ -29,6 +30,7 @@ defineProps({
                 mode="edit"
                 :tickets="tickets"
                 :users="users"
+                :technicians="technicians"
                 :budget="budget"
             />
         </div>

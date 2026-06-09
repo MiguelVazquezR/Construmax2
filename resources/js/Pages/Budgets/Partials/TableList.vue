@@ -2,6 +2,7 @@
 import { router, Link } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { usePermissions } from '@/Composables/usePermissions';
+import { DocumentChecked, Coin } from '@element-plus/icons-vue';
 
 const { can } = usePermissions();
 
@@ -141,15 +142,24 @@ const deleteBudget = (budget) => {
                     </template>
                 </el-table-column>
 
-                <el-table-column label="Total costo" width="160" align="right">
+                <el-table-column label="Total costo" width="200" align="right">
                     <template #default="scope">
                          <div class="flex flex-col items-end leading-tight">
-                            <span class="font-mono text-sm font-semibold text-gray-700 dark:text-gray-300">
-                                {{ formatCurrency(scope.row.concepts_sum_amount || 0, scope.row.currency) }}
+                            <span class="font-mono text-sm font-semibold text-gray-700 dark:text-gray-300 inline-flex items-center gap-1">
+                                {{ formatCurrency(scope.row.total_cost || 0, scope.row.currency) }}
+                                <el-tooltip
+                                    :content="scope.row.latest_catalog ? `Catálogo v${scope.row.latest_catalog.version}` : 'Conceptos base'"
+                                    placement="top"
+                                >
+                                    <el-icon :size="14" class="text-gray-400 cursor-help">
+                                        <DocumentChecked v-if="scope.row.latest_catalog" />
+                                        <Coin v-else />
+                                    </el-icon>
+                                </el-tooltip>
                             </span>
                             <!-- Conversión a MXN si es USD -->
                             <span v-if="scope.row.currency === 'USD'" class="text-[10px] text-gray-400">
-                                ≈ {{ formatCurrency((scope.row.concepts_sum_amount || 0) * scope.row.exchange_rate, 'MXN') }}
+                                ≈ {{ formatCurrency((scope.row.total_cost || 0) * scope.row.exchange_rate, 'MXN') }}
                             </span>
                          </div>
                     </template>
@@ -210,11 +220,20 @@ const deleteBudget = (budget) => {
                 <div class="flex justify-between items-center mb-2 bg-gray-50 dark:bg-[#27272a] p-2 rounded">
                     <span class="text-xs text-gray-400">Costo total:</span>
                     <div class="text-right">
-                        <div class="font-mono text-sm font-semibold text-gray-700 dark:text-gray-300">
-                            {{ formatCurrency(item.concepts_sum_amount || 0, item.currency) }}
+                        <div class="font-mono text-sm font-semibold text-gray-700 dark:text-gray-300 inline-flex items-center gap-1">
+                            {{ formatCurrency(item.total_cost || 0, item.currency) }}
+                            <el-tooltip
+                                :content="item.latest_catalog ? `Catálogo v${item.latest_catalog.version}` : 'Conceptos base'"
+                                placement="top"
+                            >
+                                <el-icon :size="12" class="text-gray-400 cursor-help">
+                                    <DocumentChecked v-if="item.latest_catalog" />
+                                    <Coin v-else />
+                                </el-icon>
+                            </el-tooltip>
                         </div>
                         <div v-if="item.currency === 'USD'" class="text-[10px] text-gray-400">
-                            ≈ {{ formatCurrency((item.concepts_sum_amount || 0) * item.exchange_rate, 'MXN') }}
+                            ≈ {{ formatCurrency((item.total_cost || 0) * item.exchange_rate, 'MXN') }}
                         </div>
                     </div>
                 </div>
