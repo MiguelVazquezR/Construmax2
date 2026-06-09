@@ -229,7 +229,8 @@ const openPrintView = () => {
                         <el-button type="primary" plain size="small" icon="Plus" @click="addItemRow">
                             Agregar fila
                         </el-button>
-                        <el-button type="info" plain size="small" icon="Printer" @click="openPrintView" :disabled="!currentVersion">
+                        <!-- <el-button type="info" plain size="small" icon="Printer" @click="openPrintView" :disabled="!currentVersion"> -->
+                        <el-button type="info" plain size="small" icon="Printer" @click="$inertia.visit(route('costs.print', $props.budget.id))" :disabled="!currentVersion">
                             Imprimir catálogo
                         </el-button>
                         <el-button type="primary" color="#f26c17" size="small" icon="Check" @click="submitCatalog"

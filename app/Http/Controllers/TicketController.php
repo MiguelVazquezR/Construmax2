@@ -221,9 +221,51 @@ class TicketController extends Controller
             'instructions' => 'nullable|string',
         ]);
 
+        $oldTechnicians = $ticket->technicians ?? [];
         $ticket->update($validated);
+        $newTechnicians = $ticket->technicians ?? [];
+
+        // When a technician is replaced, reassign all tasks and payments
+        // from the removed technician to the new one
+        $this->reassignTechnicianData($ticket, $oldTechnicians, $newTechnicians);
 
         return redirect()->route('tickets.show', $ticket->id)->with('success', 'Ticket actualizado.');
+    }
+
+    /**
+     * Reassign tasks and payments from removed technicians to replacement technicians.
+     */
+    private function reassignTechnicianData(Ticket $ticket, array $oldIds, array $newIds): void
+    {
+        // Normalize to integers
+        $oldIds = array_map('intval', $oldIds);
+        $newIds = array_map('intval', $newIds);
+
+        $removedIds = array_diff($oldIds, $newIds);
+        $addedIds = array_diff($newIds, $oldIds);
+
+        // Only proceed if there's a replacement (removed + added match count)
+        if (empty($removedIds) || empty($addedIds)) {
+            return;
+        }
+
+        // Pair each removed technician with a new one in order
+        $removedIds = array_values($removedIds);
+        $addedIds = array_values($addedIds);
+
+        foreach ($removedIds as $i => $oldId) {
+            $newId = $addedIds[$i] ?? $addedIds[0];
+
+            // Reassign ticket tasks
+            $ticket->tasks()->where('user_id', $oldId)->update(['user_id' => $newId]);
+
+            // Reassign technician payments via the ticket's budget
+            if ($ticket->budget) {
+                $ticket->budget->technicianPayments()
+                    ->where('user_id', $oldId)
+                    ->update(['user_id' => $newId]);
+            }
+        }
     }
 
     public function destroy(Ticket $ticket)

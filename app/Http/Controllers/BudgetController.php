@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Budget;
 use App\Models\BudgetPayment;
 use App\Models\Calendar;
+use App\Models\Technician;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Models\TechnicianPayment;
@@ -31,8 +32,7 @@ class BudgetController extends Controller
         }
 
         return Inertia::render('Budgets/Index', [
-            'budgets' => Budget::with(['ticket.customer.media', 'ticket.branch', 'responsible'])
-                ->withSum('concepts', 'amount')
+            'budgets' => Budget::with(['ticket.customer.media', 'ticket.branch', 'responsible', 'latestCatalog', 'concepts'])
                 ->filter($filters)
                 ->orderBy('id', 'desc')
                 ->paginate($perPage)
@@ -55,9 +55,24 @@ class BudgetController extends Controller
             ->orderBy('id', 'desc')
             ->get();
 
+        $technicians = Technician::with('user')->get();
+
+        // Embed technician info into each ticket for direct use in the frontend
+        $tickets->each(function ($ticket) use ($technicians) {
+            $ticket->technicians_data = collect($ticket->technicians ?? [])->map(function ($userId) use ($technicians) {
+                $technician = $technicians->firstWhere('user_id', $userId);
+                return [
+                    'name' => $technician?->user?->name ?? null,
+                    'is_internal' => $technician?->is_internal,
+                    'phone' => $technician?->phone,
+                ];
+            });
+        });
+
         return Inertia::render('Budgets/Create', [
             'tickets' => $tickets,
             'users' => User::where('is_active', true)->get(),
+            'technicians' => $technicians,
             'preselectedTicketId' => $request->input('ticket_id') ? (int) $request->input('ticket_id') : null,
         ]);
     }
@@ -154,10 +169,25 @@ class BudgetController extends Controller
             ->orderBy('id', 'desc')
             ->get();
 
+        $technicians = Technician::with('user')->get();
+
+        // Embed technician info into each ticket for direct use in the frontend
+        $tickets->each(function ($ticket) use ($technicians) {
+            $ticket->technicians_data = collect($ticket->technicians ?? [])->map(function ($userId) use ($technicians) {
+                $technician = $technicians->firstWhere('user_id', $userId);
+                return [
+                    'name' => $technician?->user?->name ?? null,
+                    'is_internal' => $technician?->is_internal,
+                    'phone' => $technician?->phone,
+                ];
+            });
+        });
+
         return Inertia::render('Budgets/Edit', [
             'budget' => $budget,
             'tickets' => $tickets,
             'users' => User::where('is_active', true)->get(),
+            'technicians' => $technicians,
         ]);
     }
 

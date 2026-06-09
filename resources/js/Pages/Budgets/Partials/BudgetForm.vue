@@ -9,6 +9,7 @@ const props = defineProps({
     mode: { type: String, required: true }, // 'create' | 'edit'
     tickets: { type: Array, required: true },
     users: { type: Array, required: true },
+    technicians: { type: Array, default: () => [] },
     budget: { type: Object, default: null },
     preselectedTicketId: { type: Number, default: null },
 });
@@ -61,12 +62,8 @@ const selectedTicket = computed(() => {
     return props.tickets.find(t => t.id === form.ticket_id) || null;
 });
 
-const technicianNames = computed(() => {
-    if (!selectedTicket.value?.technicians) return [];
-    return selectedTicket.value.technicians.map(id => {
-        const user = props.users.find(u => u.id === id);
-        return user ? user.name : `ID #${id}`;
-    });
+const technicianDetails = computed(() => {
+    return selectedTicket.value?.technicians_data || [];
 });
 
 const handleTicketChange = () => {
@@ -290,47 +287,32 @@ defineExpose({ form });
 
                         <div class="md:col-span-2">
                             <span class="text-xs text-gray-400 uppercase tracking-wide">Técnicos asignados</span>
-                            <p class="text-gray-700 dark:text-gray-300">
-                                <template v-if="technicianNames.length">
-                                    <el-tag v-for="name in technicianNames" :key="name" size="small" class="mr-1 mb-1" round>{{ name }}</el-tag>
-                                </template>
-                                <span v-else class="text-gray-400">—</span>
-                            </p>
+                            <div v-if="technicianDetails.length" class="mt-1 space-y-2">
+                                <div
+                                    v-for="tech in technicianDetails"
+                                    :key="tech.name"
+                                    class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+                                >
+                                    <span class="font-medium">{{ tech.name }}</span>
+                                    <el-tag
+                                        :type="tech.is_internal === true ? 'success' : 'warning'"
+                                        size="small"
+                                        effect="plain"
+                                    >
+                                        {{ tech.is_internal ? 'Interno' : 'Externo' }}
+                                    </el-tag>
+                                    <span v-if="tech.phone" class="text-gray-400 text-xs">
+                                        {{ tech.phone }}
+                                    </span>
+                                </div>
+                            </div>
+                            <p v-else class="text-gray-400 text-sm mt-1">—</p>
                         </div>
                     </div>
 
                     <div v-else class="text-center py-8 text-gray-400 text-sm">
                         <el-icon :size="32" class="mb-2 opacity-40"><OfficeBuilding /></el-icon>
                         <p>Selecciona un ticket para ver sus detalles</p>
-                    </div>
-                </div>
-
-                <!-- Tarjeta: Datos del presupuesto -->
-                <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-                        <el-icon class="text-primary"><Money /></el-icon> Datos del presupuesto
-                    </h3>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <el-form-item label="Responsable interno" prop="user_id">
-                            <el-select v-model="form.user_id" placeholder="Asignar a..." class="w-full" filterable>
-                                <el-option
-                                    v-for="user in users"
-                                    :key="user.id"
-                                    :label="user.name"
-                                    :value="user.id"
-                                />
-                            </el-select>
-                        </el-form-item>
-
-                        <el-form-item label="Descripción / notas comerciales" class="md:col-span-2">
-                            <el-input
-                                v-model="form.description"
-                                type="textarea"
-                                :rows="3"
-                                placeholder="Alcances, condiciones comerciales, notas..."
-                            />
-                        </el-form-item>
                     </div>
                 </div>
 
@@ -424,6 +406,35 @@ defineExpose({ form });
 
                     <div v-if="form.currency === 'USD'" class="text-right mt-1 text-xs text-gray-500">
                         Aprox: {{ new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(totalCost * form.exchange_rate) }} MXN
+                    </div>
+                </div>
+
+                <!-- Tarjeta: Datos del presupuesto -->
+                <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
+                        <el-icon class="text-primary"><Money /></el-icon> Datos del presupuesto
+                    </h3>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <el-form-item label="Responsable interno" prop="user_id">
+                            <el-select v-model="form.user_id" placeholder="Asignar a..." class="w-full" filterable>
+                                <el-option
+                                    v-for="user in users"
+                                    :key="user.id"
+                                    :label="user.name"
+                                    :value="user.id"
+                                />
+                            </el-select>
+                        </el-form-item>
+
+                        <el-form-item label="Descripción / notas comerciales" class="md:col-span-2">
+                            <el-input
+                                v-model="form.description"
+                                type="textarea"
+                                :rows="3"
+                                placeholder="Alcances, condiciones comerciales, notas..."
+                            />
+                        </el-form-item>
                     </div>
                 </div>
 
