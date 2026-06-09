@@ -77,6 +77,7 @@ require __DIR__ . '/web/technicians.php';
 require __DIR__ . '/web/invoices.php';
 require __DIR__ . '/web/costs.php';
 require __DIR__ . '/web/notifications.php';
+require __DIR__ . '/web/tutorials.php';
 
 // --- SOLUCIÓN PARA HOSTING SIN SYMLINK ---
 // Esta ruta intercepta las peticiones a imágenes y documentos

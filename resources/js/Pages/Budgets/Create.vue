@@ -7,6 +7,7 @@ import BudgetForm from '@/Pages/Budgets/Partials/BudgetForm.vue';
 defineProps({
     tickets: Array,
     users: Array,
+    technicians: Array,
     preselectedTicketId: { type: Number, default: null },
 });
 </script>
@@ -29,6 +30,7 @@ defineProps({
                 mode="create"
                 :tickets="tickets"
                 :users="users"
+                :technicians="technicians"
                 :preselected-ticket-id="preselectedTicketId"
             />
         </div>

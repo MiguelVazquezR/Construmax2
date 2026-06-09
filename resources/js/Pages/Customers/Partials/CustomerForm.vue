@@ -360,64 +360,6 @@ const uploadCustomerFiles = (customerId) => {
                 </div>
             </div>
 
-            <!-- TARJETA 1.5: LOGO DEL CLIENTE -->
-            <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
-                <div class="p-6 border-b border-gray-100 dark:border-[#2b2b2e] bg-gray-50/50 dark:bg-[#252529]">
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                        <el-icon class="text-primary"><Picture /></el-icon> 
-                        Logo del cliente
-                    </h3>
-                </div>
-                
-                <div class="p-6">
-                    <div class="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-                        <!-- Previsualización del logo -->
-                        <div class="shrink-0">
-                            <div v-if="form.logo" class="relative w-32 h-32 rounded-lg border-2 border-dashed border-primary/50 overflow-hidden bg-gray-50 dark:bg-[#252529] flex items-center justify-center">
-                                <img :src="logoPreviewUrl" alt="Logo preview" class="w-full h-full object-contain" />
-                                <div class="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
-                                    <el-button type="danger" size="small" circle @click="form.logo = null; logoPreviewUrl = null">
-                                        <el-icon><Delete /></el-icon>
-                                    </el-button>
-                                </div>
-                            </div>
-                            <div v-else-if="logoUrl" class="relative w-32 h-32 rounded-lg border-2 border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-50 dark:bg-[#252529]">
-                                <img :src="logoUrl" alt="Logo" class="w-full h-full object-contain" />
-                                <div class="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
-                                    <el-button type="danger" size="small" circle @click="removeLogo">
-                                        <el-icon><Delete /></el-icon>
-                                    </el-button>
-                                </div>
-                            </div>
-                            <div v-else class="w-32 h-32 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-[#252529] flex flex-col items-center justify-center text-gray-400">
-                                <el-icon :size="32"><Picture /></el-icon>
-                                <span class="text-xs mt-1">Sin logo</span>
-                            </div>
-                        </div>
-
-                        <!-- Upload -->
-                        <div class="flex flex-col gap-2">
-                            <p class="text-sm text-gray-500 dark:text-gray-400">
-                                Sube un logo para identificar al cliente. Formatos: JPG, PNG, WEBP. Máx. 2 MB.
-                            </p>
-                            <el-upload
-                                :show-file-list="false"
-                                :auto-upload="false"
-                                :on-change="handleLogoChange"
-                                accept="image/jpeg,image/png,image/webp"
-                            >
-                                <el-button type="primary" plain :icon="UploadFilled">
-                                    {{ logoUrl || form.logo ? 'Cambiar logo' : 'Seleccionar logo' }}
-                                </el-button>
-                            </el-upload>
-                            <el-button v-if="logoUrl" type="danger" plain size="small" @click="removeLogo">
-                                <el-icon><Delete /></el-icon> Eliminar logo
-                            </el-button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- TARJETA 2: SUCURSALES (Globales del cliente) -->
             <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
                 <div class="p-6 border-b border-gray-100 dark:border-[#2b2b2e] bg-gray-50/50 dark:bg-[#252529] flex justify-between items-center flex-wrap gap-4">
@@ -580,6 +522,64 @@ const uploadCustomerFiles = (customerId) => {
                                     />
                                 </el-select>
                             </el-form-item>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TARJETA 3: LOGO DEL CLIENTE -->
+            <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
+                <div class="p-6 border-b border-gray-100 dark:border-[#2b2b2e] bg-gray-50/50 dark:bg-[#252529]">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        <el-icon class="text-primary"><Picture /></el-icon> 
+                        Logo del cliente
+                    </h3>
+                </div>
+                
+                <div class="p-6">
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+                        <!-- Previsualización del logo -->
+                        <div class="shrink-0">
+                            <div v-if="form.logo" class="relative w-32 h-32 rounded-lg border-2 border-dashed border-primary/50 overflow-hidden bg-gray-50 dark:bg-[#252529] flex items-center justify-center">
+                                <img :src="logoPreviewUrl" alt="Logo preview" class="w-full h-full object-contain" />
+                                <div class="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
+                                    <el-button type="danger" size="small" circle @click="form.logo = null; logoPreviewUrl = null">
+                                        <el-icon><Delete /></el-icon>
+                                    </el-button>
+                                </div>
+                            </div>
+                            <div v-else-if="logoUrl" class="relative w-32 h-32 rounded-lg border-2 border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-50 dark:bg-[#252529]">
+                                <img :src="logoUrl" alt="Logo" class="w-full h-full object-contain" />
+                                <div class="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
+                                    <el-button type="danger" size="small" circle @click="removeLogo">
+                                        <el-icon><Delete /></el-icon>
+                                    </el-button>
+                                </div>
+                            </div>
+                            <div v-else class="w-32 h-32 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-[#252529] flex flex-col items-center justify-center text-gray-400">
+                                <el-icon :size="32"><Picture /></el-icon>
+                                <span class="text-xs mt-1">Sin logo</span>
+                            </div>
+                        </div>
+
+                        <!-- Upload -->
+                        <div class="flex flex-col gap-2">
+                            <p class="text-sm text-gray-500 dark:text-gray-400">
+                                Sube un logo para identificar al cliente. Formatos: JPG, PNG, WEBP. Máx. 2 MB.
+                            </p>
+                            <el-upload
+                                :show-file-list="false"
+                                :auto-upload="false"
+                                :on-change="handleLogoChange"
+                                accept="image/jpeg,image/png,image/webp"
+                            >
+                                <el-button type="primary" plain :icon="UploadFilled">
+                                    {{ logoUrl || form.logo ? 'Cambiar logo' : 'Seleccionar logo' }}
+                                </el-button>
+                            </el-upload>
+                            <el-button v-if="logoUrl" type="danger" plain size="small" @click="removeLogo">
+                                <el-icon><Delete /></el-icon> Eliminar logo
+                            </el-button>
                         </div>
                     </div>
                 </div>

@@ -99,7 +99,16 @@ const handleContactChange = () => {
 };
 
 const technicianUsers = computed(() => {
-    return props.users.filter(u => u.technician);
+    // Include all users with a technician profile
+    const techUsers = props.users.filter(u => u.technician);
+    // Also include any user referenced in form.technicians that might not have a profile
+    const referencedIds = new Set((props.form.technicians || []).map(Number));
+    techUsers.forEach(u => referencedIds.delete(Number(u.id)));
+    if (referencedIds.size > 0) {
+        const missing = props.users.filter(u => referencedIds.has(Number(u.id)));
+        techUsers.push(...missing);
+    }
+    return techUsers;
 });
 
 const sellerUsers = computed(() => {
