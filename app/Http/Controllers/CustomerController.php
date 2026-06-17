@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Customer;
+use App\Models\CustomerBranch;
 use App\Models\Ticket;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -291,5 +292,24 @@ class CustomerController extends Controller
         }
 
         return back()->with('success', 'Archivos subidos correctamente.');
+    }
+
+    public function quickStoreBranch(Request $request)
+    {
+        $validated = $request->validate([
+            'customer_id' => 'required|exists:customers,id',
+            'country' => 'required|string|max:100',
+            'region' => 'required|string|max:100',
+            'city' => 'required|string|max:100',
+            'unit' => 'required|string|max:255',
+            'branch_name' => 'required|string|max:255',
+        ]);
+
+        $branch = CustomerBranch::create($validated);
+
+        return response()->json([
+            'branch' => $branch->load('customer'),
+            'message' => 'Sucursal registrada correctamente.',
+        ]);
     }
 }

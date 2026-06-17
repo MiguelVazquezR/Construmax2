@@ -43,6 +43,7 @@ class Ticket extends Model implements HasMedia
         'service_type',
         'duration',
         'technicians',
+        'assistant_technicians',
         'status',
         'priority',
         'scheduled_start',
@@ -53,7 +54,8 @@ class Ticket extends Model implements HasMedia
     protected $casts = [
         'scheduled_start' => 'date',
         'scheduled_end' => 'date',
-        'technicians' => 'array', 
+        'technicians' => 'array',
+        'assistant_technicians' => 'array',
     ];
 
     protected $appends = ['progress', 'folio'];

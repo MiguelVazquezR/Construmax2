@@ -24,6 +24,11 @@ class TicketController extends Controller
 
         $query = Ticket::with(['customer', 'contact', 'branch', 'tasks.assignee', 'budget.latestCatalog', 'seller']);
 
+        // FILTRO POR ASESOR: si no tiene permiso de ver todos, solo muestra sus tickets
+        if (!$request->user()->can('tickets.index-all')) {
+            $query->where('seller_id', $request->user()->id);
+        }
+
         // BÚSQUEDA POR FOLIO
         if ($request->filled('folio')) {
             $folio = $request->input('folio');
@@ -86,6 +91,7 @@ class TicketController extends Controller
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'technicians' => User::whereHas('technician')->orderBy('name')->get(['id', 'name']),
             'sellers' => User::whereHas('ticketsAsSeller')->orderBy('name')->get(['id', 'name']),
+            'canViewAll' => $request->user()->can('tickets.index-all'),
             'filters' => [
                 'folio' => $request->input('folio'),
                 'customer' => $request->input('customer'),
@@ -121,6 +127,8 @@ class TicketController extends Controller
             'duration' => 'nullable|string',
             'technicians' => 'nullable|array',
             'technicians.*' => 'exists:users,id',
+            'assistant_technicians' => 'nullable|array',
+            'assistant_technicians.*' => 'exists:users,id',
             'priority' => 'required|string',
             'scheduled_start' => 'nullable|date',
             'scheduled_end' => 'nullable|date|after_or_equal:scheduled_start',
@@ -192,6 +200,24 @@ class TicketController extends Controller
         return back()->with('success', 'Estatus actualizado.');
     }
 
+    public function updateTechnicians(Request $request, Ticket $ticket)
+    {
+        $validated = $request->validate([
+            'technicians' => 'nullable|array',
+            'technicians.*' => 'exists:users,id',
+            'assistant_technicians' => 'nullable|array',
+            'assistant_technicians.*' => 'exists:users,id',
+        ]);
+
+        $oldTechnicians = $ticket->technicians ?? [];
+        $ticket->update($validated);
+        $newTechnicians = $ticket->technicians ?? [];
+
+        $this->reassignTechnicianData($ticket, $oldTechnicians, $newTechnicians);
+
+        return back()->with('success', 'Técnicos actualizados correctamente.');
+    }
+
     public function edit(Ticket $ticket)
     {
         return Inertia::render('Tickets/Edit', [
@@ -214,6 +240,8 @@ class TicketController extends Controller
             'duration' => 'nullable|string',
             'technicians' => 'nullable|array',
             'technicians.*' => 'exists:users,id',
+            'assistant_technicians' => 'nullable|array',
+            'assistant_technicians.*' => 'exists:users,id',
             'priority' => 'required|string',
             'status' => 'required|string',
             'scheduled_start' => 'nullable|date',
@@ -241,8 +269,13 @@ class TicketController extends Controller
         $oldIds = array_map('intval', $oldIds);
         $newIds = array_map('intval', $newIds);
 
-        $removedIds = array_diff($oldIds, $newIds);
-        $addedIds = array_diff($newIds, $oldIds);
+        // Also include assistant_technicians
+        $oldAssistants = array_map('intval', $ticket->assistant_technicians ?? []);
+        $allOldIds = array_merge($oldIds, $oldAssistants);
+        $allNewIds = array_merge($newIds, array_map('intval', $ticket->assistant_technicians ?? []));
+
+        $removedIds = array_diff($allOldIds, $allNewIds);
+        $addedIds = array_diff($allNewIds, $allOldIds);
 
         // Only proceed if there's a replacement (removed + added match count)
         if (empty($removedIds) || empty($addedIds)) {

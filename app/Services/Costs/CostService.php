@@ -61,7 +61,56 @@ class CostService
 
     public function getBudgetCatalogDetails(Budget $budget): array
     {
-        $budget->load(['ticket.customer', 'ticket.branch', 'concepts', 'catalogs.items', 'latestCatalog.items', 'media']);
+        $budget->load([
+            'ticket.customer',
+            'ticket.branch',
+            'ticket.contact',
+            'ticket.seller',
+            'ticket.tasks.media',
+            'concepts',
+            'catalogs.items',
+            'latestCatalog.items',
+            'media',
+        ]);
+
+        // Resolve technician user IDs to user+technician data
+        $techIds = array_merge(
+            array_map('intval', $budget->ticket->technicians ?? []),
+            array_map('intval', $budget->ticket->assistant_technicians ?? [])
+        );
+        $technicians = collect();
+        if (!empty($techIds)) {
+            $technicians = \App\Models\User::whereIn('id', $techIds)
+                ->with('technician')
+                ->get()
+                ->map(function ($user) {
+                    return [
+                        'id'               => $user->id,
+                        'name'             => $user->name,
+                        'email'            => $user->email,
+                        'profile_photo_url' => $user->profile_photo_url,
+                        'phone'            => $user->technician->phone ?? '',
+                        'level'            => $user->technician->level ?? 'Encargado',
+                        'status'           => $user->technician->status ?? 'N/A',
+                        'rating_avg'       => $user->technician->rating_avg ?? 0,
+                    ];
+                });
+        }
+
+        // Collect all task evidence (media) across all tasks
+        $taskEvidence = $budget->ticket->tasks->flatMap(function ($task) {
+            return $task->media->map(function ($media) use ($task) {
+                return [
+                    'id'          => $media->id,
+                    'task_name'   => $task->name,
+                    'task_status' => $task->status,
+                    'file_name'   => $media->file_name,
+                    'mime_type'   => $media->mime_type,
+                    'url'         => $media->getUrl(),
+                    'created_at'  => $media->created_at?->toISOString(),
+                ];
+            });
+        })->sortByDesc('created_at')->values();
 
         return [
             'id'            => $budget->id,
@@ -76,33 +125,49 @@ class CostService
                 'service_type'    => $budget->ticket->service_type ?? 'N/A',
                 'scheduled_start' => $budget->ticket->scheduled_start ?? null,
                 'scheduled_end'   => $budget->ticket->scheduled_end ?? null,
+                'instructions'    => $budget->ticket->instructions ?? null,
                 'customer'        => [
                     'name' => $budget->ticket->customer->name ?? 'N/A',
                     'rfc'  => $budget->ticket->customer->rfc ?? 'N/A',
+                ],
+                'contact'         => [
+                    'name'  => $budget->ticket->contact->name ?? 'N/A',
+                    'phone' => $budget->ticket->contact->phone ?? 'N/A',
+                    'email' => $budget->ticket->contact->email ?? 'N/A',
                 ],
                 'branch'          => [
                     'branch_name' => $budget->ticket->branch->branch_name ?? 'N/D',
                     'region'      => $budget->ticket->branch->region ?? 'N/D',
                     'country'     => $budget->ticket->branch->country ?? 'N/D',
+                    'city'        => $budget->ticket->branch->city ?? 'N/D',
+                    'unit'        => $budget->ticket->branch->unit ?? 'N/D',
                 ],
+                'seller'          => $budget->ticket->seller ? [
+                    'name'  => $budget->ticket->seller->name,
+                    'email' => $budget->ticket->seller->email,
+                ] : null,
+                'technicians'     => $technicians,
+                'technician_ids'  => array_map('intval', $budget->ticket->technicians ?? []),
+                'assistant_technician_ids' => array_map('intval', $budget->ticket->assistant_technicians ?? []),
             ],
             'latest_catalog' => $budget->latestCatalog,
-            'catalogs'      => $budget->catalogs,
-            'concepts'      => $budget->concepts->map(function ($concept) {
+            'catalogs'       => $budget->catalogs,
+            'concepts'       => $budget->concepts->map(function ($concept) {
                 return [
                     'id'      => $concept->id,
                     'concept' => $concept->concept,
                     'amount'  => $concept->amount,
                 ];
             }),
-            'survey_images' => $budget->getMedia('survey_images')->map(function ($media) {
+            'survey_images'  => $budget->getMedia('survey_images')->map(function ($media) {
                 return [
                     'id'   => $media->id,
                     'name' => $media->file_name,
                     'url'  => $media->getUrl(),
                 ];
             }),
-            'subtotal'      => $budget->total_cost,
+            'task_evidence'  => $taskEvidence,
+            'subtotal'       => $budget->total_cost,
         ];
     }
 }

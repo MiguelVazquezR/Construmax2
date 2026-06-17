@@ -124,6 +124,10 @@ const viewCatalogVersion = (versionId) => {
     }
 };
 
+const openUrl = (url) => {
+    window.open(url, '_blank');
+};
+
 const openPrintView = () => {
     if (!currentVersion.value) return;
     const url = route('costs.print', { budget: props.budget.id, version: currentVersion.value });
@@ -171,15 +175,66 @@ const openPrintView = () => {
                 </div>
             </div>
 
-            <!-- Context Info: Concepts and Images -->
+            <!-- INFO & TEAM: grid de 2 columnas -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Notas Comerciales -->
+                <div v-if="budget.description"
+                    class="bg-white dark:bg-[#1e1e20] rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] p-4">
+                    <h3 class="text-md font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
+                        <el-icon><Edit /></el-icon> Notas comerciales
+                    </h3>
+                    <div class="bg-gray-50 dark:bg-[#252529] rounded-lg p-4 text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed min-h-[80px]">
+                        {{ budget.description }}
+                    </div>
+                </div>
+
+                <!-- Técnicos asignados -->
+                <div v-if="budget.ticket.technicians && budget.ticket.technicians.length > 0"
+                    class="bg-white dark:bg-[#1e1e20] rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] p-4">
+                    <h3 class="text-md font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
+                        <el-icon><UserFilled /></el-icon> Técnicos asignados
+                        <el-tag size="small" type="primary" effect="plain">{{ budget.ticket.technicians.length }}</el-tag>
+                    </h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div v-for="tech in budget.ticket.technicians" :key="tech.id"
+                            class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-[#252529] rounded-lg border border-gray-100 dark:border-[#3f3f46]">
+                            <el-avatar :size="36" :src="tech.profile_photo_url" class="shrink-0 border border-gray-200 dark:border-gray-600">
+                                {{ tech.name.charAt(0) }}
+                            </el-avatar>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-bold text-gray-800 dark:text-gray-200 truncate">{{ tech.name }}</p>
+                                <div class="flex items-center gap-1 mt-0.5 flex-wrap">
+                                    <el-tag
+                                        size="small"
+                                        :type="tech.level === 'Encargado' ? 'primary' : 'warning'"
+                                        effect="dark"
+                                        class="!h-4 !text-[9px] !px-1"
+                                    >
+                                        {{ tech.level === 'Encargado' ? 'Encargado' : 'Auxiliar' }}
+                                    </el-tag>
+                                    <el-tag
+                                        v-if="tech.phone"
+                                        size="small"
+                                        type="info"
+                                        effect="plain"
+                                        class="!h-4 !text-[9px] !px-1"
+                                    >
+                                        {{ tech.phone }}
+                                    </el-tag>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ARCHIVOS: grid de 2 columnas (Conceptos + Archivos del presupuesto) -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <!-- Conceptos del Presupuesto -->
                 <div
                     class="bg-white dark:bg-[#1e1e20] rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] p-4">
                     <h3 class="text-md font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                        <el-icon>
-                            <Money />
-                        </el-icon> Conceptos base (Presupuesto)
+                        <el-icon><Money /></el-icon> Conceptos base (Presupuesto)
                     </h3>
                     <el-table :data="budget.concepts" size="small" border class="w-full">
                         <el-table-column prop="concept" label="Concepto comercial" min-width="200" />
@@ -190,29 +245,70 @@ const openPrintView = () => {
                         </el-table-column>
                     </el-table>
                     <div class="mt-3 text-right text-sm text-gray-600 dark:text-gray-400">
-                        Total cotizado: <span class="font-bold">{{ formatCurrency(conceptsTotal, budget.currency)
-                        }}</span>
+                        Total cotizado: <span class="font-bold">{{ formatCurrency(conceptsTotal, budget.currency) }}</span>
                     </div>
                 </div>
 
-                <!-- Imágenes de Levantamiento -->
+                <!-- Archivos del Presupuesto -->
                 <div
                     class="bg-white dark:bg-[#1e1e20] rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] p-4">
                     <h3 class="text-md font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                        <el-icon>
-                            <Picture />
-                        </el-icon> Imágenes de levantamiento
+                        <el-icon><FolderOpened /></el-icon> Archivos del presupuesto
                     </h3>
 
-                    <div v-if="budget.survey_images.length > 0" class="flex flex-wrap gap-2">
-                        <el-image v-for="img in budget.survey_images" :key="img.id" :src="img.url"
-                            :preview-src-list="budget.survey_images.map(i => i.url)"
-                            :initial-index="budget.survey_images.findIndex(i => i.id === img.id)" fit="cover"
-                            class="w-24 h-24 rounded-md border border-gray-200 dark:border-gray-700 cursor-pointer" />
+                    <div v-if="budget.survey_images.length > 0">
+                        <p class="text-xs text-gray-400 mb-3">Imágenes y documentos adjuntos al registrar el presupuesto.</p>
+                        <div class="flex flex-wrap gap-2">
+                            <el-image v-for="img in budget.survey_images" :key="img.id" :src="img.url"
+                                :preview-src-list="budget.survey_images.map(i => i.url)"
+                                :initial-index="budget.survey_images.findIndex(i => i.id === img.id)" fit="cover"
+                                class="w-24 h-24 rounded-md border border-gray-200 dark:border-gray-700 cursor-pointer" />
+                        </div>
                     </div>
                     <div v-else
                         class="text-center p-6 text-gray-400 bg-gray-50 dark:bg-[#252529] rounded-md border border-dashed border-gray-300 dark:border-gray-700">
-                        No hay imágenes registradas.
+                        No hay archivos adjuntos en el presupuesto.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Evidencias de tareas (subidas por técnicos) -->
+            <div v-if="budget.task_evidence && budget.task_evidence.length > 0"
+                class="bg-white dark:bg-[#1e1e20] rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] p-4">
+                <h3 class="text-md font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
+                    <el-icon><Camera /></el-icon> Evidencias de campo (técnicos)
+                    <el-tag size="small" type="success" effect="plain">{{ budget.task_evidence.length }} archivos</el-tag>
+                </h3>
+                <p class="text-xs text-gray-400 mb-3">Fotos y videos registrados por los técnicos durante la ejecución de las tareas.</p>
+
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    <div v-for="ev in budget.task_evidence" :key="ev.id"
+                        class="relative group border border-gray-200 dark:border-[#3f3f46] rounded-lg overflow-hidden bg-white dark:bg-[#252529]">
+                        <!-- Image -->
+                        <el-image
+                            v-if="ev.mime_type?.startsWith('image/')"
+                            :src="ev.url"
+                            fit="cover"
+                            class="w-full h-24 cursor-pointer"
+                            :preview-src-list="budget.task_evidence.filter(e => e.mime_type?.startsWith('image/')).map(e => e.url)"
+                            hide-on-click-modal
+                        />
+                        <!-- Video -->
+                        <div v-else-if="ev.mime_type?.startsWith('video/')"
+                            class="w-full h-24 bg-gray-900 flex items-center justify-center cursor-pointer"
+                            @click="openUrl(ev.url)">
+                            <video class="w-full h-full object-cover" muted preload="metadata">
+                                <source :src="ev.url" />
+                            </video>
+                            <div class="absolute inset-0 flex items-center justify-center bg-black/30">
+                                <el-icon class="text-white" :size="28"><VideoPlay /></el-icon>
+                            </div>
+                        </div>
+                        <!-- Label -->
+                        <div class="p-1.5">
+                            <p class="text-[10px] text-gray-500 dark:text-gray-400 truncate" :title="ev.file_name">{{ ev.file_name }}</p>
+                            <p class="text-[9px] text-gray-400 dark:text-gray-500 truncate">Tarea: {{ ev.task_name }}</p>
+                        </div>
                     </div>
                 </div>
             </div>

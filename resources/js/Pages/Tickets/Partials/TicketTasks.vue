@@ -102,31 +102,88 @@ const handleTechCreated = (newUser) => {
     taskForm.user_id = newUser.id;
 };
 
-// --- COMPUTED: TÉCNICOS ASIGNADOS ---
+// --- INTEGRAR TÉCNICOS AL TICKET ---
+const showIntegrateTechsModal = ref(false);
+const isIntegrating = ref(false);
+
+const integrateForm = reactive({
+    technicians: [...(props.ticket.technicians || []).map(Number)],
+    assistant_technicians: [...(props.ticket.assistant_technicians || []).map(Number)],
+});
+
+const integrateEncargados = computed(() => {
+    return localUsers.value.filter(u => u.technician?.level === 'Encargado');
+});
+
+const integrateAssistants = computed(() => {
+    return localUsers.value.filter(u => u.technician?.level === 'Auxiliar/Ayudante');
+});
+
+const openIntegrateModal = () => {
+    integrateForm.technicians = [...(props.ticket.technicians || []).map(Number)];
+    integrateForm.assistant_technicians = [...(props.ticket.assistant_technicians || []).map(Number)];
+    showIntegrateTechsModal.value = true;
+};
+
+const submitIntegrate = () => {
+    isIntegrating.value = true;
+    router.put(route('tickets.update-technicians', props.ticket.id), {
+        technicians: integrateForm.technicians,
+        assistant_technicians: integrateForm.assistant_technicians,
+    }, {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            showIntegrateTechsModal.value = false;
+            ElMessage.success('Técnicos integrados correctamente.');
+            router.reload({ only: ['ticket'] });
+        },
+        onError: () => {
+            ElMessage.error('Error al integrar técnicos.');
+        },
+        onFinish: () => {
+            isIntegrating.value = false;
+        },
+    });
+};
+
+// --- COMPUTED: TÉCNICOS ASIGNADOS (incluye encargados y auxiliares) ---
 const assignedTechnicians = computed(() => {
     const techs = new Map();
-    props.ticket.tasks.forEach(task => {
-        if (task.assignee && task.user_id) {
-            if (!techs.has(task.user_id)) {
-                const userFullInfo = localUsers.value.find(u => u.id === task.user_id);
-                const phone = userFullInfo?.technician?.phone || '';
-                techs.set(task.user_id, {
-                    id: task.user_id,
-                    name: task.assignee.name,
-                    email: task.assignee.email,
-                    profile_photo_url: task.assignee.profile_photo_url,
-                    share_url: task.share_url,
-                    phone: phone,
-                    status: userFullInfo?.technician?.status || 'N/A', // Obtenemos el estatus
-                    rating_avg: userFullInfo?.technician?.rating_avg || 0, // Obtenemos el rating
-                    task_count: 1
-                });
-            } else {
-                const existing = techs.get(task.user_id);
-                existing.task_count++;
-            }
-        }
+
+    // Collect all technician IDs from ticket fields and tasks
+    const techIds = new Set([
+        ...(props.ticket.technicians || []).map(Number),
+        ...(props.ticket.assistant_technicians || []).map(Number),
+        ...props.ticket.tasks.map(t => t.user_id).filter(Boolean),
+    ]);
+
+    techIds.forEach(userId => {
+        const taskCount = props.ticket.tasks.filter(t => t.user_id === userId).length;
+        const task = props.ticket.tasks.find(t => t.user_id === userId);
+        const userFullInfo = localUsers.value.find(u => u.id === userId);
+
+        const name = task?.assignee?.name || userFullInfo?.name || `User #${userId}`;
+        const email = task?.assignee?.email || userFullInfo?.email || '';
+        const photo = task?.assignee?.profile_photo_url || userFullInfo?.profile_photo_url || '';
+        const shareUrl = task?.share_url || '';
+        const phone = userFullInfo?.technician?.phone || '';
+        const level = userFullInfo?.technician?.level || '';
+
+        techs.set(userId, {
+            id: userId,
+            name,
+            email,
+            profile_photo_url: photo,
+            share_url: shareUrl,
+            phone,
+            level,
+            status: userFullInfo?.technician?.status || 'N/A',
+            rating_avg: userFullInfo?.technician?.rating_avg || 0,
+            task_count: taskCount,
+        });
     });
+
     return Array.from(techs.values());
 });
 
@@ -198,6 +255,14 @@ const openCreateModal = () => {
     isEditing.value = false;
     taskForm.reset();
     taskForm.clearErrors();
+    showTaskModal.value = true;
+};
+
+const openCreateModalForTech = (techId) => {
+    isEditing.value = false;
+    taskForm.reset();
+    taskForm.clearErrors();
+    taskForm.user_id = techId;
     showTaskModal.value = true;
 };
 
@@ -287,6 +352,15 @@ const previewVisible = ref(false);
 const previewImage = ref('');
 const showImage = (url) => { previewImage.value = url; previewVisible.value = true; };
 
+const deleteEvidence = (mediaId) => {
+    ElMessageBox.confirm('¿Eliminar esta evidencia?', 'Confirmar', { type: 'warning' })
+        .then(() => router.delete(route('tickets.evidence.destroy', mediaId), {
+            onSuccess: () => ElMessage.success('Evidencia eliminada.'),
+            onError: () => ElMessage.error('Error al eliminar la evidencia.'),
+        }))
+        .catch(() => {});
+};
+
 // --- VISOR DE COMPROBANTE DE PAGO ---
 const proofPreviewVisible = ref(false);
 const proofPreviewUrl = ref('');
@@ -364,17 +438,33 @@ const showPaymentProof = (pay) => {
         </div>
 
         <!-- Popovers de compartir -->
-        <div v-if="assignedTechnicians.length > 0" class="mb-8">
-            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
-                <el-icon><Share /></el-icon> Compartir Ordenes de Trabajo
-            </h4>
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div class="mb-8">
+            <div class="flex items-center justify-between mb-3">
+                <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                    <el-icon><Share /></el-icon> Compartir Ordenes de Trabajo
+                </h4>
+                <el-button v-if="can('tickets.edit')" size="small" plain icon="Plus" @click="openIntegrateModal">
+                    Integrar/remover técnicos
+                </el-button>
+            </div>
+            <div v-if="assignedTechnicians.length > 0" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 <el-popover v-for="tech in assignedTechnicians" :key="tech.id" placement="bottom" :width="280" trigger="click">
                     <template #reference>
                         <div class="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors">
                             <el-avatar :src="tech.profile_photo_url" :size="40">{{ tech.name.charAt(0) }}</el-avatar>
                             <div class="flex-1 min-w-0">
-                                <p class="text-sm font-bold text-gray-800 dark:text-gray-200 truncate">{{ tech.name }}</p>
+                                <p class="text-sm font-bold text-gray-800 dark:text-gray-200 truncate flex items-center gap-1">
+                                    {{ tech.name }}
+                                    <el-tag
+                                        v-if="tech.level"
+                                        size="small"
+                                        :type="tech.level === 'Encargado' ? 'primary' : 'warning'"
+                                        effect="dark"
+                                        class="!h-4 !text-[9px] !px-1"
+                                    >
+                                        {{ tech.level === 'Encargado' ? 'Encargado' : 'Auxiliar' }}
+                                    </el-tag>
+                                </p>
                                 <p class="text-xs text-blue-600">{{ tech.task_count }} tareas</p>
                                 <div v-if="tech.phone || tech.email" class="mt-1 space-y-0.5">
                                     <p v-if="tech.phone" class="text-[11px] text-gray-500 dark:text-gray-400 truncate">
@@ -400,9 +490,24 @@ const showPaymentProof = (pay) => {
                             </span>
                         </div>
                         
-                        <p class="text-sm font-bold">Compartir acceso externo</p>
-                        <el-button type="success" class="w-full" :icon="ChatDotSquare" @click="shareWhatsApp(tech)">WhatsApp</el-button>
-                        <el-button type="info" plain class="w-full" :icon="CopyDocument" @click="copyToClipboard(tech.share_url)">Copiar link</el-button>
+                        <template v-if="tech.task_count > 0">
+                            <p class="text-sm font-bold">Compartir acceso externo</p>
+                            <el-button type="success" class="w-full" :icon="ChatDotSquare" @click="shareWhatsApp(tech)">WhatsApp</el-button>
+                            <el-button type="info" plain class="w-full" :icon="CopyDocument" @click="copyToClipboard(tech.share_url)">Copiar link</el-button>
+                        </template>
+                        <el-alert
+                            v-else
+                            title="Sin tareas asignadas"
+                            type="warning"
+                            description="Para poder compartir la orden de trabajo, primero asigna al menos una tarea a este técnico."
+                            show-icon
+                            :closable="false"
+                            class="!text-xs"
+                        />
+                        <el-divider class="!my-2" />
+                        <el-button v-if="can('tickets.tasks.create')" type="primary" plain class="w-full" :icon="Plus" @click="openCreateModalForTech(tech.id)">
+                            Nueva tarea
+                        </el-button>
                     </div>
                 </el-popover>
             </div>
@@ -440,10 +545,26 @@ const showPaymentProof = (pay) => {
                         <!-- Evidencias -->
                         <div class="mt-3 flex flex-wrap gap-3 items-center">
                             <span class="text-xs font-bold text-gray-500 uppercase">Evidencias:</span>
-                            <div v-for="media in task.media" :key="media.id" class="w-12 h-12 rounded overflow-hidden border cursor-pointer" @click="showImage(media.original_url)">
-                                <img :src="media.original_url" class="w-full h-full object-cover" />
+                            <div v-for="media in task.media" :key="media.id" class="relative group">
+                                <!-- Image -->
+                                <div v-if="media.mime_type?.startsWith('image/')" class="w-12 h-12 rounded overflow-hidden border cursor-pointer" @click="showImage(media.original_url)">
+                                    <img :src="media.original_url" class="w-full h-full object-cover" />
+                                </div>
+                                <!-- Video -->
+                                <div v-else-if="media.mime_type?.startsWith('video/')" class="w-12 h-12 rounded overflow-hidden border cursor-pointer bg-gray-100 dark:bg-gray-800 flex items-center justify-center" @click="showImage(media.original_url)">
+                                    <el-icon class="text-gray-500 dark:text-gray-400" :size="22"><VideoPlay /></el-icon>
+                                </div>
+                                <el-button
+                                    v-if="can('tickets.tasks.edit')"
+                                    size="small"
+                                    type="danger"
+                                    :icon="Delete"
+                                    circle
+                                    class="!absolute -top-1.5 -right-1.5 !p-0 !min-w-0 !w-4 !h-4 !text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                                    @click.stop="deleteEvidence(media.id)"
+                                />
                             </div>
-                            <el-upload v-if="can('tickets.tasks.edit')" :show-file-list="false" :auto-upload="false" :on-change="(f) => handleEvidenceUpload(f, task)" accept="image/*">
+                            <el-upload v-if="can('tickets.tasks.edit')" :show-file-list="false" :auto-upload="false" :on-change="(f) => handleEvidenceUpload(f, task)" accept="image/*,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska">
                                 <el-button size="small" icon="Camera" plain>Adjuntar</el-button>
                             </el-upload>
                         </div>
@@ -519,28 +640,60 @@ const showPaymentProof = (pay) => {
                     </div>
                     <el-form-item prop="user_id" :error="taskForm.errors.user_id">
                         <el-select v-model="taskForm.user_id" placeholder="Seleccionar técnico" class="w-full" clearable filterable>
-                            <!-- Personalizamos el diseño del Option dentro del selector -->
-                            <el-option 
-                                v-for="user in localUsers" 
-                                :key="user.id" 
-                                :label="getTechnicianLabel(user)" 
-                                :value="user.id"
-                                class="!h-auto py-1.5"
+                            <!-- Grupo: Encargados -->
+                            <el-option-group
+                                v-if="localUsers.filter(u => u.technician?.level === 'Encargado').length"
+                                label="Encargados"
                             >
-                                <div class="flex justify-between items-center w-full">
-                                    <span class="font-medium text-gray-800 dark:text-gray-200">
-                                        {{ getTechnicianLabel(user) }}
-                                    </span>
-                                    <div class="flex items-center gap-2">
-                                        <el-tag :type="getStatusColor(user.technician?.status)" size="small" effect="plain" class="scale-90">
-                                            {{ user.technician?.status || 'N/A' }}
-                                        </el-tag>
-                                        <span class="flex items-center text-yellow-500 font-bold text-xs bg-yellow-50 dark:bg-yellow-900/20 px-1.5 py-0.5 rounded">
-                                            {{ user.technician?.rating_avg || 0 }} <el-icon class="ml-0.5"><StarFilled /></el-icon>
+                                <el-option 
+                                    v-for="user in localUsers.filter(u => u.technician?.level === 'Encargado')" 
+                                    :key="user.id" 
+                                    :label="getTechnicianLabel(user)" 
+                                    :value="user.id"
+                                    class="!h-auto py-1.5"
+                                >
+                                    <div class="flex justify-between items-center w-full">
+                                        <span class="font-medium text-gray-800 dark:text-gray-200">
+                                            {{ getTechnicianLabel(user) }}
                                         </span>
+                                        <div class="flex items-center gap-2">
+                                            <el-tag :type="getStatusColor(user.technician?.status)" size="small" effect="plain" class="scale-90">
+                                                {{ user.technician?.status || 'N/A' }}
+                                            </el-tag>
+                                            <span class="flex items-center text-yellow-500 font-bold text-xs bg-yellow-50 dark:bg-yellow-900/20 px-1.5 py-0.5 rounded">
+                                                {{ user.technician?.rating_avg || 0 }} <el-icon class="ml-0.5"><StarFilled /></el-icon>
+                                            </span>
+                                        </div>
                                     </div>
-                                </div>
-                            </el-option>
+                                </el-option>
+                            </el-option-group>
+                            <!-- Grupo: Auxiliares / Ayudantes -->
+                            <el-option-group
+                                v-if="localUsers.filter(u => u.technician?.level === 'Auxiliar/Ayudante').length"
+                                label="Auxiliares / Ayudantes"
+                            >
+                                <el-option 
+                                    v-for="user in localUsers.filter(u => u.technician?.level === 'Auxiliar/Ayudante')" 
+                                    :key="user.id" 
+                                    :label="getTechnicianLabel(user)" 
+                                    :value="user.id"
+                                    class="!h-auto py-1.5"
+                                >
+                                    <div class="flex justify-between items-center w-full">
+                                        <span class="font-medium text-gray-800 dark:text-gray-200">
+                                            {{ getTechnicianLabel(user) }}
+                                        </span>
+                                        <div class="flex items-center gap-2">
+                                            <el-tag :type="getStatusColor(user.technician?.status)" size="small" effect="plain" class="scale-90">
+                                                {{ user.technician?.status || 'N/A' }}
+                                            </el-tag>
+                                            <span class="flex items-center text-yellow-500 font-bold text-xs bg-yellow-50 dark:bg-yellow-900/20 px-1.5 py-0.5 rounded">
+                                                {{ user.technician?.rating_avg || 0 }} <el-icon class="ml-0.5"><StarFilled /></el-icon>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </el-option>
+                            </el-option-group>
                         </el-select>
                     </el-form-item>
                 </div>
@@ -558,6 +711,63 @@ const showPaymentProof = (pay) => {
             v-model="showQuickTechModal" 
             @created="handleTechCreated" 
         />
+
+        <!-- MODAL Gestión TÉCNICOS -->
+        <el-dialog
+            v-model="showIntegrateTechsModal"
+            title="Gestión de técnicos al ticket"
+            width="500px"
+            destroy-on-close
+        >
+            <p class="text-sm text-gray-500 mb-4">
+                Selecciona los técnicos que participarán en este ticket. Puedes agregar tanto encargados como auxiliares.
+            </p>
+            <el-form label-position="top">
+                <el-form-item label="Técnicos encargados">
+                    <el-select
+                        v-model="integrateForm.technicians"
+                        multiple
+                        placeholder="Seleccionar encargados..."
+                        class="w-full"
+                        filterable
+                        collapse-tags
+                        collapse-tags-tooltip
+                    >
+                        <el-option
+                            v-for="tech in integrateEncargados"
+                            :key="tech.id"
+                            :label="tech.name"
+                            :value="tech.id"
+                        />
+                    </el-select>
+                </el-form-item>
+
+                <el-form-item label="Técnicos auxiliares / ayudantes">
+                    <el-select
+                        v-model="integrateForm.assistant_technicians"
+                        multiple
+                        placeholder="Seleccionar auxiliares..."
+                        class="w-full"
+                        filterable
+                        collapse-tags
+                        collapse-tags-tooltip
+                    >
+                        <el-option
+                            v-for="tech in integrateAssistants"
+                            :key="tech.id"
+                            :label="tech.name"
+                            :value="tech.id"
+                        />
+                    </el-select>
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="showIntegrateTechsModal = false">Cancelar</el-button>
+                <el-button type="primary" color="#f26c17" @click="submitIntegrate" :loading="isIntegrating">
+                    Guardar cambios
+                </el-button>
+            </template>
+        </el-dialog>
 
         <el-image-viewer v-if="previewVisible" :url-list="[previewImage]" @close="previewVisible = false" />
     </div>

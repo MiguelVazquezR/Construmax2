@@ -49,6 +49,18 @@
             </div>
           </div>
           <div>
+            <span class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 dark:text-gray-300">Cliente</span>
+            <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ ticket.customer?.name || ticket.budget?.customer?.name || '---' }}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">{{ ticket.branch?.branch_name || 'Sucursal no especificada' }}</p>
+          </div>
+          <div class="md:col-span-2">
+            <span class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 dark:text-gray-300">Ubicación</span>
+            <p class="text-sm text-gray-600 dark:text-gray-300">
+              {{ [ticket.branch?.branch_name, ticket.branch?.unit, ticket.branch?.city, ticket.branch?.region].filter(Boolean).join(', ') || 'No disponible' }}
+              <span v-if="ticket.contact?.name" class="text-gray-400"> — Contacto: {{ ticket.contact?.name }} {{ ticket.contact?.phone ? `(${ticket.contact.phone})` : '' }}</span>
+            </p>
+          </div>
+          <div class="md:col-span-2">
             <span class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 dark:text-gray-300">Instrucciones Generales</span>
             <p class="text-sm text-gray-600 leading-relaxed bg-gray-50 p-3 rounded-lg border border-gray-100 dark:text-gray-300 dark:bg-gray-700/50 dark:border-gray-600">
               {{ ticket.instructions || 'No se proporcionaron instrucciones específicas para esta orden.' }}
@@ -180,10 +192,11 @@
                               :auto-upload="true"
                               :show-file-list="false"
                               :http-request="(opts) => handleUpload(opts, task)"
-                              accept="image/*"
+                              accept="image/*,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska"
+                              multiple
                           >
                               <el-button size="small" :icon="Camera" :loading="uploadingTaskId === task.id" plain type="primary" class="!rounded-full">
-                                  Subir Foto
+                                  Subir archivos
                               </el-button>
                           </el-upload>
                         </div>
@@ -195,7 +208,9 @@
                                 :key="img.id" 
                                 class="relative w-24 h-24 rounded-xl overflow-hidden border border-gray-100 shadow-sm group/img dark:border-gray-600"
                             >
+                                <!-- Image -->
                                 <el-image 
+                                    v-if="img.mime_type?.startsWith('image/')"
                                     :src="img.original_url" 
                                     class="w-full h-full transition-transform duration-300 group-hover/img:scale-110" 
                                     fit="cover"
@@ -210,11 +225,20 @@
                                         </div>
                                     </template>
                                 </el-image>
+                                <!-- Video -->
+                                <div v-else-if="img.mime_type?.startsWith('video/')" class="w-full h-full bg-gray-900 flex items-center justify-center cursor-pointer" @click="showImage(img.original_url)">
+                                    <video class="w-full h-full object-cover" muted preload="metadata">
+                                        <source :src="img.original_url" />
+                                    </video>
+                                    <div class="absolute inset-0 flex items-center justify-center bg-black/30">
+                                        <el-icon class="text-white" :size="28"><VideoCamera /></el-icon>
+                                    </div>
+                                </div>
 
                                 <!-- Botón borrar -->
                                 <el-popconfirm
                                     v-if="task.status !== 'Completada'"
-                                    title="¿Eliminar foto?"
+                                    :title="img.mime_type?.startsWith('video/') ? '¿Eliminar video?' : '¿Eliminar foto?'"
                                     confirm-button-text="Sí"
                                     cancel-button-text="No"
                                     width="180"
@@ -341,7 +365,8 @@ import {
     Picture as IconPicture,
     Document,
     Money,
-    ChatDotSquare
+    ChatDotSquare,
+    VideoCamera
 } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import dayjs from 'dayjs'; 
@@ -413,9 +438,10 @@ const formatDate = (date) => {
 
 // Helper para obtener todas las URLs de imágenes de una tarea específica
 // Esto permite navegar (next/prev) entre todas las fotos de ESA tarea en el visor
+// Los videos se abren en nueva pestaña
 const getTaskImageUrls = (task) => {
     if (!task.media) return [];
-    return task.media.map(m => m.original_url);
+    return task.media.filter(m => m.mime_type?.startsWith('image/')).map(m => m.original_url);
 };
 
 // --- PAGOS A TÉCNICO ---
@@ -460,28 +486,37 @@ const toggleStatus = (task) => {
     });
 };
 
+const uploadQueue = ref(0);
+const uploadCompleted = ref(0);
+
 const handleUpload = (options, task) => {
     const { file } = options;
     const isImage = file.type.startsWith('image/');
-    // Aumentamos ligeramente el límite a 15MB por si acaso
-    const isLt15M = file.size / 1024 / 1024 < 15;
+    const isVideo = file.type.startsWith('video/');
+    const isLt50M = file.size / 1024 / 1024 < 50;
 
-    if (!isImage || !isLt15M) {
-        ElMessage.error('Solo se permiten imágenes menores a 15MB');
+    if (!isImage && !isVideo) {
+        ElMessage.error('Solo se permiten imágenes y videos.');
+        return;
+    }
+
+    if (!isLt50M) {
+        ElMessage.error('El archivo no debe exceder los 50MB.');
         return;
     }
 
     uploadingTaskId.value = task.id;
-    const form = useForm({ file: file });
-    
+    const form = useForm({ files: [file] });
+
     form.post(task.urls.evidence, {
         preserveScroll: true,
         onSuccess: () => {
-            ElMessage.success('Evidencia fotográfica subida correctamente');
+            const label = isVideo ? 'Video' : 'Imagen';
+            ElMessage.success(`${label} subida correctamente`);
             uploadingTaskId.value = null;
         },
         onError: () => {
-            ElMessage.error('Ocurrió un error al subir la imagen');
+            ElMessage.error('Ocurrió un error al subir el archivo');
             uploadingTaskId.value = null;
         }
     });

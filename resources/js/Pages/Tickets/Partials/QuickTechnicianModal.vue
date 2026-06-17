@@ -16,6 +16,7 @@ const form = reactive({
     name: '',
     phone: '',
     is_internal: false, // NUEVO CAMPO
+    level: 'Encargado',
 });
 
 const rules = reactive({
@@ -33,6 +34,7 @@ const close = () => {
     form.name = '';
     form.phone = '';
     form.is_internal = false;
+    form.level = 'Encargado';
     if (formRef.value) formRef.value.clearValidate();
 };
 
@@ -86,6 +88,13 @@ const submit = () => {
                     inactive-text="Proveedor externo"
                     style="--el-switch-on-color: #f26c17;"
                 />
+            </el-form-item>
+
+            <el-form-item label="Nivel / categoría">
+                <el-select v-model="form.level" class="w-full">
+                    <el-option label="Encargado" value="Encargado" />
+                    <el-option label="Auxiliar / Ayudante" value="Auxiliar/Ayudante" />
+                </el-select>
             </el-form-item>
         </el-form>
         

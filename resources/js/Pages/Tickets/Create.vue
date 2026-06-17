@@ -21,8 +21,15 @@ const handleTechCreated = (newUser) => {
     localUsers.value.push(newUser);
     form.user_id = newUser.id;
     const id = Number(newUser.id);
-    if (newUser.technician && !form.technicians.includes(id)) {
-        form.technicians.push(id);
+    const level = newUser.technician?.level || 'Encargado';
+    if (level === 'Auxiliar/Ayudante') {
+        if (!form.assistant_technicians.includes(id)) {
+            form.assistant_technicians.push(id);
+        }
+    } else {
+        if (!form.technicians.includes(id)) {
+            form.technicians.push(id);
+        }
     }
 };
 
@@ -35,7 +42,8 @@ const form = useForm({
     service_type: '',
     duration: '',
     user_id: '', 
-    technicians: [], 
+    technicians: [],
+    assistant_technicians: [],
     task_template_id: '', // Integrado
     priority: 'Media',
     scheduled_start: '',

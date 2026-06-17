@@ -29,6 +29,7 @@ const form = useForm({
     duration: props.ticket.duration || '',
     user_id: props.ticket.user_id,
     technicians: (props.ticket.technicians || []).map(Number),
+    assistant_technicians: (props.ticket.assistant_technicians || []).map(Number),
     priority: props.ticket.priority,
     status: props.ticket.status,
     scheduled_start: props.ticket.scheduled_start,
@@ -50,8 +51,16 @@ const rules = reactive({
 const handleTechCreated = (newUser) => {
     localUsers.value.push(newUser);
     form.user_id = newUser.id;
-    if (newUser.technician && !form.technicians.includes(Number(newUser.id))) {
-        form.technicians.push(Number(newUser.id));
+    const id = Number(newUser.id);
+    const level = newUser.technician?.level || 'Encargado';
+    if (level === 'Auxiliar/Ayudante') {
+        if (!form.assistant_technicians.includes(id)) {
+            form.assistant_technicians.push(id);
+        }
+    } else {
+        if (!form.technicians.includes(id)) {
+            form.technicians.push(id);
+        }
     }
 };
 
@@ -72,6 +81,7 @@ const submit = () => {
                 duration: data.duration,
                 user_id: data.user_id,
                 technicians: data.technicians,
+                assistant_technicians: data.assistant_technicians,
                 priority: data.priority,
                 status: data.status,
                 scheduled_start: data.scheduled_start,
