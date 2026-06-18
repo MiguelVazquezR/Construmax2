@@ -291,6 +291,7 @@ const openPrintView = () => {
                             fit="cover"
                             class="w-full h-24 cursor-pointer"
                             :preview-src-list="budget.task_evidence.filter(e => e.mime_type?.startsWith('image/')).map(e => e.url)"
+                            :initial-index="budget.task_evidence.filter(e => e.mime_type?.startsWith('image/')).findIndex(e => e.id === ev.id)"
                             hide-on-click-modal
                         />
                         <!-- Video -->
