@@ -9,15 +9,31 @@ const props = defineProps({
     charts: Object,
 });
 
-// --- Gráfica: Cronología (Area Chart) ---
+// --- Gráfica: Cronología por fecha programada (Area Chart) ---
 const timelineSeries = computed(() => props.charts.timeline.series);
 const timelineOptions = computed(() => ({
-    chart: { type: 'area', toolbar: { show: false }, fontFamily: 'inherit' },
+    chart: { type: 'area', toolbar: { show: false }, fontFamily: 'inherit', zoom: { enabled: false } },
     colors: ['#3b82f6'],
     dataLabels: { enabled: false },
     stroke: { curve: 'smooth', width: 2 },
     xaxis: {
         categories: props.charts.timeline.labels,
+        axisBorder: { show: false },
+        axisTicks: { show: false },
+    },
+    grid: { borderColor: '#f1f1f1', strokeDashArray: 4 },
+    fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05, stops: [0, 100] } },
+}));
+
+// --- Gráfica: Tickets creados por día (Area Chart) ---
+const createdTimelineSeries = computed(() => props.charts.created_timeline?.series || []);
+const createdTimelineOptions = computed(() => ({
+    chart: { type: 'area', toolbar: { show: false }, fontFamily: 'inherit', zoom: { enabled: false } },
+    colors: ['#10b981'],
+    dataLabels: { enabled: false },
+    stroke: { curve: 'smooth', width: 2 },
+    xaxis: {
+        categories: props.charts.created_timeline?.labels || [],
         axisBorder: { show: false },
         axisTicks: { show: false },
     },
@@ -31,7 +47,7 @@ const workloadSeries = computed(() => [{
     data: props.charts.workload.map(w => w.total),
 }]);
 const workloadOptions = computed(() => ({
-    chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'inherit' },
+    chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'inherit', zoom: { enabled: false } },
     colors: ['#8b5cf6'],
     plotOptions: { bar: { borderRadius: 4, horizontal: true, barHeight: '60%' } },
     xaxis: { categories: props.charts.workload.map(w => w.name) },
@@ -108,6 +124,7 @@ const priorityOptions = computed(() => ({
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
             <div class="lg:col-span-2 bg-white dark:bg-[#1e1e20] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-[#2b2b2e]">
                 <h3 class="text-lg font-bold text-gray-800 dark:text-white mb-4">Volumen de tickets programados</h3>
+                <p class="text-xs text-gray-400 mb-2">Basado en la fecha de inicio programada.</p>
                 <div class="h-72">
                     <VueApexCharts type="area" height="100%" :options="timelineOptions" :series="timelineSeries" />
                 </div>
@@ -118,6 +135,15 @@ const priorityOptions = computed(() => ({
                 <div class="h-72 flex items-center justify-center">
                     <VueApexCharts type="donut" width="100%" :options="priorityOptions" :series="prioritySeries" />
                 </div>
+            </div>
+        </div>
+
+        <!-- Gráfica: Tickets creados por día -->
+        <div class="bg-white dark:bg-[#1e1e20] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-[#2b2b2e] mb-6">
+            <h3 class="text-lg font-bold text-gray-800 dark:text-white mb-4">Tickets creados por día</h3>
+            <p class="text-xs text-gray-400 mb-2">Basado en la fecha de creación del ticket.</p>
+            <div class="h-72">
+                <VueApexCharts type="area" height="100%" :options="createdTimelineOptions" :series="createdTimelineSeries" />
             </div>
         </div>
 

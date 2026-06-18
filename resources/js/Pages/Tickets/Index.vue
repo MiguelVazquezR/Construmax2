@@ -16,7 +16,10 @@ const props = defineProps({
     technicians: { type: Array, default: () => [] },
     sellers: { type: Array, default: () => [] },
     filters: { type: Object, default: () => ({}) }, 
+    canViewAll: { type: Boolean, default: false },
 });
+
+const currentUserName = ref(''); // Will be set from page props if available
 
 // Helper para extraer los filtros de forma segura y evitar conflictos nativos de JS
 const getFilter = (key, defaultVal) => {
@@ -100,7 +103,29 @@ watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilt
 <template>
     <AppLayout title="Tickets de servicio">
         <div class="space-y-4">
-            
+
+            <!-- Indicador de alcance de vista -->
+            <el-alert
+                v-if="canViewAll"
+                title="Mostrando tickets de todos los asesores"
+                type="info"
+                show-icon
+                :closable="false"
+                class="!bg-blue-50 dark:!bg-blue-900/20 !text-blue-700 dark:!text-blue-300 border border-blue-100 dark:border-blue-800"
+            />
+            <el-alert
+                v-else
+                title="Mostrando solo tus tickets como asesor"
+                type="info"
+                show-icon
+                :closable="false"
+                class="!bg-blue-50 dark:!bg-blue-900/20 !text-blue-700 dark:!text-blue-300 border border-blue-100 dark:border-blue-800"
+            >
+                <template #default>
+                    <span class="text-xs">Los tickets donde no eres el asesor asignado no se muestran.</span>
+                </template>
+            </el-alert>
+
             <!-- PANEL DE FILTROS Y CONTROLES -->
             <div class="bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] space-y-4">
                 

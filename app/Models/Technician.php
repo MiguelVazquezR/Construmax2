@@ -14,6 +14,9 @@ class Technician extends Model implements HasMedia
     use HasFactory;
     use InteractsWithMedia; // Para Constancia Fiscal, INE, Comprobantes
 
+    // --- NIVELES / CATEGORÍAS ---
+    public const LEVELS = ['Encargado', 'Auxiliar/Ayudante'];
+
     // --- LISTA MAESTRA DE ESPECIALIDADES ---
     public const SPECIALTIES = [
         'Electricidad baja tensión',
@@ -49,6 +52,7 @@ class Technician extends Model implements HasMedia
         'zip_code',
         'coverage_radius_km',
         'specialties',
+        'level',
         'legal_name',
         'rfc',
         'bank_name',

@@ -164,8 +164,9 @@ watch(search, () => {
                     </div>
 
                     <!-- Acciones (Derecha) -->
-                    <div class="flex gap-2 w-full lg:w-auto justify-end">
-                        <el-select v-model="perPage" placeholder="Mostrar" style="width: 100px" @change="applyFilter">
+                    <div class="flex gap-2 w-full lg:w-auto justify-end items-center">
+                        <span class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">Registros por página:</span>
+                        <el-select v-model="perPage" style="width: 90px" @change="applyFilter">
                             <el-option label="10" :value="10" />
                             <el-option label="20" :value="20" />
                             <el-option label="50" :value="50" />
@@ -208,6 +209,20 @@ watch(search, () => {
                                         <span class="text-xs text-gray-500">{{ scope.row.user.email }}</span>
                                     </div>
                                 </div>
+                            </template>
+                        </el-table-column>
+
+                        <!-- Nivel -->
+                        <el-table-column label="Nivel" width="130" align="center">
+                            <template #default="scope">
+                                <el-tag
+                                    :type="scope.row.level === 'Encargado' ? 'primary' : 'warning'"
+                                    size="small"
+                                    effect="dark"
+                                    class="w-full text-center"
+                                >
+                                    {{ scope.row.level }}
+                                </el-tag>
                             </template>
                         </el-table-column>
 
@@ -303,6 +318,15 @@ watch(search, () => {
                                 <div>
                                     <h3 class="font-bold text-gray-800 dark:text-gray-200 text-sm flex items-center gap-2">
                                         {{ tech.user.name }}
+                                        <el-tag
+                                            v-if="tech.level"
+                                            size="small"
+                                            :type="tech.level === 'Encargado' ? 'primary' : 'warning'"
+                                            effect="dark"
+                                            class="!h-5 !text-[10px]"
+                                        >
+                                            {{ tech.level }}
+                                        </el-tag>
                                         <!-- Estrella con color dinámico manual para móvil -->
                                         <el-icon v-if="tech.rating_avg >= 4.5" color="#67C23A" size="14"><StarFilled /></el-icon>
                                         <el-icon v-else-if="tech.rating_avg >= 3" color="#E6A23C" size="14"><StarFilled /></el-icon>

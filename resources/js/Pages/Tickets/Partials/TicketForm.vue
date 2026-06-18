@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { OfficeBuilding, Document, UserFilled } from '@element-plus/icons-vue';
 import TaskTemplateModal from './TaskTemplateModal.vue';
+import QuickBranchModal from './QuickBranchModal.vue';
 
 const props = defineProps({
     form: {
@@ -30,6 +31,7 @@ const props = defineProps({
 defineEmits(['open-quick-tech']);
 
 const showTaskTemplateModal = ref(false);
+const showQuickBranchModal = ref(false);
 
 const handleTemplateSaved = () => {
     router.reload({ only: ['templates'] });
@@ -70,14 +72,33 @@ const filteredContacts = computed(() => {
     return customer ? customer.contacts : [];
 });
 
-// Ahora leemos las sucursales directamente del cliente
+// Region/state filter for branches
+const branchRegionFilter = ref('');
+
+// Unique regions available for the selected customer
+const availableRegions = computed(() => {
+    if (!props.form.customer_id) return [];
+    const customer = props.customers.find(c => c.id === props.form.customer_id);
+    if (!customer || !customer.branches) return [];
+    const regions = [...new Set(customer.branches.map(b => b.region).filter(Boolean))];
+    return regions.sort();
+});
+
+// Ahora leemos las sucursales directamente del cliente, con filtro por región
 const customerBranches = computed(() => {
     if (!props.form.customer_id) return [];
     const customer = props.customers.find(c => c.id === props.form.customer_id);
     
     if (!customer || !customer.branches) return [];
     
-    return customer.branches.map(b => ({
+    let branches = customer.branches;
+    
+    // Apply region filter
+    if (branchRegionFilter.value) {
+        branches = branches.filter(b => b.region === branchRegionFilter.value);
+    }
+    
+    return branches.map(b => ({
         label: b.branch_name ? `${b.branch_name} (${b.unit}) - ${b.region}` : `${b.unit} - ${b.region}`,
         value: b.id
     }));
@@ -86,11 +107,19 @@ const customerBranches = computed(() => {
 const handleCustomerChange = () => {
     props.form.customer_contact_id = '';
     props.form.customer_branch_id = '';
+    branchRegionFilter.value = '';
     
     // Auto-seleccionar sucursal si el cliente solo tiene una
     if (customerBranches.value.length === 1) {
         props.form.customer_branch_id = customerBranches.value[0].value;
     }
+};
+
+const handleBranchCreated = (branch) => {
+    // Reload customers to get updated branches list
+    router.reload({ only: ['customers'] });
+    // Select the newly created branch
+    props.form.customer_branch_id = branch.id;
 };
 
 const handleContactChange = () => {
@@ -99,8 +128,8 @@ const handleContactChange = () => {
 };
 
 const technicianUsers = computed(() => {
-    // Include all users with a technician profile
-    const techUsers = props.users.filter(u => u.technician);
+    // Only users with technician profile AND level 'Encargado'
+    const techUsers = props.users.filter(u => u.technician && u.technician.level === 'Encargado');
     // Also include any user referenced in form.technicians that might not have a profile
     const referencedIds = new Set((props.form.technicians || []).map(Number));
     techUsers.forEach(u => referencedIds.delete(Number(u.id)));
@@ -109,6 +138,18 @@ const technicianUsers = computed(() => {
         techUsers.push(...missing);
     }
     return techUsers;
+});
+
+const assistantTechnicians = computed(() => {
+    // Only users with technician profile AND level 'Auxiliar/Ayudante'
+    const assistants = props.users.filter(u => u.technician && u.technician.level === 'Auxiliar/Ayudante');
+    const referencedIds = new Set((props.form.assistant_technicians || []).map(Number));
+    assistants.forEach(u => referencedIds.delete(Number(u.id)));
+    if (referencedIds.size > 0) {
+        const missing = props.users.filter(u => referencedIds.has(Number(u.id)));
+        assistants.push(...missing);
+    }
+    return assistants;
 });
 
 const sellerUsers = computed(() => {
@@ -151,16 +192,45 @@ const sellerUsers = computed(() => {
                 </el-form-item>
 
                 <el-form-item label="Sucursal / sitio" prop="customer_branch_id" :error="form.errors.customer_branch_id">
-                    <el-select 
-                        v-model="form.customer_branch_id" 
-                        placeholder="Seleccionar sucursal" 
-                        class="w-full"
-                        :disabled="!form.customer_id"
-                        filterable
-                        clearable
-                    >
-                        <el-option v-for="branch in customerBranches" :key="branch.value" :label="branch.label" :value="branch.value" />
-                    </el-select>
+                    <div class="flex items-start gap-2 w-full">
+                        <div class="flex-1 space-y-2">
+                            <el-select
+                                v-model="branchRegionFilter"
+                                placeholder="Filtrar por estado..."
+                                class="w-full"
+                                clearable
+                                :disabled="!form.customer_id"
+                                @change="form.customer_branch_id = ''"
+                            >
+                                <el-option
+                                    v-for="region in availableRegions"
+                                    :key="region"
+                                    :label="region"
+                                    :value="region"
+                                />
+                            </el-select>
+                            <el-select 
+                                v-model="form.customer_branch_id" 
+                                placeholder="Seleccionar sucursal" 
+                                class="w-full"
+                                :disabled="!form.customer_id"
+                                filterable
+                                clearable
+                            >
+                                <el-option v-for="branch in customerBranches" :key="branch.value" :label="branch.label" :value="branch.value" />
+                            </el-select>
+                        </div>
+                        <el-button
+                            v-if="form.customer_id"
+                            size="default"
+                            type="primary"
+                            plain
+                            @click.stop="showQuickBranchModal = true"
+                            :title="'Nueva sucursal'"
+                        >
+                            + Nueva
+                        </el-button>
+                    </div>
                 </el-form-item>
             </div>
         </div>
@@ -234,21 +304,39 @@ const sellerUsers = computed(() => {
                     </el-select>
                 </el-form-item>
 
-                <!-- Múltiples Técnicos Ejecutores -->
-                <el-form-item prop="technicians" :error="form.errors.technicians" :class="isEdit ? 'md:col-span-2' : ''">
+                <!-- Múltiples Técnicos Encargados (solo nivel Encargado) -->
+                <el-form-item prop="technicians" :error="form.errors.technicians">
                     <template #label>
-                        Técnicos asignados (ejecutores)
+                        Técnicos asignados (encargados)
                     </template>
                     <el-select 
                         v-model="form.technicians" 
                         multiple 
-                        placeholder="Seleccionar técnicos que ejecutarán el trabajo..." 
+                        placeholder="Seleccionar técnicos encargados..." 
                         class="w-full" 
                         filterable
                         collapse-tags
                         collapse-tags-tooltip
                     >
                         <el-option v-for="tech in technicianUsers" :key="tech.id" :label="tech.name" :value="tech.id" />
+                    </el-select>
+                </el-form-item>
+
+                <!-- Técnicos Auxiliares / Ayudantes -->
+                <el-form-item prop="assistant_technicians" :error="form.errors.assistant_technicians">
+                    <template #label>
+                        Técnicos auxiliares / ayudantes
+                    </template>
+                    <el-select 
+                        v-model="form.assistant_technicians" 
+                        multiple 
+                        placeholder="Seleccionar técnicos auxiliares..." 
+                        class="w-full" 
+                        filterable
+                        collapse-tags
+                        collapse-tags-tooltip
+                    >
+                        <el-option v-for="tech in assistantTechnicians" :key="tech.id" :label="tech.name" :value="tech.id" />
                     </el-select>
                 </el-form-item>
 
@@ -358,6 +446,14 @@ const sellerUsers = computed(() => {
         <TaskTemplateModal 
             v-model="showTaskTemplateModal"
             @saved="handleTemplateSaved"
+        />
+
+        <!-- Componente Modal de Registro Rápido de Sucursal -->
+        <QuickBranchModal
+            v-model="showQuickBranchModal"
+            :customers="customers"
+            :selected-customer-id="form.customer_id"
+            @created="handleBranchCreated"
         />
     </div>
 </template>

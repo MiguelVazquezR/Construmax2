@@ -26,6 +26,7 @@ Route::middleware([
     Route::resource('tickets', TicketController::class);
     Route::post('/budgets/{budget}/ticket-auto', [TicketController::class, 'storeFromBudget'])->name('tickets.store-from-budget');
     Route::put('/tickets/{ticket}/status', [TicketController::class, 'updateStatus'])->name('tickets.update-status');
+    Route::put('/tickets/{ticket}/technicians', [TicketController::class, 'updateTechnicians'])->name('tickets.update-technicians');
 
     // Rutas de Tareas
     Route::post('/tickets/{ticket}/tasks', [TicketTaskController::class, 'store'])->name('tickets.tasks.store');
