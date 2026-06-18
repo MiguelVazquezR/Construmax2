@@ -70,6 +70,7 @@ class TechnicianController extends Controller
             'coverage_radius_km' => 'nullable|integer|min:1',
             'specialties' => 'nullable|array',
             'specialties.*' => 'string',
+            'level' => 'nullable|string|in:' . implode(',', Technician::LEVELS),
             'legal_name' => 'nullable|string',
             'rfc' => 'nullable|string|max:20',
             'bank_name' => 'nullable|string',
@@ -110,6 +111,7 @@ class TechnicianController extends Controller
                 'zip_code' => $validated['zip_code'] ?? null,
                 'coverage_radius_km' => $validated['coverage_radius_km'] ?? 10,
                 'specialties' => $validated['specialties'] ?? [], // CORRECCIÓN CLAVE
+                'level' => $validated['level'] ?? 'Encargado',
                 'legal_name' => $validated['legal_name'] ?? null,
                 'rfc' => $validated['rfc'] ?? null,
                 'bank_name' => $validated['bank_name'] ?? null,
@@ -200,6 +202,7 @@ class TechnicianController extends Controller
             'coverage_radius_km' => 'nullable|integer',
             'specialties' => 'nullable|array',
             'specialties.*' => 'string',
+            'level' => 'nullable|string|in:' . implode(',', Technician::LEVELS),
             'legal_name' => 'nullable|string',
             'rfc' => 'nullable|string',
             'bank_name' => 'nullable|string',
@@ -238,6 +241,7 @@ class TechnicianController extends Controller
                 'zip_code' => $validated['zip_code'] ?? null,
                 'coverage_radius_km' => $validated['coverage_radius_km'] ?? $technician->coverage_radius_km,
                 'specialties' => $validated['specialties'] ?? [], 
+                'level' => $validated['level'] ?? 'Encargado',
                 'legal_name' => $validated['legal_name'] ?? null,
                 'rfc' => $validated['rfc'] ?? null,
                 'bank_name' => $validated['bank_name'] ?? null,
@@ -298,6 +302,7 @@ class TechnicianController extends Controller
             'name' => 'required|string|max:255',
             'phone' => 'required|string|max:20',
             'is_internal' => 'boolean', // NUEVO CAMPO ACEPTADO
+            'level' => 'nullable|string|in:' . implode(',', Technician::LEVELS),
         ]);
 
         $user = null;
@@ -314,6 +319,7 @@ class TechnicianController extends Controller
                 'user_id' => $user->id,
                 'phone' => $validated['phone'],
                 'is_internal' => $validated['is_internal'] ?? false, // APLICADO AQUÍ
+                'level' => $validated['level'] ?? 'Encargado',
                 'status' => 'Activo', 
                 'rating_avg' => 0,
                 'coverage_radius_km' => 10,

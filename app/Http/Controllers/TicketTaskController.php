@@ -87,15 +87,21 @@ class TicketTaskController extends Controller
     public function storeEvidence(Request $request, TicketTask $task)
     {
         $request->validate([
-            'file' => 'required|file|image|max:10240', 
+            'file' => 'required|file|mimes:jpg,jpeg,png,webp,mp4,mov,avi,mkv|max:51200', 
         ]);
 
         if ($request->hasFile('file')) {
             $file = $request->file('file');
-            $optimizedPath = $this->imageOptimizer->optimize($file);
-            $task->addMedia($optimizedPath)
-                ->usingFileName($file->getClientOriginalName())
-                ->toMediaCollection('task_evidence');
+            if (str_starts_with($file->getMimeType(), 'image/')) {
+                $optimizedPath = $this->imageOptimizer->optimize($file);
+                $task->addMedia($optimizedPath)
+                    ->usingFileName($file->getClientOriginalName())
+                    ->toMediaCollection('task_evidence');
+            } else {
+                $task->addMedia($file)
+                    ->usingFileName($file->getClientOriginalName())
+                    ->toMediaCollection('task_evidence');
+            }
         }
 
         return back()->with('success', 'Evidencia subida.');
@@ -140,6 +146,9 @@ class TicketTaskController extends Controller
     public function publicJobOrder(Request $request, Ticket $ticket, User $user)
     {
         $ticket->load([
+            'customer',
+            'contact',
+            'branch',
             'budget.customer.media',
             'budget.technicianPayments.technician',
             'budget.technicianPayments.media',
@@ -185,18 +194,26 @@ class TicketTaskController extends Controller
     public function publicEvidence(Request $request, TicketTask $task)
     {
         $request->validate([
-            'file' => 'required|file|image|max:10240',
+            'files' => 'required|array',
+            'files.*' => 'required|file|mimes:jpg,jpeg,png,webp,mp4,mov,avi,mkv|max:51200',
         ]);
 
-        if ($request->hasFile('file')) {
-            $file = $request->file('file');
-            $optimizedPath = $this->imageOptimizer->optimize($file);
-            $task->addMedia($optimizedPath)
-                ->usingFileName($file->getClientOriginalName())
-                ->toMediaCollection('task_evidence');
+        if ($request->hasFile('files')) {
+            foreach ($request->file('files') as $file) {
+                if (str_starts_with($file->getMimeType(), 'image/')) {
+                    $optimizedPath = $this->imageOptimizer->optimize($file);
+                    $task->addMedia($optimizedPath)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('task_evidence');
+                } else {
+                    $task->addMedia($file)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('task_evidence');
+                }
+            }
         }
 
-        return back()->with('success', 'Evidencia compartida correctamente.');
+        return back()->with('success', 'Evidencias compartidas correctamente.');
     }
 
     public function publicDestroyEvidence(Request $request, $mediaId)

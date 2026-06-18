@@ -141,8 +141,10 @@ class TicketAnalyticsController extends Controller
         // SECCIÓN C: GRÁFICAS DE TICKETS
         // ================================================================
 
-        // C.1 Cronología (área)
+        // C.1 Cronología por scheduled_start (área)
         $timelineData = $this->getTimelineChart($startDate, $endDate, $customerId, $sellerId);
+        // C.1b Cronología por created_at (área)
+        $createdTimelineData = $this->getCreatedTimelineChart($startDate, $endDate, $customerId, $sellerId);
 
         // C.2 Carga por técnico — corregido: ahora usa ticket_tasks.user_id
         $workloadQuery = Ticket::whereBetween('tickets.scheduled_start', [$startDate, $endDate])
@@ -451,6 +453,7 @@ class TicketAnalyticsController extends Controller
             'charts' => [
                 // Tickets
                 'timeline'  => $timelineData,
+                'created_timeline' => $createdTimelineData,
                 'workload'  => $workloadByTech,
                 'priority'  => $ticketsByPriority,
                 // CRM
@@ -530,6 +533,41 @@ class TicketAnalyticsController extends Controller
             'labels' => $labels,
             'series' => [
                 ['name' => 'Programados', 'data' => $createdData],
+            ],
+        ];
+    }
+
+    private function getCreatedTimelineChart($startDate, $endDate, $customerId = null, $sellerId = null): array
+    {
+        $diffInDays = $startDate->diffInDays($endDate);
+        $labels = [];
+        $createdData = [];
+
+        if ($diffInDays > 60) {
+            $period = \Carbon\CarbonPeriod::create($startDate, '1 month', $endDate);
+            foreach ($period as $dt) {
+                $labels[] = ucfirst($dt->translatedFormat('M Y'));
+                $query = Ticket::whereYear('created_at', $dt->year)
+                    ->whereMonth('created_at', $dt->month);
+                if ($customerId) $query->where('customer_id', $customerId);
+                if ($sellerId) $query->where('seller_id', $sellerId);
+                $createdData[] = $query->count();
+            }
+        } else {
+            $period = \Carbon\CarbonPeriod::create($startDate, $endDate);
+            foreach ($period as $dt) {
+                $labels[] = $dt->format('d/m');
+                $query = Ticket::whereDate('created_at', $dt->toDateString());
+                if ($customerId) $query->where('customer_id', $customerId);
+                if ($sellerId) $query->where('seller_id', $sellerId);
+                $createdData[] = $query->count();
+            }
+        }
+
+        return [
+            'labels' => $labels,
+            'series' => [
+                ['name' => 'Creados', 'data' => $createdData],
             ],
         ];
     }

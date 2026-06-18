@@ -154,6 +154,11 @@ class PermissionSeeder extends Seeder
 
             // --- MÓDULO: TICKETS (OPERACIONES) ---
             [
+                'name' => 'tickets.index-all',
+                'category' => 'Tickets',
+                'description' => 'Ver tickets de todos los asesores'
+            ],
+            [
                 'name' => 'tickets.index',
                 'category' => 'Tickets',
                 'description' => 'Ver tablero de tickets y cronogramas'

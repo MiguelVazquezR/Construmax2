@@ -42,6 +42,7 @@ const form = useForm({
     
     // Especialidades
     specialties: props.technician.specialties || [],
+    level: props.technician.level || 'Encargado',
 
     // Fiscal
     legal_name: props.technician.legal_name || '',

@@ -141,10 +141,10 @@ const deleteTicket = (ticket) => {
                 @row-click="handleRowClick"
                 row-class-name="cursor-pointer hover:bg-gray-50 dark:hover:bg-[#27272a] transition-colors"
             >
-                <!-- Folio (Dinámico) / Prioridad Llamativa -->
-                <el-table-column label="Folio / Prioridad" width="130">
+                <!-- Folio (Dinámico) / Prioridad Llamativa / Fecha de creación -->
+                <el-table-column label="Folio / Prioridad" width="150">
                     <template #default="scope">
-                        <div class="flex flex-col items-center gap-2">
+                        <div class="flex flex-col items-center gap-1">
                             <span class="font-mono text-gray-700 dark:text-gray-300 font-bold text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded w-full text-center">
                                 {{ scope.row.folio }}
                             </span>
@@ -152,6 +152,9 @@ const deleteTicket = (ticket) => {
                                 :class="['text-[10px] uppercase px-2 py-0.5 rounded-full text-center w-full', getPriorityClasses(scope.row.priority)]"
                             >
                                 {{ scope.row.priority }}
+                            </span>
+                            <span class="text-[9px] text-gray-400 dark:text-gray-500 font-mono w-full text-center">
+                                {{ formatDate(scope.row.created_at) }}
                             </span>
                         </div>
                     </template>
@@ -324,11 +327,16 @@ const deleteTicket = (ticket) => {
                             {{ getHealthStatus(ticket).text }}
                         </el-tag>
                     </div>
-                    <span 
-                        :class="['text-[10px] uppercase px-2 py-0.5 rounded-full font-bold', getPriorityClasses(ticket.priority)]"
-                    >
-                        {{ ticket.priority }}
-                    </span>
+                    <div class="flex flex-col items-end gap-1">
+                        <span 
+                            :class="['text-[10px] uppercase px-2 py-0.5 rounded-full font-bold', getPriorityClasses(ticket.priority)]"
+                        >
+                            {{ ticket.priority }}
+                        </span>
+                        <span class="text-[9px] text-gray-400 dark:text-gray-500 font-mono">
+                            {{ formatDate(ticket.created_at) }}
+                        </span>
+                    </div>
                 </div>
 
                 <div class="pl-3 mb-3">

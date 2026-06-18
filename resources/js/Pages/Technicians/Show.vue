@@ -164,6 +164,9 @@ const getWhatsappUrl = (phone) => {
                                 <el-tag v-if="technician.is_internal" type="info" size="small" effect="plain" class="border-blue-200 text-blue-600">
                                     INTERNO
                                 </el-tag>
+                                <el-tag v-if="technician.level" size="small" effect="dark" :type="technician.level === 'Encargado' ? 'primary' : 'warning'">
+                                    {{ technician.level }}
+                                </el-tag>
                             </div>
                             <div class="flex flex-wrap gap-x-6 gap-y-2 text-sm">
                                 <!-- Email Interactivo -->

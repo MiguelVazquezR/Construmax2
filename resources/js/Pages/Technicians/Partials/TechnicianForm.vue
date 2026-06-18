@@ -130,6 +130,13 @@ const mexicoStates = [
                             <el-input v-model="form.secondary_phone" placeholder="Opcional" />
                         </el-form-item>
 
+                        <el-form-item label="Nivel / categoría" prop="level">
+                            <el-select v-model="form.level" class="w-full">
+                                <el-option label="Encargado" value="Encargado" />
+                                <el-option label="Auxiliar / Ayudante" value="Auxiliar/Ayudante" />
+                            </el-select>
+                        </el-form-item>
+
                         <!-- En creación, el rating va aquí. En edición va en el panel de estatus -->
                         <el-form-item v-if="!isEdit" label="Calificación inicial" prop="rating_avg">
                             <el-rate v-model="form.rating_avg" allow-half />
