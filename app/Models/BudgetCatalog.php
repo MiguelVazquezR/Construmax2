@@ -17,6 +17,8 @@ class BudgetCatalog extends Model
         'subtotal',
         'iva',
         'total',
+        'non_installation_labor',
+        'labor_utility',
     ];
 
     public function budget(): BelongsTo

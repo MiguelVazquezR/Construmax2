@@ -18,13 +18,15 @@ class DatabaseSeeder extends Seeder
     use WithoutModelEvents;
 
     private array $statusDistribution = [
-        'Borrador'              => 25,
-        'Levantamiento'         => 25,
-        'Catálogo'              => 30,
-        'Proceso de ejecución'  => 40,
-        'Ejecutado'             => 30,
-        'Facturado'             => 25,
-        'Pagado'                => 25,
+        'Borrador'              => 20,
+        'Programado'            => 15,
+        'Levantamiento'         => 20,
+        'Catálogo'              => 25,
+        'Proceso de ejecución'  => 30,
+        'Ejecutado'             => 20,
+        'Finalizado'            => 15,
+        'Facturado'             => 20,
+        'Pagado'                => 20,
     ];
 
     private array $serviceTypes = [
@@ -76,6 +78,7 @@ class DatabaseSeeder extends Seeder
         // Permissions seeder
         $this->call([
             PermissionSeeder::class,
+            ServiceTypeSeeder::class,
         ]);
 
         $this->seedCustomersWithBranchesAndContacts();

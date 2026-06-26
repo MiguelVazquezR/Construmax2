@@ -26,10 +26,12 @@ const formatDate = (dateString) => {
 const getStatusColor = (status) => {
     const map = {
         'Borrador': 'info',
+        'Programado': 'info',
         'Levantamiento': 'warning',
         'Catálogo': 'primary',
         'Proceso de ejecución': 'warning',
         'Ejecutado': 'success',
+        'Finalizado': 'success',
         'Facturado': 'primary',
         'Pagado': 'success',
     };
@@ -48,7 +50,8 @@ const getPriorityClasses = (priority) => {
 };
 
 const getHealthStatus = (ticket) => {
-    if (ticket.status === 'Ejecutado' || ticket.status === 'Facturado' || ticket.status === 'Pagado' || ticket.status === 'Cancelado') {
+    // Finalized statuses: always show as Finalizado
+    if (['Ejecutado', 'Finalizado', 'Facturado', 'Pagado', 'Cancelado'].includes(ticket.status)) {
         return { color: 'success', text: 'Finalizado', icon: Check };
     }
 
@@ -59,29 +62,19 @@ const getHealthStatus = (ticket) => {
     const start = new Date(ticket.scheduled_start);
     const end = new Date(ticket.scheduled_end);
     const now = new Date();
-    const progress = ticket.progress || 0;
 
-    if (now > end && progress < 100) {
+    // Past the end date
+    if (now > end) {
         return { color: 'danger', text: 'Vencido', icon: Warning };
     }
 
+    // Before the start date
     if (now < start) {
         return { color: 'info', text: 'Programado', icon: Timer };
     }
 
-    const totalDuration = end - start;
-    const elapsed = now - start;
-    let timePercentage = elapsed / totalDuration;
-    timePercentage = Math.min(Math.max(timePercentage, 0), 1);
-    const progressPercentage = progress / 100;
-
-    if (progressPercentage < (timePercentage - 0.15)) {
-        return { color: 'danger', text: 'Atrasado', icon: Warning };
-    } else if (progressPercentage < (timePercentage - 0.05)) {
-        return { color: 'warning', text: 'En riesgo', icon: Warning };
-    } else {
-        return { color: 'success', text: 'A tiempo', icon: Check };
-    }
+    // Within the date range
+    return { color: 'success', text: 'A tiempo', icon: Check };
 };
 
 const getAssignedTechnicians = (ticket) => {

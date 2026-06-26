@@ -20,10 +20,12 @@ const activeTab = ref('tasks');
 
 const statusOptions = [
     { label: 'Borrador', value: 'Borrador', color: '#9ca3af' },
+    { label: 'Programado', value: 'Programado', color: '#6366f1' },
     { label: 'Levantamiento', value: 'Levantamiento', color: '#0d9488' },
     { label: 'Cotización (Catálogo)', value: 'Catálogo', color: '#3b82f6' },
     { label: 'En ejecución', value: 'Proceso de ejecución', color: '#f59e0b' },
     { label: 'Ejecutado', value: 'Ejecutado', color: '#10b981' },
+    { label: 'Finalizado', value: 'Finalizado', color: '#059669' },
     { label: 'Facturado', value: 'Facturado', color: '#eab308' },
     { label: 'Pagado', value: 'Pagado', color: '#34d399' },
     { label: 'Cancelado', value: 'Cancelado', color: '#ef4444' },
@@ -36,10 +38,12 @@ const hasBudget = computed(() => !!props.ticket.budget);
 const getStatusColor = (status) => {
     const map = {
         'Borrador': 'secondary',
+        'Programado': 'info',
         'Levantamiento': 'info',
         'Catálogo': 'primary',
         'Proceso de ejecución': 'warning',
         'Ejecutado': 'warning',
+        'Finalizado': 'success',
         'Facturado': 'success',
         'Pagado': 'success',
         'Cancelado': 'danger'

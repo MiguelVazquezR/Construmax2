@@ -10,7 +10,8 @@ import QuickTechnicianModal from './Partials/QuickTechnicianModal.vue';
 const props = defineProps({
     users: Array,   
     customers: Array,
-    templates: Array, // Reintegrado para el soporte de plantillas
+    templates: Array,
+    serviceTypes: Array,
 });
 
 const formRef = ref();
@@ -106,6 +107,7 @@ const submit = () => {
                     :users="localUsers" 
                     :customers="customers"
                     :templates="templates"
+                    :service-types="serviceTypes"
                     @open-quick-tech="showQuickTechModal = true"
                 />
 

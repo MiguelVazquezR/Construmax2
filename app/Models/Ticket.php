@@ -26,9 +26,9 @@ class Ticket extends Model implements HasMedia
                 $action = app(DispatchNotificationAction::class);
 
                 match ($ticket->status) {
-                    'Catálogo'  => $action->ticketNeedsCatalog($ticket),
-                    'Ejecutado' => $action->ticketNeedsInvoice($ticket),
-                    default     => null,
+                    'Catálogo'   => $action->ticketNeedsCatalog($ticket),
+                    'Finalizado' => $action->ticketNeedsInvoice($ticket),
+                    default      => null,
                 };
             }
         });
@@ -171,12 +171,10 @@ class Ticket extends Model implements HasMedia
             }
         } elseif ($completed === $total) {
             $newStatus = 'Ejecutado';
-
-
         } else {
-            // Si hay tareas pero ninguna está completada, y el ticket es nuevo (Borrador), lo mantenemos en Borrador.
-            if ($completed === 0 && $currentStatus === 'Borrador') {
-                $newStatus = 'Borrador';
+            // If tasks exist but none completed, and ticket was Borrador or Programado
+            if ($completed === 0 && in_array($currentStatus, ['Borrador', 'Programado'])) {
+                $newStatus = $currentStatus;
             } else {
                 $newStatus = 'Proceso de ejecución';
             }
