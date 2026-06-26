@@ -12,11 +12,20 @@ class BudgetCatalogItem extends Model
 
     protected $fillable = [
         'budget_catalog_id',
+        'type',
         'description',
         'unit',
+        'technician',
+        'hours',
+        'rate',
         'quantity',
         'unit_price',
         'total',
+    ];
+
+    protected $casts = [
+        'hours' => 'decimal:2',
+        'rate'  => 'decimal:2',
     ];
 
     public function catalog(): BelongsTo

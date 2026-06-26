@@ -40,7 +40,7 @@ class DispatchNotificationAction
     }
 
     /**
-     * Notify when a ticket needs an invoice (status = Ejecutado).
+     * Notify when a ticket needs an invoice (status = Finalizado).
      */
     public function ticketNeedsInvoice(Ticket $ticket): void
     {

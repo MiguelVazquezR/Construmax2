@@ -11,7 +11,7 @@ class InvoiceService
     {
         return Budget::with(['ticket.customer', 'ticket.tasks.media'])
             ->whereHas('ticket', function ($q) {
-                $q->whereIn('status', ['Ejecutado', 'Facturado']);
+                $q->whereIn('status', ['Finalizado', 'Facturado']);
             })
             ->when($filters['search'] ?? null, function ($query, $search) {
                 $query->whereHas('ticket', function ($q) use ($search) {

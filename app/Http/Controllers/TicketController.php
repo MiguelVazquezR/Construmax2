@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Models\Customer;
+use App\Models\ServiceType;
 use App\Models\TaskTemplate;
 use App\Services\Media\ImageOptimizerService;
 use Illuminate\Http\Request;
@@ -112,6 +113,7 @@ class TicketController extends Controller
             'users' => User::where('id', '!=', 1)->with(['employee', 'technician'])->get(),
             'customers' => Customer::where('is_active', true)->with(['contacts', 'branches'])->get(),
             'templates' => TaskTemplate::where('is_active', true)->with('items')->get(),
+            'serviceTypes' => ServiceType::active()->orderBy('name')->get(),
         ]);
     }
 
@@ -225,6 +227,7 @@ class TicketController extends Controller
             'users' => User::where('id', '!=', 1)->with(['employee', 'technician'])->get(),
             'customers' => Customer::where('is_active', true)->with(['contacts', 'branches'])->get(),
             'templates' => TaskTemplate::where('is_active', true)->with('items')->get(),
+            'serviceTypes' => ServiceType::active()->orderBy('name')->get(),
         ]);
     }
 

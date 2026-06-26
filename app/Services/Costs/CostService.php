@@ -127,6 +127,7 @@ class CostService
                 'scheduled_end'   => $budget->ticket->scheduled_end ?? null,
                 'instructions'    => $budget->ticket->instructions ?? null,
                 'customer'        => [
+                    'id'   => $budget->ticket->customer->id ?? null,
                     'name' => $budget->ticket->customer->name ?? 'N/A',
                     'rfc'  => $budget->ticket->customer->rfc ?? 'N/A',
                 ],
@@ -150,8 +151,54 @@ class CostService
                 'technician_ids'  => array_map('intval', $budget->ticket->technicians ?? []),
                 'assistant_technician_ids' => array_map('intval', $budget->ticket->assistant_technicians ?? []),
             ],
-            'latest_catalog' => $budget->latestCatalog,
-            'catalogs'       => $budget->catalogs,
+            'latest_catalog' => $budget->latestCatalog ? [
+                'id'      => $budget->latestCatalog->id,
+                'version' => $budget->latestCatalog->version,
+                'subtotal' => $budget->latestCatalog->subtotal,
+                'iva'      => $budget->latestCatalog->iva,
+                'total'    => $budget->latestCatalog->total,
+                'non_installation_labor' => $budget->latestCatalog->non_installation_labor,
+                'labor_utility'         => $budget->latestCatalog->labor_utility,
+                'items'    => $budget->latestCatalog->items->map(function ($item) {
+                    return [
+                        'id'          => $item->id,
+                        'type'        => $item->type,
+                        'description' => $item->description,
+                        'unit'        => $item->unit,
+                        'technician'  => $item->technician,
+                        'hours'       => $item->hours,
+                        'rate'        => $item->rate,
+                        'quantity'    => $item->quantity,
+                        'unit_price'  => $item->unit_price,
+                        'total'       => $item->total,
+                    ];
+                }),
+            ] : null,
+            'catalogs'       => $budget->catalogs->map(function ($catalog) {
+                return [
+                    'id'      => $catalog->id,
+                    'version' => $catalog->version,
+                    'subtotal' => $catalog->subtotal,
+                    'iva'      => $catalog->iva,
+                    'total'    => $catalog->total,
+                    'non_installation_labor' => $catalog->non_installation_labor,
+                    'labor_utility'         => $catalog->labor_utility,
+                    'items'   => $catalog->items->map(function ($item) {
+                        return [
+                            'id'          => $item->id,
+                            'type'        => $item->type,
+                            'description' => $item->description,
+                            'unit'        => $item->unit,
+                            'technician'  => $item->technician,
+                            'hours'       => $item->hours,
+                            'rate'        => $item->rate,
+                            'quantity'    => $item->quantity,
+                            'unit_price'  => $item->unit_price,
+                            'total'       => $item->total,
+                        ];
+                    }),
+                ];
+            }),
             'concepts'       => $budget->concepts->map(function ($concept) {
                 return [
                     'id'      => $concept->id,

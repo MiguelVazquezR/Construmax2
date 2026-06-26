@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Calendar;
+use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -69,7 +70,7 @@ class CalendarController extends Controller
                     'description' => $event->description,
                     'start' => $event->start_time->toDateTimeString(),
                     'end' => $event->end_time->toDateTimeString(),
-                    'is_completed' => $event->is_completed, // Enviamos estado al frontend
+                    'is_completed' => $event->is_completed,
                     'creator' => $event->creator,
                     'participants' => $event->participants,
                     'my_status' => $status,
@@ -77,8 +78,44 @@ class CalendarController extends Controller
                 ];
             });
 
+        // Tickets as calendar entries (visible to all users)
+        $tickets = Ticket::with(['customer', 'branch', 'seller'])
+            ->whereNotNull('scheduled_start')
+            ->whereNotNull('scheduled_end')
+            ->whereNotIn('status', ['Cancelado', 'Pagado'])
+            ->get()
+            ->map(function ($ticket) {
+                $now = now()->startOfDay();
+                $end = $ticket->scheduled_end->copy()->startOfDay();
+                $start = $ticket->scheduled_start->copy()->startOfDay();
+
+                if ($now->gt($end)) {
+                    $health = 'Vencido';
+                } elseif ($now->lt($start)) {
+                    $health = 'Programado';
+                } else {
+                    $health = 'A tiempo';
+                }
+
+                return [
+                    'id'           => $ticket->id,
+                    'folio'        => $ticket->folio,
+                    'name'         => $ticket->name ?? $ticket->service_type ?? 'Servicio',
+                    'customer'     => $ticket->customer?->name,
+                    'branch'       => $ticket->branch?->branch_name,
+                    'seller'       => $ticket->seller?->name,
+                    'status'       => $ticket->status,
+                    'priority'     => $ticket->priority,
+                    'progress'     => $ticket->progress,
+                    'health'       => $health,
+                    'start'        => $ticket->scheduled_start->toDateString(),
+                    'end'          => $ticket->scheduled_end->toDateString(),
+                ];
+            });
+
         return Inertia::render('Calendar/Index', [
             'events' => $events,
+            'tickets' => $tickets,
             'users' => User::where('id', '!=', $userId)->where('is_active', true)->get(),
         ]);
     }
