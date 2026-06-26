@@ -11,7 +11,8 @@ const props = defineProps({
     ticket: Object,
     users: Array,
     customers: Array,
-    templates: Array, // Reintegrado para evitar fallos de props en TicketForm
+    templates: Array,
+    serviceTypes: Array,
 });
 
 const formRef = ref();
@@ -148,6 +149,7 @@ const uploadTicketFiles = (ticketId) => {
                     :users="localUsers" 
                     :customers="customers"
                     :templates="templates"
+                    :service-types="serviceTypes"
                     :is-edit="true" 
                     @open-quick-tech="showQuickTechModal = true"
                 />

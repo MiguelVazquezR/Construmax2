@@ -72,6 +72,7 @@ require __DIR__ . '/web/customers.php';
 require __DIR__ . '/web/budgets.php';
 require __DIR__ . '/web/crm.php';
 require __DIR__ . '/web/tickets.php';
+require __DIR__ . '/web/service-types.php';
 require __DIR__ . '/web/calendar.php';
 require __DIR__ . '/web/technicians.php';
 require __DIR__ . '/web/invoices.php';

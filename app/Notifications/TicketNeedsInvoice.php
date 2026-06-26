@@ -25,7 +25,7 @@ class TicketNeedsInvoice extends Notification
         return (new MailMessage)
             ->subject('Factura necesaria — ' . $this->ticket->folio)
             ->greeting('Hola ' . $notifiable->name . ',')
-            ->line('El ticket **' . $this->ticket->folio . '** (' . $this->ticket->name . ') ha cambiado a estado **Ejecutado**.')
+            ->line('El ticket **' . $this->ticket->folio . '** (' . $this->ticket->name . ') ha cambiado a estado **Finalizado**.')
             ->line('Se necesita emitir una factura para este ticket.')
             ->action('Ir a facturación', route('invoices.index'))
             ->line('Gracias.');

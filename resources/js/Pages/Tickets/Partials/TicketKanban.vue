@@ -18,10 +18,12 @@ watch(() => props.tickets.data, (newVal) => {
 
 const columns = [
     { id: 'Borrador', label: 'Borrador', color: '#9ca3af' },
+    { id: 'Programado', label: 'Programado', color: '#6366f1' },
     { id: 'Levantamiento', label: 'Levantamiento', color: '#0d9488' },
     { id: 'Catálogo', label: 'Cotización (Catálogo)', color: '#3b82f6' },
     { id: 'Proceso de ejecución', label: 'En ejecución', color: '#f59e0b' },
     { id: 'Ejecutado', label: 'Ejecutado', color: '#10b981' },
+    { id: 'Finalizado', label: 'Finalizado', color: '#059669' },
     { id: 'Facturado', label: 'Facturado', color: '#eab308' },
     { id: 'Pagado', label: 'Pagado', color: '#34d399' },
     { id: 'Cancelado', label: 'Cancelado', color: '#ef4444' },

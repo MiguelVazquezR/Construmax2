@@ -1,9 +1,11 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, reactive } from 'vue';
 import { router } from '@inertiajs/vue3';
-import { OfficeBuilding, Document, UserFilled } from '@element-plus/icons-vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { OfficeBuilding, Document, UserFilled, Setting } from '@element-plus/icons-vue';
 import TaskTemplateModal from './TaskTemplateModal.vue';
 import QuickBranchModal from './QuickBranchModal.vue';
+import axios from 'axios';
 
 const props = defineProps({
     form: {
@@ -25,6 +27,10 @@ const props = defineProps({
     isEdit: {
         type: Boolean,
         default: false
+    },
+    serviceTypes: {
+        type: Array,
+        default: () => []
     }
 });
 
@@ -33,35 +39,90 @@ defineEmits(['open-quick-tech']);
 const showTaskTemplateModal = ref(false);
 const showQuickBranchModal = ref(false);
 
+// --- SERVICE TYPE MANAGEMENT ---
+const showServiceTypeModal = ref(false);
+const editingServiceType = ref(null);
+const savingServiceType = ref(false);
+const serviceTypeForm = reactive({
+    name: '',
+});
+const serviceTypeFormRef = ref(null);
+
+const serviceTypeRules = reactive({
+    name: [{ required: true, message: 'El nombre es requerido', trigger: 'blur' }],
+});
+
+const localServiceTypes = ref([...props.serviceTypes]);
+
+const activeServiceTypes = computed(() => {
+    return [...localServiceTypes.value].sort((a, b) => a.name.localeCompare(b.name));
+});
+
+const openServiceTypeModal = (st = null) => {
+    editingServiceType.value = st;
+    serviceTypeForm.name = st ? st.name : '';
+    if (serviceTypeFormRef.value) serviceTypeFormRef.value.clearValidate();
+    showServiceTypeModal.value = true;
+};
+
+const saveServiceType = async () => {
+    if (!serviceTypeFormRef.value) return;
+    try {
+        await serviceTypeFormRef.value.validate();
+    } catch {
+        return;
+    }
+
+    savingServiceType.value = true;
+
+    try {
+        if (editingServiceType.value) {
+            const { data } = await axios.put(route('service-types.update', editingServiceType.value.id), { name: serviceTypeForm.name });
+            const updated = data.serviceType;
+            const idx = localServiceTypes.value.findIndex(st => st.id === updated.id);
+            if (idx !== -1) localServiceTypes.value[idx] = updated;
+            ElMessage.success('Tipo de servicio actualizado.');
+        } else {
+            const { data } = await axios.post(route('service-types.store'), { name: serviceTypeForm.name });
+            localServiceTypes.value = [...localServiceTypes.value, { ...data.serviceType, is_active: true }];
+            ElMessage.success('Tipo de servicio creado.');
+        }
+        showServiceTypeModal.value = false;
+    } catch (err) {
+        ElMessage.error(err.response?.data?.message || 'Error al guardar el tipo de servicio.');
+    } finally {
+        savingServiceType.value = false;
+    }
+};
+
+const deleteServiceType = (st) => {
+    ElMessageBox.confirm(
+        `¿Estás seguro de eliminar "${st.name}"?`,
+        'Eliminar tipo de servicio',
+        { confirmButtonText: 'Eliminar', cancelButtonText: 'Cancelar', type: 'warning' }
+    ).then(async () => {
+        try {
+            await axios.delete(route('service-types.destroy', st.id));
+            localServiceTypes.value = localServiceTypes.value.filter(item => item.id !== st.id);
+            ElMessage.success('Tipo de servicio eliminado.');
+        } catch (err) {
+            ElMessage.error(err.response?.data?.message || 'Error al eliminar el tipo de servicio.');
+        }
+    }).catch(() => {});
+};
+
 const handleTemplateSaved = () => {
     router.reload({ only: ['templates'] });
 };
 
-const serviceTypes = [
-    { id: 1, name: 'Iluminación' },
-    { id: 2, name: 'Herrería' },
-    { id: 3, name: 'Acabados' },
-    { id: 4, name: 'Eléctrico' },
-    { id: 5, name: 'Aire acondicionado' },
-    { id: 6, name: 'Sanitario' },
-    { id: 7, name: 'Anuncios' },
-    { id: 8, name: 'Pintura' },
-    { id: 9, name: 'Carpintería' },
-    { id: 10, name: 'Vidrio' },
-    { id: 11, name: 'Aluminio' },
-    { id: 12, name: 'Protección civil STPS' },
-    { id: 13, name: 'Monta cargas' },
-    { id: 14, name: 'Control de plagas' },
-    { id: 15, name: 'Impermeabilización' },
-    { id: 16, name: 'Servicios varios' }
-];
-
 const statuses = [
-    'Borrador', 
+    'Borrador',
+    'Programado',
     'Levantamiento', 
     'Catálogo', 
     'Proceso de ejecución', 
-    'Ejecutado', 
+    'Ejecutado',
+    'Finalizado',
     'Facturado', 
     'Pagado'
 ];
@@ -247,12 +308,21 @@ const sellerUsers = computed(() => {
                 </el-form-item>
 
                 <el-form-item label="Tipo de servicio" prop="service_type" :error="form.errors.service_type">
-                    <el-select v-model="form.service_type" placeholder="Seleccionar" class="w-full" filterable>
-                        <el-option v-for="item in serviceTypes" :key="item.id" :label="`${item.id} - ${item.name}`" :value="item.name">
-                            <span style="float: left">{{ item.id }}</span>
-                            <span style="float: right; color: var(--el-text-color-secondary); font-size: 13px">{{ item.name }}</span>
-                        </el-option>
-                    </el-select>
+                    <div class="flex items-start gap-2 w-full">
+                        <el-select v-model="form.service_type" placeholder="Seleccionar" class="flex-1" filterable>
+                            <el-option v-for="st in activeServiceTypes" :key="st.id" :label="`${st.id} - ${st.name}`" :value="st.name">
+                                <span style="float: left">{{ st.id }}</span>
+                                <span style="float: right; color: var(--el-text-color-secondary); font-size: 13px">{{ st.name }}</span>
+                            </el-option>
+                        </el-select>
+                        <el-button
+                            type="primary"
+                            plain
+                            :icon="Setting"
+                            @click.stop="openServiceTypeModal()"
+                            title="Gestionar tipos de servicio"
+                        />
+                    </div>
                 </el-form-item>
 
                 <el-form-item label="Duración estimada" prop="duration" :error="form.errors.duration">
@@ -455,5 +525,65 @@ const sellerUsers = computed(() => {
             :selected-customer-id="form.customer_id"
             @created="handleBranchCreated"
         />
+
+        <!-- Modal: Gestión de tipos de servicio -->
+        <el-dialog
+            v-model="showServiceTypeModal"
+            :title="editingServiceType ? 'Editar tipo de servicio' : 'Nuevo tipo de servicio'"
+            width="500px"
+            destroy-on-close
+        >
+            <el-form
+                ref="serviceTypeFormRef"
+                :model="serviceTypeForm"
+                :rules="serviceTypeRules"
+                label-position="top"
+                @submit.prevent="saveServiceType"
+            >
+                <el-form-item label="Nombre" prop="name">
+                    <el-input v-model="serviceTypeForm.name" placeholder="Ej. Plomería" />
+                </el-form-item>
+            </el-form>
+
+            <!-- Existing service types list -->
+            <div class="mt-6 border-t border-gray-100 dark:border-gray-700 pt-4">
+                <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Tipos de servicio existentes</h4>
+                <div class="space-y-2 max-h-60 overflow-y-auto">
+                    <div
+                        v-for="st in localServiceTypes"
+                        :key="st.id"
+                        class="flex items-center justify-between p-2 rounded-lg border border-gray-100 dark:border-gray-700"
+                    >
+                        <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ st.name }}</span>
+                        <div class="flex items-center gap-1">
+                            <el-button
+                                size="small"
+                                type="primary"
+                                plain
+                                @click="openServiceTypeModal(st)"
+                            >
+                                Editar
+                            </el-button>
+                            <el-button
+                                size="small"
+                                type="danger"
+                                plain
+                                @click="deleteServiceType(st)"
+                            >
+                                Eliminar
+                            </el-button>
+                        </div>
+                    </div>
+                    <el-empty v-if="localServiceTypes.length === 0" description="Sin tipos de servicio aún" :image-size="40" />
+                </div>
+            </div>
+
+            <template #footer>
+                <el-button @click="showServiceTypeModal = false">Cancelar</el-button>
+                <el-button type="primary" color="#f26c17" @click="saveServiceType" :loading="savingServiceType">
+                    {{ editingServiceType ? 'Actualizar' : 'Crear' }}
+                </el-button>
+            </template>
+        </el-dialog>
     </div>
 </template>

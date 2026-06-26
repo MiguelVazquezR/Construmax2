@@ -87,20 +87,22 @@ class TicketTaskController extends Controller
     public function storeEvidence(Request $request, TicketTask $task)
     {
         $request->validate([
-            'file' => 'required|file|mimes:jpg,jpeg,png,webp,mp4,mov,avi,mkv|max:51200', 
+            'files' => 'required|array',
+            'files.*' => 'file|mimes:jpg,jpeg,png,webp,mp4,mov,avi,mkv|max:51200', 
         ]);
 
-        if ($request->hasFile('file')) {
-            $file = $request->file('file');
-            if (str_starts_with($file->getMimeType(), 'image/')) {
-                $optimizedPath = $this->imageOptimizer->optimize($file);
-                $task->addMedia($optimizedPath)
-                    ->usingFileName($file->getClientOriginalName())
-                    ->toMediaCollection('task_evidence');
-            } else {
-                $task->addMedia($file)
-                    ->usingFileName($file->getClientOriginalName())
-                    ->toMediaCollection('task_evidence');
+        if ($request->hasFile('files')) {
+            foreach ($request->file('files') as $file) {
+                if (str_starts_with($file->getMimeType(), 'image/')) {
+                    $optimizedPath = $this->imageOptimizer->optimize($file);
+                    $task->addMedia($optimizedPath)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('task_evidence');
+                } else {
+                    $task->addMedia($file)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('task_evidence');
+                }
             }
         }
 

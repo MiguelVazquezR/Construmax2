@@ -5,10 +5,11 @@ import { ElMessage, ElMessageBox, ElNotification } from 'element-plus';
 import { 
     Check, Share, CopyDocument, ChatDotSquare, Edit, Delete, VideoPlay, 
     Calendar, ZoomIn, Camera, Plus, Link as IconLink, StarFilled, Warning,
-    Phone, Message
+    Phone, Message, TopRight, Upload
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import QuickTechnicianModal from './QuickTechnicianModal.vue';
+import axios from 'axios';
 
 const { can } = usePermissions();
 
@@ -340,13 +341,41 @@ const shareWhatsApp = (tech) => {
     const text = `Hola ${tech.name}, tu Orden de Trabajo para el ticket #${props.ticket.id}: ${tech.share_url}`;
     window.open(phone ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
 };
-const evidenceForm = useForm({ file: null });
+// Per-task evidence tracking: key = task.id, value = File[]
+const pendingEvidence = reactive({});
+const uploadingTasks = reactive({});
+
 const handleEvidenceUpload = (file, task) => {
-    evidenceForm.file = file.raw;
-    evidenceForm.post(route('tickets.tasks.evidence.store', task.id), {
-        onSuccess: () => { ElMessage.success('Evidencia subida'); evidenceForm.reset(); },
-        onError: () => ElMessage.error('Error al subir')
+    if (!pendingEvidence[task.id]) {
+        pendingEvidence[task.id] = [];
+    }
+    pendingEvidence[task.id].push(file.raw);
+};
+
+const flushEvidenceUpload = (task) => {
+    const files = pendingEvidence[task.id];
+    if (!files || files.length === 0) return;
+
+    uploadingTasks[task.id] = true;
+
+    const formData = new FormData();
+    files.forEach(file => formData.append('files[]', file));
+
+    axios.post(route('tickets.tasks.evidence.store', task.id), formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(() => {
+        delete pendingEvidence[task.id];
+        ElMessage.success('Evidencia subida');
+        router.reload({ only: ['ticket'], preserveScroll: true, preserveState: true });
+    }).catch(() => {
+        ElMessage.error('Error al subir evidencia');
+    }).finally(() => {
+        delete uploadingTasks[task.id];
     });
+};
+
+const openInNewTab = (url) => {
+    window.open(url, '_blank');
 };
 const previewVisible = ref(false);
 const previewImage = ref('');
@@ -493,7 +522,8 @@ const showPaymentProof = (pay) => {
                         <template v-if="tech.task_count > 0">
                             <p class="text-sm font-bold">Compartir acceso externo</p>
                             <el-button type="success" class="w-full" :icon="ChatDotSquare" @click="shareWhatsApp(tech)">WhatsApp</el-button>
-                            <el-button type="info" plain class="w-full" :icon="CopyDocument" @click="copyToClipboard(tech.share_url)">Copiar link</el-button>
+                            <el-button type="info" plain class="w-full" :icon="CopyDocument" @click="copyToClipboard(tech.share_url)">Copiar enlace</el-button>
+                            <el-button type="primary" plain class="w-full" :icon="TopRight" @click="openInNewTab(tech.share_url)">Abrir en nueva pestaña</el-button>
                         </template>
                         <el-alert
                             v-else
@@ -564,9 +594,21 @@ const showPaymentProof = (pay) => {
                                     @click.stop="deleteEvidence(media.id)"
                                 />
                             </div>
-                            <el-upload v-if="can('tickets.tasks.edit')" :show-file-list="false" :auto-upload="false" :on-change="(f) => handleEvidenceUpload(f, task)" accept="image/*,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska">
-                                <el-button size="small" icon="Camera" plain>Adjuntar</el-button>
-                            </el-upload>
+                            <div v-if="can('tickets.tasks.edit')" class="flex items-center gap-2">
+                                <el-upload :show-file-list="false" :auto-upload="false" :on-change="(f) => handleEvidenceUpload(f, task)" accept="image/*,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska" multiple>
+                                    <el-button size="small" icon="Camera" plain>Seleccionar archivos</el-button>
+                                </el-upload>
+                                <el-button
+                                    v-if="pendingEvidence[task.id]?.length > 0"
+                                    size="small"
+                                    type="success"
+                                    :icon="Upload"
+                                    @click="flushEvidenceUpload(task)"
+                                    :loading="uploadingTasks[task.id]"
+                                >
+                                    Subir ({{ pendingEvidence[task.id].length }})
+                                </el-button>
+                            </div>
                         </div>
 
                         <!-- Comentarios del técnico -->

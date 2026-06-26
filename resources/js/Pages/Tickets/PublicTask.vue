@@ -186,19 +186,29 @@
                           <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 dark:text-gray-300">
                               <el-icon><Camera /></el-icon> Evidencias Fotográficas
                           </h4>
-                          <el-upload
-                              v-if="task.status !== 'Completada' && !isTaskLocked(index)"
-                              action="#"
-                              :auto-upload="true"
-                              :show-file-list="false"
-                              :http-request="(opts) => handleUpload(opts, task)"
-                              accept="image/*,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska"
-                              multiple
-                          >
-                              <el-button size="small" :icon="Camera" :loading="uploadingTaskId === task.id" plain type="primary" class="!rounded-full">
-                                  Subir archivos
+                          <div v-if="task.status !== 'Completada' && !isTaskLocked(index)" class="flex items-center gap-2">
+                              <el-upload
+                                  action="#"
+                                  :auto-upload="false"
+                                  :show-file-list="false"
+                                  :on-change="(f) => handleFileSelect(f, task)"
+                                  accept="image/*,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska"
+                                  multiple
+                              >
+                                  <el-button size="small" :icon="Camera" plain type="primary" class="!rounded-full">
+                                      Seleccionar archivos
+                                  </el-button>
+                              </el-upload>
+                              <el-button
+                                  v-if="pendingEvidence[task.id]?.length > 0"
+                                  size="small"
+                                  type="success"
+                                  :loading="uploadingTaskIds[task.id]"
+                                  @click="flushUpload(task)"
+                              >
+                                  Subir ({{ pendingEvidence[task.id].length }})
                               </el-button>
-                          </el-upload>
+                          </div>
                         </div>
                         
                         <!-- Galería -->
@@ -347,8 +357,9 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
-import { Head, useForm, router } from '@inertiajs/vue3';
+import { ref, computed, reactive } from 'vue';
+import { Head, router } from '@inertiajs/vue3';
+import axios from 'axios';
 import { 
     Check, 
     RefreshLeft, 
@@ -382,8 +393,11 @@ const props = defineProps({
 });
 
 const togglingTaskId = ref(null);
-const uploadingTaskId = ref(null);
 const savingNotesId = ref(null);
+
+// Per-task evidence tracking
+const pendingEvidence = reactive({});
+const uploadingTaskIds = reactive({});
 
 const saveNotes = (task) => {
     savingNotesId.value = task.id;
@@ -486,14 +500,11 @@ const toggleStatus = (task) => {
     });
 };
 
-const uploadQueue = ref(0);
-const uploadCompleted = ref(0);
-
-const handleUpload = (options, task) => {
-    const { file } = options;
-    const isImage = file.type.startsWith('image/');
-    const isVideo = file.type.startsWith('video/');
-    const isLt50M = file.size / 1024 / 1024 < 50;
+const handleFileSelect = (file, task) => {
+    const raw = file.raw;
+    const isImage = raw.type?.startsWith('image/');
+    const isVideo = raw.type?.startsWith('video/');
+    const isLt50M = raw.size / 1024 / 1024 < 50;
 
     if (!isImage && !isVideo) {
         ElMessage.error('Solo se permiten imágenes y videos.');
@@ -505,20 +516,31 @@ const handleUpload = (options, task) => {
         return;
     }
 
-    uploadingTaskId.value = task.id;
-    const form = useForm({ files: [file] });
+    if (!pendingEvidence[task.id]) {
+        pendingEvidence[task.id] = [];
+    }
+    pendingEvidence[task.id].push(raw);
+};
 
-    form.post(task.urls.evidence, {
-        preserveScroll: true,
-        onSuccess: () => {
-            const label = isVideo ? 'Video' : 'Imagen';
-            ElMessage.success(`${label} subida correctamente`);
-            uploadingTaskId.value = null;
-        },
-        onError: () => {
-            ElMessage.error('Ocurrió un error al subir el archivo');
-            uploadingTaskId.value = null;
-        }
+const flushUpload = (task) => {
+    const files = pendingEvidence[task.id];
+    if (!files || files.length === 0) return;
+
+    uploadingTaskIds[task.id] = true;
+
+    const formData = new FormData();
+    files.forEach(file => formData.append('files[]', file));
+
+    axios.post(task.urls.evidence, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(() => {
+        delete pendingEvidence[task.id];
+        ElMessage.success('Archivos subidos correctamente');
+        router.reload({ preserveScroll: true, preserveState: true });
+    }).catch(() => {
+        ElMessage.error('Ocurrió un error al subir los archivos');
+    }).finally(() => {
+        delete uploadingTaskIds[task.id];
     });
 };
 

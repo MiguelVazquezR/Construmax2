@@ -52,11 +52,13 @@ const toggleViewMode = (mode) => {
 };
 
 const statuses = [
-    'Borrador', 
+    'Borrador',
+    'Programado',
     'Levantamiento', 
     'Catálogo', 
     'Proceso de ejecución', 
-    'Ejecutado', 
+    'Ejecutado',
+    'Finalizado',
     'Facturado', 
     'Pagado'
 ];
