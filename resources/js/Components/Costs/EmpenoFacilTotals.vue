@@ -91,21 +91,6 @@ const { formatCurrency, copyToClipboard } = useCostsHelpers();
                                 class="!w-full text-right" />
                         </td>
                     </tr>
-                    <!-- IVA -->
-                    <tr class="border-b dark:border-[#2b2b2e]">
-                        <td class="px-4 py-3 text-right font-bold text-gray-600 dark:text-gray-400">
-                            <el-checkbox
-                                :model-value="includeIva"
-                                @update:model-value="$emit('update:includeIva', $event)"
-                                label="IVA (16%):" class="!mr-0" />
-                        </td>
-                        <td class="px-4 py-3 text-right font-mono font-bold text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-[#252529]">
-                            <el-button text size="small" class="!font-mono !font-bold !text-gray-800 dark:!text-gray-200"
-                                @click="copyToClipboard(iva)">
-                                {{ formatCurrency(iva, currency) }}
-                            </el-button>
-                        </td>
-                    </tr>
                     <!-- Subtotal general -->
                     <tr>
                         <td class="px-4 py-3 text-right font-bold text-gray-800 dark:text-white text-base">

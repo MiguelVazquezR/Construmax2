@@ -39,6 +39,7 @@ const laborSubtotal = computed(() => laborItems.value.reduce((s, i) => s + Numbe
 const combinedSubtotal = computed(() => materialsSubtotal.value + laborSubtotal.value);
 const grandTotal = computed(() => {
     const base = combinedSubtotal.value + Number(form.non_installation_labor || 0) + Number(form.labor_utility || 0);
+    if (isEmpenoFacil.value) return Number(base.toFixed(2));
     const iva = form.include_iva ? Number((base * 0.16).toFixed(2)) : 0;
     return Number((base + iva).toFixed(2));
 });
@@ -105,9 +106,7 @@ function calculateTotals() {
             form.labor_utility = autoLaborUtility.value;
         }
         form.subtotal = combinedSubtotal.value;
-        form.iva = form.include_iva
-            ? Number(((combinedSubtotal.value + Number(form.non_installation_labor || 0) + Number(form.labor_utility || 0)) * 0.16).toFixed(2))
-            : 0;
+        form.iva = 0;
         form.total = grandTotal.value;
     } else {
         form.subtotal = form.items.reduce((s, i) => s + Number(i.total || 0), 0);
@@ -344,7 +343,6 @@ function openUrl(url) { window.open(url, '_blank'); }
                     :currency="budget.currency"
                     @update:non-installation-labor="v => { form.non_installation_labor = v; userEditedNonInstallationLabor = true; calculateTotals(); }"
                     @update:labor-utility="v => { form.labor_utility = v; userEditedLaborUtility = true; calculateTotals(); }"
-                    @update:include-iva="v => { form.include_iva = v; calculateTotals(); }"
                     @save="submitCatalog"
                     @print="$inertia.visit(route('costs.print-empeno-facil', $props.budget.id))"
                 />
