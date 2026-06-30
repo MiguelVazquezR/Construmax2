@@ -43,6 +43,17 @@ const grandTotal = computed(() => {
     return Number((base + iva).toFixed(2));
 });
 
+// Auto-calculated defaults for Empeño Fácil
+const userEditedNonInstallationLabor = ref(false);
+const userEditedLaborUtility = ref(false);
+
+const autoNonInstallationLabor = computed(() =>
+    Number((materialsSubtotal.value * 0.12).toFixed(2))
+);
+const autoLaborUtility = computed(() =>
+    Number((combinedSubtotal.value * 0.18).toFixed(2))
+);
+
 // --- Lifecycle ---
 onMounted(() => {
     if (props.budget.latest_catalog?.items) {
@@ -87,6 +98,12 @@ function calculateRowTotal(row) {
 
 function calculateTotals() {
     if (isEmpenoFacil.value) {
+        if (!userEditedNonInstallationLabor.value) {
+            form.non_installation_labor = autoNonInstallationLabor.value;
+        }
+        if (!userEditedLaborUtility.value) {
+            form.labor_utility = autoLaborUtility.value;
+        }
         form.subtotal = combinedSubtotal.value;
         form.iva = form.include_iva
             ? Number(((combinedSubtotal.value + Number(form.non_installation_labor || 0) + Number(form.labor_utility || 0)) * 0.16).toFixed(2))
@@ -142,6 +159,8 @@ function viewCatalogVersion(versionId) {
     form.include_iva = Number(cat.iva) > 0;
     form.non_installation_labor = Number(cat.non_installation_labor || 0);
     form.labor_utility = Number(cat.labor_utility || 0);
+    userEditedNonInstallationLabor = true;
+    userEditedLaborUtility = true;
     calculateTotals();
     ElMessage.info(`Mostrando la versión ${cat.version}`);
 }
@@ -316,14 +335,15 @@ function openUrl(url) { window.open(url, '_blank'); }
 
                 <EmpenoFacilTotals
                     :combined-subtotal="combinedSubtotal"
+                    :materials-subtotal="materialsSubtotal"
                     :non-installation-labor="form.non_installation_labor"
                     :labor-utility="form.labor_utility"
                     :iva="form.iva"
                     :total="form.total"
                     :include-iva="form.include_iva"
                     :currency="budget.currency"
-                    @update:non-installation-labor="v => { form.non_installation_labor = v; calculateTotals(); }"
-                    @update:labor-utility="v => { form.labor_utility = v; calculateTotals(); }"
+                    @update:non-installation-labor="v => { form.non_installation_labor = v; userEditedNonInstallationLabor = true; calculateTotals(); }"
+                    @update:labor-utility="v => { form.labor_utility = v; userEditedLaborUtility = true; calculateTotals(); }"
                     @update:include-iva="v => { form.include_iva = v; calculateTotals(); }"
                     @save="submitCatalog"
                     @print="$inertia.visit(route('costs.print-empeno-facil', $props.budget.id))"
