@@ -3,6 +3,7 @@ import { useCostsHelpers } from '@/Composables/useCostsHelpers';
 
 const props = defineProps({
     combinedSubtotal: { type: Number, required: true },
+    materialsSubtotal: { type: Number, default: 0 },
     nonInstallationLabor: { type: Number, default: 0 },
     laborUtility: { type: Number, default: 0 },
     iva: { type: Number, required: true },
@@ -50,6 +51,15 @@ const { formatCurrency, copyToClipboard } = useCostsHelpers();
                     <tr class="border-b dark:border-[#2b2b2e]">
                         <td class="px-4 py-3 text-right font-bold text-gray-600 dark:text-gray-400">
                             Non installation labor:
+                            <el-tooltip placement="top" effect="dark" raw-content>
+                                <template #content>
+                                    <div class="text-xs leading-relaxed">
+                                        12% del subtotal de materiales:<br />
+                                        12% &times; {{ formatCurrency(materialsSubtotal, currency) }} = {{ formatCurrency(materialsSubtotal * 0.12, currency) }}
+                                    </div>
+                                </template>
+                                <el-icon class="ml-1 text-gray-400 hover:text-blue-500 cursor-help align-middle"><InfoFilled /></el-icon>
+                            </el-tooltip>
                         </td>
                         <td class="px-2 py-2">
                             <el-input-number
@@ -63,6 +73,15 @@ const { formatCurrency, copyToClipboard } = useCostsHelpers();
                     <tr class="border-b dark:border-[#2b2b2e]">
                         <td class="px-4 py-3 text-right font-bold text-gray-600 dark:text-gray-400">
                             Utilidad de mano de obra:
+                            <el-tooltip placement="top" effect="dark" raw-content>
+                                <template #content>
+                                    <div class="text-xs leading-relaxed">
+                                        18% del subtotal combinado (materiales + mano de obra):<br />
+                                        18% &times; {{ formatCurrency(combinedSubtotal, currency) }} = {{ formatCurrency(combinedSubtotal * 0.18, currency) }}
+                                    </div>
+                                </template>
+                                <el-icon class="ml-1 text-gray-400 hover:text-blue-500 cursor-help align-middle"><InfoFilled /></el-icon>
+                            </el-tooltip>
                         </td>
                         <td class="px-2 py-2">
                             <el-input-number
