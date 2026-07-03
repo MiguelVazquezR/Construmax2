@@ -39,6 +39,7 @@ Route::middleware([
     Route::post('/tickets/{ticket}/evidence', [TicketController::class, 'storeEvidence'])->name('tickets.evidence.store');
     Route::get('/tickets/{ticket}/evidence-template', [TicketController::class, 'evidenceTemplate'])->name('tickets.evidence-template');
     Route::post('/tickets/tasks/{task}/evidence', [TicketTaskController::class, 'storeEvidence'])->name('tickets.tasks.evidence.store');
+    Route::post('/tickets/tasks/{task}/evidence/reorder', [TicketTaskController::class, 'reorderEvidence'])->name('tickets.tasks.evidence.reorder');
     Route::delete('/tickets/evidence/{media}', [TicketController::class, 'destroyEvidence'])->name('tickets.evidence.destroy');
 
     // Rutas de Plantillas de Tareas

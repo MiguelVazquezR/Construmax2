@@ -31,26 +31,17 @@ const getLogoUrl = () => {
     return logo ? logo.original_url : null;
 };
 
-// Reunir evidencias solo de las tareas de los técnicos, ordenadas cronológicamente
-const allEvidences = computed(() => {
-    const items = [];
-    if (props.ticket.tasks) {
-        props.ticket.tasks.forEach(task => {
-            if (task.media && task.media.length > 0) {
-                task.media.forEach(media => {
-                    items.push({
-                        task_name: task.name,
-                        task_status: task.status,
-                        date: task.updated_at || task.created_at,
-                        url: media.original_url,
-                        file_name: media.file_name,
-                    });
-                });
-            }
-        });
-    }
-    items.sort((a, b) => new Date(a.date) - new Date(b.date));
-    return items;
+// Tasks with at least one image evidence, in natural order.
+// Within each task, media is already ordered by order_column via the model.
+const tasksWithImages = computed(() => {
+    if (!props.ticket.tasks) return [];
+
+    return props.ticket.tasks
+        .map(task => ({
+            ...task,
+            images: (task.media || []).filter(m => m.mime_type?.startsWith('image/')),
+        }))
+        .filter(task => task.images.length > 0);
 });
 </script>
 
@@ -98,25 +89,47 @@ const allEvidences = computed(() => {
             <!-- Thin orange accent line -->
             <div class="h-1 bg-[#f26c17] print:h-0.5"></div>
 
-            <!-- Evidence grid -->
+            <!-- Evidence by task -->
             <div class="mt-6 print:mt-4">
-                <div v-if="allEvidences.length > 0">
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 print:gap-3">
-                        <div
-                            v-for="(item, index) in allEvidences"
-                            :key="index"
-                            class="border border-gray-200 rounded-lg overflow-hidden bg-gray-50 break-inside-avoid"
-                        >
-                            <div class="aspect-square bg-white flex items-center justify-center p-2">
-                                <img
-                                    :src="item.url"
-                                    :alt="item.file_name"
-                                    class="max-w-full max-h-full object-contain"
-                                />
-                            </div>
-                            <div class="p-3 border-t border-gray-200">
-                                <p class="text-xs font-semibold text-[#1e1e20] truncate">{{ item.task_name }}</p>
-                                <p class="text-[10px] text-gray-400">{{ formatDate(item.date) }}</p>
+                <div v-if="tasksWithImages.length > 0">
+                    <div
+                        v-for="(task, taskIdx) in tasksWithImages"
+                        :key="task.id"
+                        class="mb-8 print:mb-4 break-inside-avoid"
+                    >
+                        <!-- Task header -->
+                        <div class="flex items-center gap-3 mb-3 print:mb-1.5">
+                            <span class="flex items-center justify-center w-6 h-6 print:w-5 print:h-5 rounded-full bg-[#f26c17] text-white text-xs print:text-[10px] font-bold shrink-0">
+                                {{ taskIdx + 1 }}
+                            </span>
+                            <h3 class="text-sm print:text-xs font-bold text-[#1e1e20] uppercase tracking-wide">
+                                {{ task.name }}
+                            </h3>
+                            <span class="text-xs print:text-[10px] text-gray-400">
+                                {{ task.images.length }} {{ task.images.length === 1 ? 'imagen' : 'imágenes' }}
+                            </span>
+                        </div>
+
+                        <!-- Images grid for this task -->
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 print:gap-2">
+                            <div
+                                v-for="(img, imgIdx) in task.images"
+                                :key="img.id"
+                                class="border border-gray-200 rounded-lg overflow-hidden bg-gray-50"
+                            >
+                                <div class="h-48 print:h-32 bg-white flex items-center justify-center p-2 print:p-2">
+                                    <img
+                                        :src="img.original_url"
+                                        :alt="img.file_name"
+                                        class="max-w-full max-h-full object-contain"
+                                    />
+                                </div>
+                                <div class="p-2 print:p-1.5 border-t border-gray-200">
+                                    <p class="text-xs print:text-[9px] font-semibold text-[#1e1e20] truncate">{{ task.name }}</p>
+                                    <p class="text-[10px] print:text-[8px] text-gray-400">
+                                        Imagen {{ imgIdx + 1 }} de {{ task.images.length }}
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>
