@@ -75,16 +75,39 @@ class TicketController extends Controller
             $query->where('seller_id', $request->input('seller'));
         }
 
-        if ($request->filled('status')) {
-            $statusFilter = $request->input('status');
-            if ($statusFilter === 'not_finalized') {
-                $query->whereNotIn('status', ['Finalizado', 'Facturado', 'Pagado', 'Cancelado']);
-            } elseif ($statusFilter !== 'all') {
-                $query->where('status', $statusFilter);
+        // FILTRO POR CATÁLOGO
+        if ($request->filled('has_catalog')) {
+            $catalogFilter = $request->input('has_catalog');
+            if ($catalogFilter === 'yes') {
+                $query->whereHas('budget.latestCatalog');
+            } elseif ($catalogFilter === 'no') {
+                $query->where(function ($q) {
+                    $q->doesntHave('budget')
+                      ->orWhereHas('budget', function ($b) {
+                          $b->doesntHave('latestCatalog');
+                      });
+                });
+            }
+        }
+
+        // Default active statuses (exclude finalized/completed)
+        $defaultStatuses = ['Borrador', 'Programado', 'Levantamiento', 'Catálogo', 'Proceso de ejecución', 'Ejecutado', 'Finalizado'];
+
+        if ($request->has('status')) {
+            $statusFilter = $request->input('status', []);
+            if (is_array($statusFilter) && !empty($statusFilter)) {
+                if (in_array('all', $statusFilter)) {
+                    // Show all — no status filter
+                } else {
+                    $query->whereIn('status', $statusFilter);
+                }
+            } else {
+                // Empty or invalid: use default active statuses
+                $query->whereIn('status', $defaultStatuses);
             }
         } else {
-            // Default: hide finalized/completed tickets
-            $query->whereNotIn('status', ['Finalizado', 'Facturado', 'Pagado', 'Cancelado']);
+            // Default: show only active statuses
+            $query->whereIn('status', $defaultStatuses);
         }
 
         // ORDENAMIENTO
@@ -111,7 +134,8 @@ class TicketController extends Controller
                 'priority' => $request->input('priority'),
                 'technician' => $request->input('technician'),
                 'seller' => $request->input('seller'),
-                'status' => $request->input('status', 'not_finalized'),
+                'status' => $request->input('status', $defaultStatuses),
+                'has_catalog' => $request->input('has_catalog'),
                 'perPage' => $perPage,
                 'sort' => $sort,
             ],
@@ -137,6 +161,7 @@ class TicketController extends Controller
             'seller_id' => 'nullable|exists:users,id',
             'name' => 'required|string|max:255',
             'service_type' => 'required|string|max:255',
+            'report_number' => 'nullable|string|max:255',
             'duration' => 'nullable|string',
             'technicians' => 'nullable|array',
             'technicians.*' => 'exists:users,id',
@@ -213,6 +238,24 @@ class TicketController extends Controller
         return back()->with('success', 'Estatus actualizado.');
     }
 
+    public function updateReportNumber(Request $request, Ticket $ticket)
+    {
+        $request->validate(['report_number' => 'nullable|string|max:255']);
+        $ticket->update(['report_number' => $request->report_number]);
+        return back()->with('success', 'Número de reporte actualizado.');
+    }
+
+    public function updateField(Request $request, Ticket $ticket)
+    {
+        $validated = $request->validate([
+            'field' => 'required|string|in:report_number,scheduled_start,scheduled_end',
+            'value' => 'nullable|string|max:255',
+        ]);
+
+        $ticket->update([$validated['field'] => $validated['value']]);
+        return back()->with('success', 'Campo actualizado.');
+    }
+
     public function updateTechnicians(Request $request, Ticket $ticket)
     {
         $validated = $request->validate([
@@ -251,6 +294,7 @@ class TicketController extends Controller
             'seller_id' => 'nullable|exists:users,id',
             'name' => 'required|string|max:255',
             'service_type' => 'required|string|max:255',
+            'report_number' => 'nullable|string|max:255',
             'duration' => 'nullable|string',
             'technicians' => 'nullable|array',
             'technicians.*' => 'exists:users,id',

@@ -328,6 +328,10 @@ const sellerUsers = computed(() => {
                 <el-form-item label="Duración estimada" prop="duration" :error="form.errors.duration">
                     <el-input v-model="form.duration" placeholder="Ej. 2 semanas" />
                 </el-form-item>
+
+                <el-form-item label="No. reporte / ticket" prop="report_number" :error="form.errors.report_number">
+                    <el-input v-model="form.report_number" placeholder="Número de reporte del cliente" />
+                </el-form-item>
                 
                 <el-form-item label="Prioridad" prop="priority" :error="form.errors.priority">
                     <el-select v-model="form.priority" class="w-full">

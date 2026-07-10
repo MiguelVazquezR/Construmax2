@@ -66,7 +66,7 @@ const tasksWithImages = computed(() => {
             </div>
 
             <!-- Header with corporate styling -->
-            <div class="bg-[#1e1e20] rounded-t-lg px-6 py-5 print:bg-[#1e1e20] print:px-4 print:py-3">
+            <div class="bg-[#7a7a7a] rounded-t-lg px-6 py-5 print:bg-[#7a7a7a] print:px-4 print:py-3">
                 <div class="flex items-center gap-5">
                     <div
                         v-if="getLogoUrl()"
@@ -77,7 +77,7 @@ const tasksWithImages = computed(() => {
                     <div>
                         <h1 class="text-xl font-bold text-white print:text-white">Recopilación de evidencias</h1>
                         <p class="text-sm text-orange-300 mt-0.5">{{ ticket.name }}</p>
-                        <p class="text-xs text-gray-400 mt-0.5">
+                        <p class="text-xs text-gray-300 mt-0.5">
                             Cliente: {{ ticket.customer?.name }} | {{ ticket.branch?.branch_name }}
                             <template v-if="ticket.branch?.city"> - {{ ticket.branch.city }}</template>
                             <template v-if="ticket.branch?.region">, {{ ticket.branch.region }}</template>
@@ -102,7 +102,7 @@ const tasksWithImages = computed(() => {
                             <span class="flex items-center justify-center w-6 h-6 print:w-5 print:h-5 rounded-full bg-[#f26c17] text-white text-xs print:text-[10px] font-bold shrink-0">
                                 {{ taskIdx + 1 }}
                             </span>
-                            <h3 class="text-sm print:text-xs font-bold text-[#1e1e20] uppercase tracking-wide">
+                            <h3 class="text-sm print:text-xs font-bold text-[#7a7a7a] uppercase tracking-wide">
                                 {{ task.name }}
                             </h3>
                             <span class="text-xs print:text-[10px] text-gray-400">
@@ -110,14 +110,26 @@ const tasksWithImages = computed(() => {
                             </span>
                         </div>
 
-                        <!-- Images grid for this task -->
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 print:gap-2">
+                        <!-- Images for this task -->
+                        <div
+                            :class="[
+                                'grid gap-4 print:gap-2',
+                                task.images.length === 1
+                                    ? 'grid-cols-1'
+                                    : 'grid-cols-1 sm:grid-cols-3'
+                            ]"
+                        >
                             <div
                                 v-for="(img, imgIdx) in task.images"
                                 :key="img.id"
                                 class="border border-gray-200 rounded-lg overflow-hidden bg-gray-50"
                             >
-                                <div class="h-48 print:h-32 bg-white flex items-center justify-center p-2 print:p-2">
+                                <div
+                                    :class="[
+                                        'bg-white flex items-center justify-center p-2 print:p-2',
+                                        task.images.length === 1 ? 'h-80 print:h-64' : 'h-48 print:h-32'
+                                    ]"
+                                >
                                     <img
                                         :src="img.original_url"
                                         :alt="img.file_name"
@@ -125,7 +137,7 @@ const tasksWithImages = computed(() => {
                                     />
                                 </div>
                                 <div class="p-2 print:p-1.5 border-t border-gray-200">
-                                    <p class="text-xs print:text-[9px] font-semibold text-[#1e1e20] truncate">{{ task.name }}</p>
+                                    <p class="text-xs print:text-[9px] font-semibold text-[#7a7a7a] truncate">{{ task.name }}</p>
                                     <p class="text-[10px] print:text-[8px] text-gray-400">
                                         Imagen {{ imgIdx + 1 }} de {{ task.images.length }}
                                     </p>

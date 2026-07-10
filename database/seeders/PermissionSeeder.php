@@ -239,6 +239,11 @@ class PermissionSeeder extends Seeder
                 'category' => 'Costos',
                 'description' => 'Ver listado de presupuestos y costos'
             ],
+            [
+                'name' => 'costs.create',
+                'category' => 'Costos',
+                'description' => 'Crear versiones de catálogo de costos'
+            ],
 
             // --- MÓDULO: NOTIFICACIONES ---
             [
