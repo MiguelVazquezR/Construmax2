@@ -109,6 +109,30 @@ class TicketTaskController extends Controller
         return back()->with('success', 'Evidencia subida.');
     }
 
+    public function reorderEvidence(Request $request, TicketTask $task)
+    {
+        $request->validate([
+            'ids' => 'required|array',
+            'ids.*' => 'integer',
+        ]);
+
+        // Ensure all media IDs belong to this task
+        $taskMediaIds = $task->getMedia('task_evidence')->pluck('id')->toArray();
+        $validIds = array_intersect($request->ids, $taskMediaIds);
+
+        if (count($validIds) !== count($request->ids)) {
+            return back()->with('error', 'Invalid media IDs provided.');
+        }
+
+        // Update order_column for each media item based on position in the array
+        $validIds = array_values($validIds);
+        foreach ($validIds as $position => $id) {
+            Media::where('id', $id)->update(['order_column' => $position + 1]);
+        }
+
+        return back()->with('success', 'Orden actualizado.');
+    }
+
     // --- HELPER: VALIDACIÓN DE TRASLAPE DE HORARIOS ---
     
     /**

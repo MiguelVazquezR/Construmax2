@@ -348,7 +348,9 @@ class TicketController extends Controller
             'budget.customer.media',
         ]);
 
-        $ticket->tasks = $ticket->tasks->sortBy('start_date');
+        // Keep tasks in their natural order (as shown in the task list),
+        // not sorted by start_date — the user controls the visual order.
+        // Media within each task is ordered by order_column via the model's media() override.
 
         return Inertia::render('Tickets/EvidenceTemplate', [
             'ticket' => $ticket,
