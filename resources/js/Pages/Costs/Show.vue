@@ -73,7 +73,8 @@ onMounted(() => {
         form.non_installation_labor = Number(props.budget.latest_catalog.non_installation_labor || 0);
         form.labor_utility = Number(props.budget.latest_catalog.labor_utility || 0);
     } else {
-        addItemRow('material');
+        userEditedNonInstallationLabor = false;
+        userEditedLaborUtility = false;
     }
     calculateTotals();
 });
@@ -127,6 +128,12 @@ function submitCatalog() {
             currentVersion.value = props.budget.latest_catalog?.version;
             ElMessage.success('Catálogo actualizado correctamente.');
         },
+        onError: (errors) => {
+            ElMessage.error('Ocurrió un error al guardar el catálogo.');
+        },
+        onFinish: () => {
+            // Processing is automatically reset by useForm
+        },
     });
 
     if (props.budget.latest_catalog) {
@@ -136,7 +143,7 @@ function submitCatalog() {
             { confirmButtonText: 'Sí, guardar', cancelButtonText: 'Cancelar', type: 'info' }
         ).then(doSubmit).catch(() => {});
     } else {
-        doSubmit();
+        Promise.resolve().then(doSubmit);
     }
 }
 
@@ -340,6 +347,7 @@ function openUrl(url) { window.open(url, '_blank'); }
                     :iva="form.iva"
                     :total="form.total"
                     :include-iva="form.include_iva"
+                    :loading="form.processing"
                     :currency="budget.currency"
                     @update:non-installation-labor="v => { form.non_installation_labor = v; userEditedNonInstallationLabor = true; calculateTotals(); }"
                     @update:labor-utility="v => { form.labor_utility = v; userEditedLaborUtility = true; calculateTotals(); }"

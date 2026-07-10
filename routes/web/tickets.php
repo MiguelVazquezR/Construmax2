@@ -43,6 +43,7 @@ Route::middleware([
     Route::delete('/tickets/evidence/{media}', [TicketController::class, 'destroyEvidence'])->name('tickets.evidence.destroy');
 
     // Rutas de Plantillas de Tareas
+    Route::get('/task-templates', [TaskTemplateController::class, 'index'])->name('task-templates.index');
     Route::post('/task-templates', [TaskTemplateController::class, 'store'])->name('task-templates.store');
     Route::put('/task-templates/{taskTemplate}', [TaskTemplateController::class, 'update'])->name('task-templates.update');
     Route::put('/task-templates/{taskTemplate}/toggle-status', [TaskTemplateController::class, 'toggleStatus'])->name('task-templates.toggle-status');

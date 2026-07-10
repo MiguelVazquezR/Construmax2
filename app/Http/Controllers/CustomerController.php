@@ -35,7 +35,7 @@ class CustomerController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'business_name' => 'required|string|max:255',
-            'rfc' => 'required|string|max:20',
+            'rfc' => 'nullable|string|max:20',
             'payment_condition' => 'required|string',
             'payment_method' => 'required|string',
             'invoice_usage' => 'required|string',
@@ -141,7 +141,7 @@ class CustomerController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'business_name' => 'required|string|max:255',
-            'rfc' => 'required|string|max:20',
+            'rfc' => 'nullable|string|max:20',
             'payment_condition' => 'required|string',
             'payment_method' => 'required|string',
             'invoice_usage' => 'required|string',

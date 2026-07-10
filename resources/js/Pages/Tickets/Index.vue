@@ -35,11 +35,11 @@ const regionFilter = ref(getFilter('region', ''));
 const priorityFilter = ref(getFilter('priority', ''));
 const technicianFilter = ref(getFilter('technician', '') ? Number(getFilter('technician', '')) : '');
 const sellerFilter = ref(getFilter('seller', '') ? Number(getFilter('seller', '')) : '');
-const statusFilter = ref(getFilter('status', 'all'));
+const statusFilter = ref(getFilter('status', 'not_finalized'));
 
 // Validación extra explícita para asegurar que siempre sea un string correcto
-let initialSort = getFilter('sort', 'delay');
-if (typeof initialSort !== 'string') initialSort = 'delay';
+let initialSort = getFilter('sort', 'created_at');
+if (typeof initialSort !== 'string') initialSort = 'created_at';
 const sortFilter = ref(initialSort); 
 
 const perPage = ref(parseInt(getFilter('perPage', 20))); 
@@ -157,6 +157,7 @@ watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilt
                     </el-select>
 
                     <el-select v-model="statusFilter" placeholder="Estado" clearable class="w-full">
+                        <el-option label="Todos excepto finalizados" value="not_finalized" />
                         <el-option label="Todos los estados" value="all" />
                         <el-option v-for="st in statuses" :key="st" :label="st" :value="st" />
                     </el-select>
@@ -168,6 +169,7 @@ watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilt
                     <div class="w-full sm:w-64">
                         <el-select v-model="sortFilter" placeholder="Ordenar por" class="w-full">
                             <template #prefix><el-icon><Sort /></el-icon></template>
+                            <el-option label="Por fecha de creación" value="created_at" />
                             <el-option label="Por atraso / urgencia" value="delay" />
                             <el-option label="Por fecha de inicio" value="start_date" />
                         </el-select>

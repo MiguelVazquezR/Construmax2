@@ -97,7 +97,6 @@ const customerFiles = computed(() => {
 const rules = reactive({
     name: [{ required: true, message: 'Requerido', trigger: 'blur' }],
     business_name: [{ required: true, message: 'Requerido', trigger: 'blur' }],
-    rfc: [{ required: true, message: 'Requerido', trigger: 'blur' }],
     payment_condition: [{ required: true, message: 'Requerido', trigger: 'change' }],
     payment_method: [{ required: true, message: 'Requerido', trigger: 'change' }],
     invoice_usage: [{ required: true, message: 'Requerido', trigger: 'change' }],

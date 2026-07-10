@@ -36,6 +36,7 @@ const form = useForm({
     scheduled_start: props.ticket.scheduled_start,
     scheduled_end: props.ticket.scheduled_end,
     instructions: props.ticket.instructions,
+    task_template_id: '',
     uploaded_files: [],
 });
 
@@ -88,6 +89,7 @@ const submit = () => {
                 scheduled_start: data.scheduled_start,
                 scheduled_end: data.scheduled_end,
                 instructions: data.instructions,
+                task_template_id: data.task_template_id,
             }));
 
             form.put(route('tickets.update', props.ticket.id), {
