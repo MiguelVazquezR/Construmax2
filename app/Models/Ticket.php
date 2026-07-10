@@ -43,6 +43,7 @@ class Ticket extends Model implements HasMedia
         'seller_id',
         'name',
         'service_type',
+        'report_number',
         'duration',
         'technicians',
         'assistant_technicians',

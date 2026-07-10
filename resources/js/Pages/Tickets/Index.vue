@@ -35,11 +35,11 @@ const regionFilter = ref(getFilter('region', ''));
 const priorityFilter = ref(getFilter('priority', ''));
 const technicianFilter = ref(getFilter('technician', '') ? Number(getFilter('technician', '')) : '');
 const sellerFilter = ref(getFilter('seller', '') ? Number(getFilter('seller', '')) : '');
-const statusFilter = ref(getFilter('status', 'all'));
+const catalogFilter = ref(getFilter('has_catalog', ''));
 
 // Validación extra explícita para asegurar que siempre sea un string correcto
-let initialSort = getFilter('sort', 'delay');
-if (typeof initialSort !== 'string') initialSort = 'delay';
+let initialSort = getFilter('sort', 'created_at');
+if (typeof initialSort !== 'string') initialSort = 'created_at';
 const sortFilter = ref(initialSort); 
 
 const perPage = ref(parseInt(getFilter('perPage', 20))); 
@@ -60,8 +60,34 @@ const statuses = [
     'Ejecutado',
     'Finalizado',
     'Facturado', 
-    'Pagado'
+    'Pagado',
+    'Cancelado',
 ];
+
+const defaultStatuses = ['Borrador', 'Programado', 'Levantamiento', 'Catálogo', 'Proceso de ejecución', 'Ejecutado'];
+
+// Status filter uses an array for multi-select support
+const rawStatus = getFilter('status', defaultStatuses);
+const statusFilter = ref(Array.isArray(rawStatus) ? [...rawStatus] : defaultStatuses);
+
+// Handle "all" toggle logic in the multi-select
+const handleStatusChange = (value) => {
+    if (!value || value.length === 0) {
+        statusFilter.value = [...defaultStatuses];
+        return;
+    }
+    if (value.includes('all')) {
+        if (value.length === 1) {
+            // Only "all" — keep it
+        } else if (value[value.length - 1] === 'all') {
+            // User just picked "all" → keep only "all"
+            statusFilter.value = ['all'];
+        } else {
+            // "all" was already selected, user added others → remove "all"
+            statusFilter.value = value.filter(s => s !== 'all');
+        }
+    }
+};
 
 const fetchData = debounce(() => {
     router.get(route('tickets.index'), { 
@@ -72,6 +98,7 @@ const fetchData = debounce(() => {
         technician: technicianFilter.value,
         seller: sellerFilter.value,
         status: statusFilter.value,
+        has_catalog: catalogFilter.value,
         sort: sortFilter.value,
         perPage: perPage.value 
     }, {
@@ -90,6 +117,7 @@ const handlePageChange = (val) => {
         technician: technicianFilter.value,
         seller: sellerFilter.value,
         status: statusFilter.value,
+        has_catalog: catalogFilter.value,
         sort: sortFilter.value,
         perPage: perPage.value, 
         page: val 
@@ -99,7 +127,7 @@ const handlePageChange = (val) => {
     });
 };
 
-watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilter, sellerFilter, statusFilter, sortFilter], fetchData);
+watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilter, sellerFilter, statusFilter, catalogFilter, sortFilter], fetchData);
 </script>
 
 <template>
@@ -132,7 +160,7 @@ watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilt
             <div class="bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] space-y-4">
                 
                 <!-- Fila Superior: Filtros específicos -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-3 w-full">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-8 gap-3 w-full">
                     <el-input v-model="folioFilter" placeholder="Folio (Ej. #34)" clearable :prefix-icon="Search" class="w-full" />
                     
                     <el-select v-model="customerFilter" placeholder="Filtrar por cliente" clearable filterable class="w-full">
@@ -156,7 +184,13 @@ watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilt
                         <el-option v-for="s in sellers" :key="s.id" :label="s.name" :value="s.id" />
                     </el-select>
 
-                    <el-select v-model="statusFilter" placeholder="Estado" clearable class="w-full">
+                    <el-select v-model="catalogFilter" placeholder="Catálogo" clearable class="w-full">
+                        <el-option label="Todos" value="" />
+                        <el-option label="Con catálogo" value="yes" />
+                        <el-option label="Sin catálogo" value="no" />
+                    </el-select>
+
+                    <el-select v-model="statusFilter" placeholder="Estado" multiple collapse-tags collapse-tags-tooltip class="w-full" @change="handleStatusChange">
                         <el-option label="Todos los estados" value="all" />
                         <el-option v-for="st in statuses" :key="st" :label="st" :value="st" />
                     </el-select>
@@ -168,6 +202,7 @@ watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilt
                     <div class="w-full sm:w-64">
                         <el-select v-model="sortFilter" placeholder="Ordenar por" class="w-full">
                             <template #prefix><el-icon><Sort /></el-icon></template>
+                            <el-option label="Por fecha de creación" value="created_at" />
                             <el-option label="Por atraso / urgencia" value="delay" />
                             <el-option label="Por fecha de inicio" value="start_date" />
                         </el-select>

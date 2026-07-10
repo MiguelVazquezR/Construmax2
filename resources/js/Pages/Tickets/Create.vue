@@ -41,6 +41,7 @@ const form = useForm({
     seller_id: '',
     name: '',
     service_type: '',
+    report_number: '',
     duration: '',
     user_id: '', 
     technicians: [],

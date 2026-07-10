@@ -61,6 +61,8 @@ const getHealthStatus = (ticket) => {
 
     const start = new Date(ticket.scheduled_start);
     const end = new Date(ticket.scheduled_end);
+    // Add 1 day to the end date — the ticket is overdue the day AFTER the due date
+    end.setDate(end.getDate() + 1);
     const now = new Date();
 
     // Past the end date
@@ -233,7 +235,16 @@ const deleteTicket = (ticket) => {
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-400">Fin:</span>
-                                <span class="text-gray-700 dark:text-gray-300 font-mono">{{ formatDate(scope.row.scheduled_end) }}</span>
+                                <span 
+                                    :class="[
+                                        'font-mono',
+                                        getHealthStatus(scope.row).text === 'Vencido' 
+                                            ? 'text-red-500 font-bold' 
+                                            : 'text-gray-700 dark:text-gray-300'
+                                    ]"
+                                >
+                                    {{ formatDate(scope.row.scheduled_end) }}
+                                </span>
                             </div>
                         </div>
                     </template>
@@ -242,7 +253,22 @@ const deleteTicket = (ticket) => {
                 <el-table-column label="Salud" width="120" align="center">
                     <template #default="scope">
                         <div class="flex flex-col items-center">
+                            <el-tooltip
+                                v-if="getHealthStatus(scope.row).text === 'Vencido'"
+                                content="Vence un día después de la fecha de fin programada"
+                                placement="top"
+                            >
+                                <el-tag 
+                                    :type="getHealthStatus(scope.row).color" 
+                                    effect="dark" 
+                                    size="small" 
+                                    class="w-full text-center border-none font-bold cursor-help"
+                                >
+                                    {{ getHealthStatus(scope.row).text }}
+                                </el-tag>
+                            </el-tooltip>
                             <el-tag 
+                                v-else
                                 :type="getHealthStatus(scope.row).color" 
                                 effect="dark" 
                                 size="small" 
@@ -316,7 +342,16 @@ const deleteTicket = (ticket) => {
                         <span class="font-mono text-gray-700 dark:text-gray-300 font-bold text-xs bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">
                             {{ ticket.folio }}
                         </span>
-                        <el-tag :type="getHealthStatus(ticket).color" size="small" effect="dark" class="!border-none !h-5 !text-[10px]">
+                        <el-tooltip
+                            v-if="getHealthStatus(ticket).text === 'Vencido'"
+                            content="Vence un día después de la fecha de fin programada"
+                            placement="top"
+                        >
+                            <el-tag :type="getHealthStatus(ticket).color" size="small" effect="dark" class="!border-none !h-5 !text-[10px] cursor-help">
+                                {{ getHealthStatus(ticket).text }}
+                            </el-tag>
+                        </el-tooltip>
+                        <el-tag v-else :type="getHealthStatus(ticket).color" size="small" effect="dark" class="!border-none !h-5 !text-[10px]">
                             {{ getHealthStatus(ticket).text }}
                         </el-tag>
                     </div>
@@ -373,7 +408,16 @@ const deleteTicket = (ticket) => {
                     
                     <div class="text-right">
                         <p class="text-[10px] text-gray-400 uppercase">Vence</p>
-                        <p class="text-xs font-bold text-gray-700 dark:text-gray-300">{{ formatDate(ticket.scheduled_end) }}</p>
+                        <p 
+                            :class="[
+                                'text-xs font-bold',
+                                getHealthStatus(ticket).text === 'Vencido' 
+                                    ? 'text-red-500' 
+                                    : 'text-gray-700 dark:text-gray-300'
+                            ]"
+                        >
+                            {{ formatDate(ticket.scheduled_end) }}
+                        </p>
                     </div>
                 </div>
             </div>

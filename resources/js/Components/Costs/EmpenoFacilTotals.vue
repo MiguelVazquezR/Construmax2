@@ -10,6 +10,8 @@ const props = defineProps({
     total: { type: Number, required: true },
     includeIva: { type: Boolean, required: true },
     currency: { type: String, default: 'MXN' },
+    loading: { type: Boolean, default: false },
+    canEdit: { type: Boolean, default: true },
 });
 
 const emit = defineEmits(['update:nonInstallationLabor', 'update:laborUtility', 'update:includeIva', 'save', 'print']);
@@ -24,13 +26,19 @@ const { formatCurrency, copyToClipboard } = useCostsHelpers();
                 <el-icon><Coin /></el-icon> Totales
             </h3>
             <div class="flex items-center gap-2">
-                <el-button type="info" plain size="small" icon="Printer" @click="$emit('print')">
+                <el-button type="info" plain size="small" icon="Printer" @click="emit('print')">
                     Imprimir catálogo
                 </el-button>
-                <el-button type="primary" color="#f26c17" size="small" icon="Check" @click="$emit('save')">
+                <el-button v-if="canEdit" type="primary" color="#f26c17" size="small" icon="Check" :loading="loading" @click="emit('save')">
                     Guardar versión
                 </el-button>
             </div>
+        </div>
+        <div v-if="!canEdit" class="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-800">
+            <p class="text-xs text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                <el-icon><InfoFilled /></el-icon>
+                No tienes permiso para crear versiones de catálogo. Los campos están deshabilitados.
+            </p>
         </div>
         <div class="p-4">
             <table class="w-full text-sm max-w-md ml-auto">
@@ -64,8 +72,9 @@ const { formatCurrency, copyToClipboard } = useCostsHelpers();
                         <td class="px-2 py-2">
                             <el-input-number
                                 :model-value="props.nonInstallationLabor"
-                                @update:model-value="$emit('update:nonInstallationLabor', $event)"
+                                @update:model-value="emit('update:nonInstallationLabor', $event)"
                                 :min="0" :step="0.01" :controls="false"
+                                :disabled="!canEdit"
                                 class="!w-full text-right" />
                         </td>
                     </tr>
@@ -86,8 +95,9 @@ const { formatCurrency, copyToClipboard } = useCostsHelpers();
                         <td class="px-2 py-2">
                             <el-input-number
                                 :model-value="props.laborUtility"
-                                @update:model-value="$emit('update:laborUtility', $event)"
+                                @update:model-value="emit('update:laborUtility', $event)"
                                 :min="0" :step="0.01" :controls="false"
+                                :disabled="!canEdit"
                                 class="!w-full text-right" />
                         </td>
                     </tr>

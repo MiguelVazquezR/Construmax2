@@ -328,6 +328,10 @@ const sellerUsers = computed(() => {
                 <el-form-item label="Duración estimada" prop="duration" :error="form.errors.duration">
                     <el-input v-model="form.duration" placeholder="Ej. 2 semanas" />
                 </el-form-item>
+
+                <el-form-item label="No. reporte / ticket" prop="report_number" :error="form.errors.report_number">
+                    <el-input v-model="form.report_number" placeholder="Número de reporte del cliente" />
+                </el-form-item>
                 
                 <el-form-item label="Prioridad" prop="priority" :error="form.errors.priority">
                     <el-select v-model="form.priority" class="w-full">
@@ -410,28 +414,28 @@ const sellerUsers = computed(() => {
                     </el-select>
                 </el-form-item>
 
-                <!-- Plantilla de Tareas (Solo Creación) -->
-                <el-form-item v-if="!isEdit" prop="task_template_id" :error="form.errors.task_template_id">
+                <!-- Plantilla de Tareas -->
+                <el-form-item prop="task_template_id" :error="form.errors.task_template_id">
                     <template #label>
                         <div class="flex justify-between items-center w-full">
-                            <span>Plantilla de tareas iniciales (Opcional)</span>
+                            <span>Plantilla de tareas (opcional)</span>
                             <el-button type="primary" link size="small" @click.stop="showTaskTemplateModal = true">
-                                + Nueva plantilla
+                                + Gestionar plantillas
                             </el-button>
                         </div>
                     </template>
-                    <el-select v-model="form.task_template_id" clearable placeholder="Seleccionar plantilla..." class="w-full">
+                    <el-select v-model="form.task_template_id" clearable placeholder="Seleccionar plantilla..." class="w-full" filterable>
                         <el-option v-for="tpl in templates" :key="tpl.id" :label="tpl.name" :value="tpl.id" />
                     </el-select>
                 </el-form-item>
             </div>
 
-            <!-- Alerta Informativa (Se muestra si se selecciona una plantilla en Creación) -->
+            <!-- Alerta Informativa (Se muestra si se selecciona una plantilla) -->
             <el-alert 
-                v-if="!isEdit && form.task_template_id" 
+                v-if="form.task_template_id" 
                 title="Generación automática de tareas activada" 
                 type="success" 
-                description="Las tareas definidas en esta plantilla se registrarán en automático para todos los técnicos asignados una vez que guardes el ticket."
+                :description="isEdit ? 'Si el ticket no tiene tareas aún, se generarán automáticamente para todos los técnicos asignados al guardar.' : 'Las tareas definidas en esta plantilla se registrarán en automático para todos los técnicos asignados una vez que guardes el ticket.'"
                 show-icon 
                 :closable="false"
                 class="mb-6 mt-2 !bg-green-50 dark:!bg-green-900/20 !text-green-700 dark:!text-green-400 border border-green-100 dark:border-green-800"

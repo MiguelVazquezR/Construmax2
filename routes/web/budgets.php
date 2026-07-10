@@ -19,5 +19,6 @@ Route::middleware([
 
     // Archivos
     Route::post('/budgets/{budget}/files', [BudgetController::class, 'storeFile'])->name('budgets.files.store');
+    Route::post('/budgets/bulk-upload-files', [BudgetController::class, 'bulkUploadFiles'])->name('budgets.bulk-upload-files');
     Route::delete('/budgets/files/{media}', [BudgetController::class, 'destroyFile'])->name('budgets.files.destroy');
 });

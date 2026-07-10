@@ -92,6 +92,8 @@ class BudgetController extends Controller
             'concepts.*.payment_date' => 'nullable|date',
             'survey_images' => 'nullable|array',
             'survey_images.*' => 'image|max:10240',
+            'support_files' => 'nullable|array',
+            'support_files.*' => 'file|max:10240',
         ]);
 
         $budget = null;
@@ -121,6 +123,21 @@ class BudgetController extends Controller
                 $budget?->addMedia($optimizedPath)
                     ->usingFileName($image->getClientOriginalName())
                     ->toMediaCollection('survey_images');
+            }
+        }
+
+        if ($request->hasFile('support_files')) {
+            foreach ($request->file('support_files') as $file) {
+                if (str_starts_with($file->getMimeType(), 'image/')) {
+                    $optimizedPath = $this->imageOptimizer->optimize($file);
+                    $budget?->addMedia($optimizedPath)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('budget_files');
+                } else {
+                    $budget?->addMedia($file)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('budget_files');
+                }
             }
         }
 
@@ -206,6 +223,8 @@ class BudgetController extends Controller
             'concepts.*.payment_date' => 'nullable|date',
             'survey_images' => 'nullable|array',
             'survey_images.*' => 'image|max:10240',
+            'support_files' => 'nullable|array',
+            'support_files.*' => 'file|max:10240',
         ]);
 
         DB::transaction(function () use ($validated, $budget) {
@@ -227,6 +246,21 @@ class BudgetController extends Controller
                 $budget->addMedia($optimizedPath)
                     ->usingFileName($image->getClientOriginalName())
                     ->toMediaCollection('survey_images');
+            }
+        }
+
+        if ($request->hasFile('support_files')) {
+            foreach ($request->file('support_files') as $file) {
+                if (str_starts_with($file->getMimeType(), 'image/')) {
+                    $optimizedPath = $this->imageOptimizer->optimize($file);
+                    $budget->addMedia($optimizedPath)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('budget_files');
+                } else {
+                    $budget->addMedia($file)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('budget_files');
+                }
             }
         }
 
@@ -338,6 +372,37 @@ class BudgetController extends Controller
         return back()->with('success', 'Archivo eliminado.');
     }
 
+    public function bulkUploadFiles(Request $request)
+    {
+        $validated = $request->validate([
+            'budget_ids' => 'required|array|min:1',
+            'budget_ids.*' => 'exists:budgets,id',
+            'files' => 'required|array|min:1',
+            'files.*' => 'file|max:20480',
+        ]);
+
+        $budgets = Budget::whereIn('id', $validated['budget_ids'])->get();
+        $count = 0;
+
+        foreach ($budgets as $budget) {
+            foreach ($request->file('files') as $file) {
+                if (str_starts_with($file->getMimeType(), 'image/')) {
+                    $optimizedPath = $this->imageOptimizer->optimize($file);
+                    $budget->addMedia($optimizedPath)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('budget_files');
+                } else {
+                    $budget->addMedia($file)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('budget_files');
+                }
+                $count++;
+            }
+        }
+
+        return back()->with('success', "{$count} archivos adjuntados a " . $budgets->count() . " presupuestos.");
+    }
+
     // --- NUEVOS MÉTODOS: PAGOS A TÉCNICOS ---
 
     public function storeTechnicianPayment(Request $request, Budget $budget)
@@ -349,7 +414,7 @@ class BudgetController extends Controller
             'payment_method' => 'required|string',
             'reference' => 'nullable|string',
             'notes' => 'nullable|string',
-            'proof' => 'required|file|max:5120', // Comprobante obligatorio como solicitaste
+            'proof' => 'nullable|file|max:5120',
         ]);
 
         $payment = $budget->technicianPayments()->create([

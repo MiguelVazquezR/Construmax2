@@ -27,6 +27,7 @@ const form = useForm({
     seller_id: props.ticket.seller_id || '',
     name: props.ticket.name,
     service_type: props.ticket.service_type,
+    report_number: props.ticket.report_number || '',
     duration: props.ticket.duration || '',
     user_id: props.ticket.user_id,
     technicians: (props.ticket.technicians || []).map(Number),
@@ -36,6 +37,7 @@ const form = useForm({
     scheduled_start: props.ticket.scheduled_start,
     scheduled_end: props.ticket.scheduled_end,
     instructions: props.ticket.instructions,
+    task_template_id: '',
     uploaded_files: [],
 });
 
@@ -79,6 +81,7 @@ const submit = () => {
                 seller_id: data.seller_id,
                 name: data.name,
                 service_type: data.service_type,
+                report_number: data.report_number,
                 duration: data.duration,
                 user_id: data.user_id,
                 technicians: data.technicians,
@@ -88,6 +91,7 @@ const submit = () => {
                 scheduled_start: data.scheduled_start,
                 scheduled_end: data.scheduled_end,
                 instructions: data.instructions,
+                task_template_id: data.task_template_id,
             }));
 
             form.put(route('tickets.update', props.ticket.id), {

@@ -39,6 +39,7 @@ const form = useForm({
         }))
         : [{ concept: '', amount: 0, paid_to_technician: false, payment_date: null }],
     survey_images: [],
+    support_files: [],
 });
 
 // Si es edit y el cliente del ticket actual usa USD, cargar TC al montar
@@ -150,7 +151,7 @@ const submit = () => {
                 return;
             }
 
-            const hasFiles = form.survey_images.length > 0;
+            const hasFiles = form.survey_images.length > 0 || form.support_files.length > 0;
 
             if (isEdit) {
                 form
@@ -435,6 +436,45 @@ defineExpose({ form });
                                 placeholder="Alcances, condiciones comerciales, notas..."
                             />
                         </el-form-item>
+                    </div>
+                </div>
+
+                <!-- Tarjeta: Archivos de apoyo -->
+                <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                            <el-icon class="text-primary"><FolderOpened /></el-icon> Archivos de apoyo
+                        </h3>
+                        <span class="text-xs text-gray-400">Opcional</span>
+                    </div>
+                    <p class="text-sm text-gray-500 mb-4">
+                        Sube planos, cotizaciones, órdenes de compra o cualquier documento relacionado con este presupuesto.
+                    </p>
+                    <el-upload
+                        ref="supportUploadRef"
+                        :auto-upload="false"
+                        :show-file-list="false"
+                        :on-change="(file) => { form.support_files.push(file.raw); }"
+                        :on-remove="(file) => { form.support_files = form.support_files.filter(f => f.name !== file.name || f.size !== file.size); }"
+                        multiple
+                        class="w-full"
+                    >
+                        <el-button type="primary" plain icon="Upload">Seleccionar archivos</el-button>
+                        <template #tip>
+                            <div class="el-upload__tip">Archivos PDF, imágenes, documentos (Máx. 10MB c/u)</div>
+                        </template>
+                    </el-upload>
+                    <div v-if="form.support_files.length > 0" class="mt-3 flex flex-wrap gap-2">
+                        <el-tag
+                            v-for="(f, i) in form.support_files"
+                            :key="i"
+                            closable
+                            type="info"
+                            effect="plain"
+                            @close="form.support_files.splice(i, 1)"
+                        >
+                            {{ f.name }}
+                        </el-tag>
                     </div>
                 </div>
 
