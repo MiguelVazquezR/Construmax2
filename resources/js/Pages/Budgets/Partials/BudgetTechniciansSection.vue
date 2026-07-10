@@ -219,9 +219,9 @@ const openPreview = (file) => {
     >
         <el-form :model="techPaymentForm" label-position="top">
             <el-alert
-                title="Importante"
+                title="Información"
                 type="info"
-                description="El comprobante es obligatorio para los pagos a personal técnico."
+                description="El comprobante de pago es opcional. Puedes adjuntarlo después si lo requieres."
                 show-icon
                 :closable="false"
                 class="mb-4"
@@ -254,7 +254,7 @@ const openPreview = (file) => {
                 <el-input v-model="techPaymentForm.notes" type="textarea" placeholder="Concepto o detalles..." />
             </el-form-item>
 
-            <el-form-item label="Comprobante de pago (Obligatorio)" :error="techPaymentForm.errors.proof">
+            <el-form-item label="Comprobante de pago (Opcional)" :error="techPaymentForm.errors.proof">
                 <el-upload
                     ref="techPaymentUploadRef"
                     class="w-full"

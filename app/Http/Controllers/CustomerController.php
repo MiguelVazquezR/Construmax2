@@ -32,74 +32,89 @@ class CustomerController extends Controller
 
     public function store(Request $request)
     {
-        $validated = $request->validate([
+        $rules = [
+            'type' => 'required|string|in:customer,prospect',
             'name' => 'required|string|max:255',
             'business_name' => 'required|string|max:255',
-            'rfc' => 'nullable|string|max:20',
-            'payment_condition' => 'required|string',
-            'payment_method' => 'required|string',
-            'invoice_usage' => 'required|string',
-            'currency' => 'required|string|in:MXN,USD',
-            'payment_days' => 'nullable|integer|min:0|max:365', 
-            
-            'branches' => 'required|array|min:1',
-            'branches.*.country' => 'required|string|max:100',
-            'branches.*.region' => 'required|string|max:100',
-            'branches.*.city' => 'required|string|max:100',
-            'branches.*.unit' => 'required|string|max:255',
-            'branches.*.branch_name' => 'required|string|max:255',
-
             'contacts' => 'required|array|min:1',
             'contacts.*.name' => 'required|string|max:255',
             'contacts.*.email' => 'required|email|max:255',
-            'contacts.*.phone' => 'required|string|max:20',
+            'contacts.*.phone' => 'nullable|string|max:20',
             'contacts.*.position' => 'required|string|max:100',
-            'contacts.*.branch_indices' => 'required|array|min:1',
+            'contacts.*.branch_indices' => 'nullable|array',
             'contacts.*.branch_indices.*' => 'integer',
-
             'logo' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
             'files' => 'nullable|array',
             'files.*' => 'nullable|file|mimes:pdf,doc,docx,xls,xlsx,jpeg,png,jpg,webp|max:10240',
-        ]);
+        ];
+
+        if ($request->input('type') === 'customer') {
+            $rules['rfc'] = 'required|string|max:20';
+            $rules['payment_condition'] = 'required|string';
+            $rules['payment_method'] = 'required|string';
+            $rules['invoice_usage'] = 'required|string';
+            $rules['currency'] = 'required|string|in:MXN,USD';
+            $rules['payment_days'] = 'nullable|integer|min:0|max:365';
+            $rules['branches'] = 'required|array|min:1';
+            $rules['branches.*.country'] = 'required|string|max:100';
+            $rules['branches.*.region'] = 'required|string|max:100';
+            $rules['branches.*.city'] = 'required|string|max:100';
+            $rules['branches.*.unit'] = 'required|string|max:255';
+            $rules['branches.*.branch_name'] = 'required|string|max:255';
+            $rules['contacts.*.branch_indices'] = 'required|array|min:1';
+            $rules['contacts.*.branch_indices.*'] = 'integer';
+        } else {
+            $rules['rfc'] = 'nullable|string|max:20';
+            $rules['contacts.*.phone'] = 'nullable|string|max:20';
+        }
+
+        $validated = $request->validate($rules);
 
         DB::transaction(function () use ($validated, $request) {
             $customer = Customer::create([
+                'type' => $validated['type'],
                 'name' => $validated['name'],
                 'business_name' => $validated['business_name'],
-                'rfc' => $validated['rfc'],
-                'payment_condition' => $validated['payment_condition'],
-                'payment_method' => $validated['payment_method'],
-                'invoice_usage' => $validated['invoice_usage'],
-                'currency' => $validated['currency'],
+                'rfc' => $validated['rfc'] ?? null,
+                'payment_condition' => $validated['payment_condition'] ?? '',
+                'payment_method' => $validated['payment_method'] ?? 'Transferencia',
+                'invoice_usage' => $validated['invoice_usage'] ?? '',
+                'currency' => $validated['currency'] ?? 'MXN',
                 'payment_days' => $validated['payment_days'] ?? 0,
                 'is_active' => true,
             ]);
 
-            $createdBranches = [];
-            foreach ($validated['branches'] as $index => $branchData) {
-                $createdBranches[$index] = $customer->branches()->create($branchData);
+            if ($validated['type'] === 'customer' && !empty($validated['branches'] ?? [])) {
+                $createdBranches = [];
+                foreach ($validated['branches'] as $index => $branchData) {
+                    $createdBranches[$index] = $customer->branches()->create($branchData);
+                }
+
+                foreach ($validated['contacts'] as $contactData) {
+                    $branchIndices = $contactData['branch_indices'] ?? [];
+                    unset($contactData['branch_indices']);
+
+                    $contact = $customer->contacts()->create($contactData);
+
+                    $branchIds = collect($branchIndices)->map(function ($idx) use ($createdBranches) {
+                        return $createdBranches[$idx]->id ?? null;
+                    })->filter()->toArray();
+
+                    $contact->branches()->attach($branchIds);
+                }
+            } else {
+                // Prospect: create contacts without branches
+                foreach ($validated['contacts'] as $contactData) {
+                    unset($contactData['branch_indices']);
+                    $customer->contacts()->create($contactData);
+                }
             }
 
-            foreach ($validated['contacts'] as $contactData) {
-                $branchIndices = $contactData['branch_indices'];
-                unset($contactData['branch_indices']);
-
-                $contact = $customer->contacts()->create($contactData);
-
-                $branchIds = collect($branchIndices)->map(function ($idx) use ($createdBranches) {
-                    return $createdBranches[$idx]->id ?? null;
-                })->filter()->toArray();
-
-                $contact->branches()->attach($branchIds);
-            }
-
-            // Handle logo upload
             if ($request->hasFile('logo')) {
                 $customer->addMediaFromRequest('logo')
                     ->toMediaCollection('logo');
             }
 
-            // Handle file attachments
             if ($request->hasFile('files')) {
                 foreach ($request->file('files') as $file) {
                     $customer->addMedia($file)
@@ -138,36 +153,44 @@ class CustomerController extends Controller
 
     public function update(Request $request, Customer $customer)
     {
-        $validated = $request->validate([
+        $rules = [
+            'type' => 'required|string|in:customer,prospect',
             'name' => 'required|string|max:255',
             'business_name' => 'required|string|max:255',
             'rfc' => 'nullable|string|max:20',
-            'payment_condition' => 'required|string',
-            'payment_method' => 'required|string',
-            'invoice_usage' => 'required|string',
-            'currency' => 'required|string|in:MXN,USD',
-            'payment_days' => 'nullable|integer|min:0|max:365',
-            
-            'branches' => 'required|array|min:1',
-            'branches.*.id' => 'nullable|integer|exists:customer_branches,id',
-            'branches.*.country' => 'required|string|max:100',
-            'branches.*.region' => 'required|string|max:100',
-            'branches.*.city' => 'required|string|max:100',
-            'branches.*.unit' => 'required|string|max:255',
-            'branches.*.branch_name' => 'required|string|max:255',
-
             'contacts' => 'required|array|min:1',
             'contacts.*.id' => 'nullable|integer|exists:customer_contacts,id',
             'contacts.*.name' => 'required|string|max:255',
             'contacts.*.email' => 'required|email|max:255',
-            'contacts.*.phone' => 'required|string|max:20',
+            'contacts.*.phone' => 'nullable|string|max:20',
             'contacts.*.position' => 'required|string|max:100',
-            'contacts.*.branch_indices' => 'required|array|min:1',
+            'contacts.*.branch_indices' => 'nullable|array',
             'contacts.*.branch_indices.*' => 'integer',
-        ]);
+        ];
+
+        if ($request->input('type') === 'customer') {
+            $rules['rfc'] = 'required|string|max:20';
+            $rules['payment_condition'] = 'required|string';
+            $rules['payment_method'] = 'required|string';
+            $rules['invoice_usage'] = 'required|string';
+            $rules['currency'] = 'required|string|in:MXN,USD';
+            $rules['payment_days'] = 'nullable|integer|min:0|max:365';
+            $rules['branches'] = 'required|array|min:1';
+            $rules['branches.*.id'] = 'nullable|integer|exists:customer_branches,id';
+            $rules['branches.*.country'] = 'required|string|max:100';
+            $rules['branches.*.region'] = 'required|string|max:100';
+            $rules['branches.*.city'] = 'required|string|max:100';
+            $rules['branches.*.unit'] = 'required|string|max:255';
+            $rules['branches.*.branch_name'] = 'required|string|max:255';
+            $rules['contacts.*.branch_indices'] = 'required|array|min:1';
+            $rules['contacts.*.branch_indices.*'] = 'integer';
+        }
+
+        $validated = $request->validate($rules);
 
         DB::transaction(function () use ($validated, $customer) {
             $customer->update([
+                'type' => $validated['type'],
                 'name' => $validated['name'],
                 'business_name' => $validated['business_name'],
                 'rfc' => $validated['rfc'],
@@ -178,32 +201,34 @@ class CustomerController extends Controller
                 'payment_days' => $validated['payment_days'] ?? 0,
             ]);
 
-            // ── Sync branches (upsert instead of delete + recreate) ──
-            $existingBranchIds = $customer->branches()->pluck('id')->toArray();
-            $incomingBranchIds = [];
-            $createdBranches = [];
+            // ── Sync branches (upsert instead of delete + recreate) - Only for customers ──
+            if ($validated['type'] === 'customer' && !empty($validated['branches'] ?? [])) {
+                $existingBranchIds = $customer->branches()->pluck('id')->toArray();
+                $incomingBranchIds = [];
+                $createdBranches = [];
 
-            foreach ($validated['branches'] as $index => $branchData) {
-                $branchId = $branchData['id'] ?? null;
-                unset($branchData['id']);
+                foreach ($validated['branches'] as $index => $branchData) {
+                    $branchId = $branchData['id'] ?? null;
+                    unset($branchData['id']);
 
-                if ($branchId && in_array($branchId, $existingBranchIds)) {
-                    $branch = $customer->branches()->find($branchId);
-                    $branch->update($branchData);
-                } else {
-                    $branch = $customer->branches()->create($branchData);
+                    if ($branchId && in_array($branchId, $existingBranchIds)) {
+                        $branch = $customer->branches()->find($branchId);
+                        $branch->update($branchData);
+                    } else {
+                        $branch = $customer->branches()->create($branchData);
+                    }
+
+                    $createdBranches[$index] = $branch;
+                    $incomingBranchIds[] = $branch->id;
                 }
 
-                $createdBranches[$index] = $branch;
-                $incomingBranchIds[] = $branch->id;
-            }
-
-            // Delete branches removed by the user
-            $branchesToDelete = array_diff($existingBranchIds, $incomingBranchIds);
-            if (!empty($branchesToDelete)) {
-                Ticket::whereIn('customer_branch_id', $branchesToDelete)
-                    ->update(['customer_branch_id' => null]);
-                $customer->branches()->whereIn('id', $branchesToDelete)->delete();
+                // Delete branches removed by the user
+                $branchesToDelete = array_diff($existingBranchIds, $incomingBranchIds);
+                if (!empty($branchesToDelete)) {
+                    Ticket::whereIn('customer_branch_id', $branchesToDelete)
+                        ->update(['customer_branch_id' => null]);
+                    $customer->branches()->whereIn('id', $branchesToDelete)->delete();
+                }
             }
 
             // ── Sync contacts (upsert instead of delete + recreate) ──
@@ -212,7 +237,7 @@ class CustomerController extends Controller
 
             foreach ($validated['contacts'] as $contactData) {
                 $contactId = $contactData['id'] ?? null;
-                $branchIndices = $contactData['branch_indices'];
+                $branchIndices = $contactData['branch_indices'] ?? [];
                 unset($contactData['id'], $contactData['branch_indices']);
 
                 if ($contactId && in_array($contactId, $existingContactIds)) {
@@ -253,6 +278,16 @@ class CustomerController extends Controller
     {
         $customer->delete();
         return back()->with('success', 'Cliente eliminado correctamente.');
+    }
+
+    public function convertToCustomer(Customer $customer)
+    {
+        if ($customer->type !== 'prospect') {
+            return back()->with('error', 'Solo los prospectos pueden convertirse a cliente.');
+        }
+
+        $customer->update(['type' => 'customer']);
+        return back()->with('success', 'Prospecto convertido a cliente correctamente.');
     }
 
     public function deleteMedia(Customer $customer, $mediaId)
