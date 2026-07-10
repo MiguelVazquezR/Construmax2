@@ -4,9 +4,12 @@ import { router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { debounce } from 'lodash';
 import TableList from '@/Pages/Budgets/Partials/TableList.vue';
+import BulkFileUploadModal from '@/Pages/Budgets/Partials/BulkFileUploadModal.vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
 const { can } = usePermissions();
+
+const showBulkUploadModal = ref(false);
 
 const props = defineProps({
     budgets: Object,
@@ -121,6 +124,10 @@ watch([search, statusFilter, perPage, userFilter, branchFilter], fetchData);
                         <el-option label="50 / pág" :value="50" />
                     </el-select>
 
+                    <el-button type="warning" plain icon="Upload" @click="showBulkUploadModal = true">
+                        Adjuntar archivos
+                    </el-button>
+
                     <Link v-if="can('budgets.create')" :href="route('budgets.create')">
                         <el-button type="primary" color="#f26c17" icon="Plus">
                             Nuevo
@@ -141,6 +148,8 @@ watch([search, statusFilter, perPage, userFilter, branchFilter], fetchData);
                 </template>
             </el-alert>
             <TableList :budgets="budgets" />
+
+            <BulkFileUploadModal v-model:show="showBulkUploadModal" :budgets="budgets.data" />
 
         </div>
     </AppLayout>

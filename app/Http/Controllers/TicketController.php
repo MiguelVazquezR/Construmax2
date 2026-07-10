@@ -21,7 +21,7 @@ class TicketController extends Controller
     public function index(Request $request)
     {
         $perPage = $request->input('perPage', 20);
-        $sort = $request->input('sort', 'delay'); 
+        $sort = $request->input('sort', 'created_at'); 
 
         $query = Ticket::with(['customer', 'contact', 'branch', 'tasks.assignee', 'budget.latestCatalog', 'seller']);
 
@@ -75,16 +75,50 @@ class TicketController extends Controller
             $query->where('seller_id', $request->input('seller'));
         }
 
-        if ($request->filled('status') && $request->input('status') !== 'all') {
-            $query->where('status', $request->input('status'));
+        // FILTRO POR CATÁLOGO
+        if ($request->filled('has_catalog')) {
+            $catalogFilter = $request->input('has_catalog');
+            if ($catalogFilter === 'yes') {
+                $query->whereHas('budget.latestCatalog');
+            } elseif ($catalogFilter === 'no') {
+                $query->where(function ($q) {
+                    $q->doesntHave('budget')
+                      ->orWhereHas('budget', function ($b) {
+                          $b->doesntHave('latestCatalog');
+                      });
+                });
+            }
+        }
+
+        // Default active statuses (exclude finalized/completed)
+        $defaultStatuses = ['Borrador', 'Programado', 'Levantamiento', 'Catálogo', 'Proceso de ejecución', 'Ejecutado', 'Finalizado'];
+
+        if ($request->has('status')) {
+            $statusFilter = $request->input('status', []);
+            if (is_array($statusFilter) && !empty($statusFilter)) {
+                if (in_array('all', $statusFilter)) {
+                    // Show all — no status filter
+                } else {
+                    $query->whereIn('status', $statusFilter);
+                }
+            } else {
+                // Empty or invalid: use default active statuses
+                $query->whereIn('status', $defaultStatuses);
+            }
+        } else {
+            // Default: show only active statuses
+            $query->whereIn('status', $defaultStatuses);
         }
 
         // ORDENAMIENTO
         if ($sort === 'start_date') {
             $query->orderBy('scheduled_start', 'desc');
-        } else {
+        } elseif ($sort === 'delay') {
             $query->orderByRaw("CASE WHEN status IN ('Ejecutado', 'Facturado', 'Pagado', 'Cancelado') THEN 2 ELSE 1 END")
                   ->orderBy('scheduled_end', 'asc');
+        } else {
+            // Default: created_at
+            $query->orderBy('created_at', 'desc');
         }
 
         return Inertia::render('Tickets/Index', [
@@ -100,7 +134,8 @@ class TicketController extends Controller
                 'priority' => $request->input('priority'),
                 'technician' => $request->input('technician'),
                 'seller' => $request->input('seller'),
-                'status' => $request->input('status', 'all'),
+                'status' => $request->input('status', $defaultStatuses),
+                'has_catalog' => $request->input('has_catalog'),
                 'perPage' => $perPage,
                 'sort' => $sort,
             ],
@@ -126,6 +161,7 @@ class TicketController extends Controller
             'seller_id' => 'nullable|exists:users,id',
             'name' => 'required|string|max:255',
             'service_type' => 'required|string|max:255',
+            'report_number' => 'nullable|string|max:255',
             'duration' => 'nullable|string',
             'technicians' => 'nullable|array',
             'technicians.*' => 'exists:users,id',
@@ -202,6 +238,24 @@ class TicketController extends Controller
         return back()->with('success', 'Estatus actualizado.');
     }
 
+    public function updateReportNumber(Request $request, Ticket $ticket)
+    {
+        $request->validate(['report_number' => 'nullable|string|max:255']);
+        $ticket->update(['report_number' => $request->report_number]);
+        return back()->with('success', 'Número de reporte actualizado.');
+    }
+
+    public function updateField(Request $request, Ticket $ticket)
+    {
+        $validated = $request->validate([
+            'field' => 'required|string|in:report_number,scheduled_start,scheduled_end',
+            'value' => 'nullable|string|max:255',
+        ]);
+
+        $ticket->update([$validated['field'] => $validated['value']]);
+        return back()->with('success', 'Campo actualizado.');
+    }
+
     public function updateTechnicians(Request $request, Ticket $ticket)
     {
         $validated = $request->validate([
@@ -240,6 +294,7 @@ class TicketController extends Controller
             'seller_id' => 'nullable|exists:users,id',
             'name' => 'required|string|max:255',
             'service_type' => 'required|string|max:255',
+            'report_number' => 'nullable|string|max:255',
             'duration' => 'nullable|string',
             'technicians' => 'nullable|array',
             'technicians.*' => 'exists:users,id',
@@ -250,6 +305,7 @@ class TicketController extends Controller
             'scheduled_start' => 'nullable|date',
             'scheduled_end' => 'nullable|date|after_or_equal:scheduled_start',
             'instructions' => 'nullable|string',
+            'task_template_id' => 'nullable|exists:task_templates,id',
         ]);
 
         $oldTechnicians = $ticket->technicians ?? [];
@@ -259,6 +315,15 @@ class TicketController extends Controller
         // When a technician is replaced, reassign all tasks and payments
         // from the removed technician to the new one
         $this->reassignTechnicianData($ticket, $oldTechnicians, $newTechnicians);
+
+        // Generate tasks from template if selected and ticket has no tasks yet
+        if ($request->filled('task_template_id') && !empty($newTechnicians)) {
+            $hasTasks = $ticket->tasks()->exists();
+            if (!$hasTasks) {
+                $ticket->generateTasksFromTemplate($request->input('task_template_id'), $newTechnicians);
+                $ticket->updateStatusBasedOnTasks();
+            }
+        }
 
         return redirect()->route('tickets.show', $ticket->id)->with('success', 'Ticket actualizado.');
     }
@@ -348,7 +413,9 @@ class TicketController extends Controller
             'budget.customer.media',
         ]);
 
-        $ticket->tasks = $ticket->tasks->sortBy('start_date');
+        // Keep tasks in their natural order (as shown in the task list),
+        // not sorted by start_date — the user controls the visual order.
+        // Media within each task is ordered by order_column via the model's media() override.
 
         return Inertia::render('Tickets/EvidenceTemplate', [
             'ticket' => $ticket,

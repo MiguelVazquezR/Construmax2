@@ -7,8 +7,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use App\Actions\Notifications\DispatchNotificationAction;
 
 class Ticket extends Model implements HasMedia
@@ -41,6 +43,7 @@ class Ticket extends Model implements HasMedia
         'seller_id',
         'name',
         'service_type',
+        'report_number',
         'duration',
         'technicians',
         'assistant_technicians',
@@ -59,6 +62,17 @@ class Ticket extends Model implements HasMedia
     ];
 
     protected $appends = ['progress', 'folio'];
+
+    /**
+     * Override Spatie's media() to always order by order_column.
+     * Spatie v11's raw relationship lacks the orderBy, so eager-loaded
+     * media comes unsorted.
+     */
+    public function media(): MorphMany
+    {
+        return $this->morphMany(config('media-library.media_model', Media::class), 'model')
+            ->orderBy('order_column');
+    }
 
     // --- RELACIONES ---
 

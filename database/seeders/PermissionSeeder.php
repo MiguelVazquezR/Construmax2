@@ -198,6 +198,21 @@ class PermissionSeeder extends Seeder
                 'category' => 'Tickets',
                 'description' => 'Marcar tareas como completadas o pendientes de cualquier usuario'
             ],
+            [
+                'name' => 'tickets.create-tasks-template',
+                'category' => 'Tickets',
+                'description' => 'Crear plantillas de tareas'
+            ],
+            [
+                'name' => 'tickets.edit-tasks-template',
+                'category' => 'Tickets',
+                'description' => 'Editar plantillas de tareas'
+            ],
+            [
+                'name' => 'tickets.delete-tasks-template',
+                'category' => 'Tickets',
+                'description' => 'Eliminar plantillas de tareas'
+            ],
 
             // --- MÓDULO: ANALÍTICAS (DASHBOARDS) ---
             [
@@ -223,6 +238,11 @@ class PermissionSeeder extends Seeder
                 'name' => 'costs.index',
                 'category' => 'Costos',
                 'description' => 'Ver listado de presupuestos y costos'
+            ],
+            [
+                'name' => 'costs.create',
+                'category' => 'Costos',
+                'description' => 'Crear versiones de catálogo de costos'
             ],
 
             // --- MÓDULO: NOTIFICACIONES ---

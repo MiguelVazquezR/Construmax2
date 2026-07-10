@@ -17,6 +17,7 @@ Route::middleware([
     Route::delete('/customers/{customer}/logo', [CustomerController::class, 'deleteLogo'])->name('customers.logo.destroy');
     Route::post('/customers/{customer}/upload-files', [CustomerController::class, 'uploadFiles'])->name('customers.upload-files');
     Route::post('/customers/quick-branch', [CustomerController::class, 'quickStoreBranch'])->name('customers.quick-branch');
+    Route::put('/customers/{customer}/convert-to-customer', [CustomerController::class, 'convertToCustomer'])->name('customers.convert-to-customer');
     
     Route::resource('customers', CustomerController::class);
     

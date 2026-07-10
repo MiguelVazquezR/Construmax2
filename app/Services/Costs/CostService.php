@@ -67,6 +67,7 @@ class CostService
             'ticket.contact',
             'ticket.seller',
             'ticket.tasks.media',
+            'ticket.media',
             'concepts',
             'catalogs.items',
             'latestCatalog.items',
@@ -112,6 +113,16 @@ class CostService
             });
         })->sortByDesc('created_at')->values();
 
+        $ticketMedia = $budget->ticket->media->map(function ($media) {
+            return [
+                'id'          => $media->id,
+                'file_name'   => $media->file_name,
+                'mime_type'   => $media->mime_type,
+                'url'         => $media->getUrl(),
+                'created_at'  => $media->created_at?->toISOString(),
+            ];
+        })->values();
+
         return [
             'id'            => $budget->id,
             'status'        => $budget->ticket->status ?? 'N/A',
@@ -122,6 +133,7 @@ class CostService
                 'id'              => $budget->ticket->id ?? null,
                 'folio'           => $budget->ticket->folio ?? 'N/A',
                 'name'            => $budget->ticket->name ?? 'N/A',
+                'report_number'   => $budget->ticket->report_number ?? null,
                 'service_type'    => $budget->ticket->service_type ?? 'N/A',
                 'scheduled_start' => $budget->ticket->scheduled_start ?? null,
                 'scheduled_end'   => $budget->ticket->scheduled_end ?? null,
@@ -214,6 +226,7 @@ class CostService
                 ];
             }),
             'task_evidence'  => $taskEvidence,
+            'ticket_media'   => $ticketMedia,
             'subtotal'       => $budget->total_cost,
         ];
     }

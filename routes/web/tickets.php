@@ -27,6 +27,8 @@ Route::middleware([
     Route::post('/budgets/{budget}/ticket-auto', [TicketController::class, 'storeFromBudget'])->name('tickets.store-from-budget');
     Route::put('/tickets/{ticket}/status', [TicketController::class, 'updateStatus'])->name('tickets.update-status');
     Route::put('/tickets/{ticket}/technicians', [TicketController::class, 'updateTechnicians'])->name('tickets.update-technicians');
+    Route::put('/tickets/{ticket}/report-number', [TicketController::class, 'updateReportNumber'])->name('tickets.update-report-number');
+    Route::put('/tickets/{ticket}/update-field', [TicketController::class, 'updateField'])->name('tickets.update-field');
 
     // Rutas de Tareas
     Route::post('/tickets/{ticket}/tasks', [TicketTaskController::class, 'store'])->name('tickets.tasks.store');
@@ -39,9 +41,11 @@ Route::middleware([
     Route::post('/tickets/{ticket}/evidence', [TicketController::class, 'storeEvidence'])->name('tickets.evidence.store');
     Route::get('/tickets/{ticket}/evidence-template', [TicketController::class, 'evidenceTemplate'])->name('tickets.evidence-template');
     Route::post('/tickets/tasks/{task}/evidence', [TicketTaskController::class, 'storeEvidence'])->name('tickets.tasks.evidence.store');
+    Route::post('/tickets/tasks/{task}/evidence/reorder', [TicketTaskController::class, 'reorderEvidence'])->name('tickets.tasks.evidence.reorder');
     Route::delete('/tickets/evidence/{media}', [TicketController::class, 'destroyEvidence'])->name('tickets.evidence.destroy');
 
     // Rutas de Plantillas de Tareas
+    Route::get('/task-templates', [TaskTemplateController::class, 'index'])->name('task-templates.index');
     Route::post('/task-templates', [TaskTemplateController::class, 'store'])->name('task-templates.store');
     Route::put('/task-templates/{taskTemplate}', [TaskTemplateController::class, 'update'])->name('task-templates.update');
     Route::put('/task-templates/{taskTemplate}/toggle-status', [TaskTemplateController::class, 'toggleStatus'])->name('task-templates.toggle-status');

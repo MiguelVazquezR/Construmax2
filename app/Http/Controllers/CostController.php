@@ -42,12 +42,13 @@ class CostController extends Controller
 
         return Inertia::render('Costs/Show', [
             'budget' => $budgetDetails,
+            'canCreateCatalog' => $request->user()->can('costs.create'),
         ]);
     }
 
     public function storeCatalog(Request $request, Budget $budget): RedirectResponse
     {
-        if (!$request->user()->can('costs.index')) {
+        if (!$request->user()->can('costs.create')) {
             abort(403);
         }
 

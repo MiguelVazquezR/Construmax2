@@ -14,6 +14,7 @@ class Customer extends Model implements HasMedia
     use InteractsWithMedia;
 
     protected $fillable = [
+        'type',
         'name',
         'business_name',
         'rfc',

@@ -5,10 +5,11 @@ import { ElMessage, ElMessageBox, ElNotification } from 'element-plus';
 import { 
     Check, Share, CopyDocument, ChatDotSquare, Edit, Delete, VideoPlay, 
     Calendar, ZoomIn, Camera, Plus, Link as IconLink, StarFilled, Warning,
-    Phone, Message, TopRight, Upload
+    Phone, Message, TopRight, Upload, Rank
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import QuickTechnicianModal from './QuickTechnicianModal.vue';
+import draggable from 'vuedraggable';
 import axios from 'axios';
 
 const { can } = usePermissions();
@@ -344,6 +345,7 @@ const shareWhatsApp = (tech) => {
 // Per-task evidence tracking: key = task.id, value = File[]
 const pendingEvidence = reactive({});
 const uploadingTasks = reactive({});
+const reorderingTasks = reactive({});
 
 const handleEvidenceUpload = (file, task) => {
     if (!pendingEvidence[task.id]) {
@@ -388,6 +390,25 @@ const deleteEvidence = (mediaId) => {
             onError: () => ElMessage.error('Error al eliminar la evidencia.'),
         }))
         .catch(() => {});
+};
+
+const reorderEvidence = (task) => {
+    const media = task.media;
+    if (!media || media.length <= 1) return;
+
+    reorderingTasks[task.id] = true;
+
+    const ids = media.map(m => m.id);
+    axios.post(route('tickets.tasks.evidence.reorder', task.id), { ids })
+        .then(() => {
+            ElMessage.success('Orden actualizado.');
+        })
+        .catch(() => {
+            ElMessage.error('Error al reordenar evidencias.');
+        })
+        .finally(() => {
+            delete reorderingTasks[task.id];
+        });
 };
 
 // --- VISOR DE COMPROBANTE DE PAGO ---
@@ -573,28 +594,66 @@ const showPaymentProof = (pay) => {
                             </div>
                         </div>
                         <!-- Evidencias -->
-                        <div class="mt-3 flex flex-wrap gap-3 items-center">
-                            <span class="text-xs font-bold text-gray-500 uppercase">Evidencias:</span>
-                            <div v-for="media in task.media" :key="media.id" class="relative group">
-                                <!-- Image -->
-                                <div v-if="media.mime_type?.startsWith('image/')" class="w-12 h-12 rounded overflow-hidden border cursor-pointer" @click="showImage(media.original_url)">
-                                    <img :src="media.original_url" class="w-full h-full object-cover" />
-                                </div>
-                                <!-- Video -->
-                                <div v-else-if="media.mime_type?.startsWith('video/')" class="w-12 h-12 rounded overflow-hidden border cursor-pointer bg-gray-100 dark:bg-gray-800 flex items-center justify-center" @click="showImage(media.original_url)">
-                                    <el-icon class="text-gray-500 dark:text-gray-400" :size="22"><VideoPlay /></el-icon>
-                                </div>
-                                <el-button
-                                    v-if="can('tickets.tasks.edit')"
-                                    size="small"
-                                    type="danger"
-                                    :icon="Delete"
-                                    circle
-                                    class="!absolute -top-1.5 -right-1.5 !p-0 !min-w-0 !w-4 !h-4 !text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
-                                    @click.stop="deleteEvidence(media.id)"
-                                />
+                        <div class="mt-3">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-xs font-bold text-gray-500 uppercase">Evidencias:</span>
+                                <span v-if="can('tickets.tasks.edit') && task.media?.length > 1" class="text-[10px] text-gray-400">— arrastra para reordenar</span>
                             </div>
-                            <div v-if="can('tickets.tasks.edit')" class="flex items-center gap-2">
+                            <draggable
+                                v-if="task.media && task.media.length > 0"
+                                v-model="task.media"
+                                item-key="id"
+                                ghost-class="evidence-ghost"
+                                chosen-class="evidence-chosen"
+                                drag-class="evidence-drag"
+                                :animation="250"
+                                :force-fallback="true"
+                                @end="reorderEvidence(task)"
+                                class="flex flex-wrap gap-3 items-start"
+                            >
+                                <template #item="{ element: media, index }">
+                                    <div
+                                        class="evidence-item"
+                                        :class="{ 'cursor-grab': can('tickets.tasks.edit'), 'cursor-default': !can('tickets.tasks.edit') }"
+                                    >
+                                        <!-- Drag handle (only if editable) -->
+                                        <div
+                                            v-if="can('tickets.tasks.edit')"
+                                            class="evidence-handle"
+                                            title="Arrastrar para reordenar"
+                                        >
+                                            <el-icon :size="12"><Rank /></el-icon>
+                                        </div>
+                                        <!-- Thumbnail -->
+                                        <div class="evidence-thumb" @click="showImage(media.original_url)">
+                                            <img
+                                                v-if="media.mime_type?.startsWith('image/')"
+                                                :src="media.original_url"
+                                                class="w-full h-full object-cover"
+                                            />
+                                            <div
+                                                v-else-if="media.mime_type?.startsWith('video/')"
+                                                class="w-full h-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center"
+                                            >
+                                                <el-icon class="text-gray-500 dark:text-gray-400" :size="20"><VideoPlay /></el-icon>
+                                            </div>
+                                        </div>
+                                        <!-- Position badge -->
+                                        <span class="evidence-index">{{ index + 1 }}</span>
+                                        <!-- Delete button -->
+                                        <el-button
+                                            v-if="can('tickets.tasks.edit')"
+                                            size="small"
+                                            type="danger"
+                                            :icon="Delete"
+                                            circle
+                                            class="evidence-delete"
+                                            @click.stop="deleteEvidence(media.id)"
+                                        />
+                                    </div>
+                                </template>
+                            </draggable>
+                            <div v-if="can('tickets.tasks.edit')" class="flex items-center gap-2 mt-2">
                                 <el-upload :show-file-list="false" :auto-upload="false" :on-change="(f) => handleEvidenceUpload(f, task)" accept="image/*,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska" multiple>
                                     <el-button size="small" icon="Camera" plain>Seleccionar archivos</el-button>
                                 </el-upload>
@@ -885,3 +944,152 @@ const showPaymentProof = (pay) => {
     <!-- VISOR DE COMPROBANTE DE PAGO -->
     <el-image-viewer v-if="proofPreviewVisible" :url-list="[proofPreviewUrl]" @close="proofPreviewVisible = false" />
 </template>
+
+<style scoped>
+/* ── Evidence item (draggable card) ── */
+.evidence-item {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 88px;
+    padding: 4px;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background: #f9fafb;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+    user-select: none;
+}
+
+.dark .evidence-item {
+    background: #1e1e20;
+}
+
+.evidence-item:hover {
+    border-color: #d1d5db;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.dark .evidence-item:hover {
+    border-color: #52525b;
+}
+
+/* ── Drag handle indicator ── */
+.evidence-handle {
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    background: #fff;
+    border-radius: 9999px;
+    padding: 2px;
+    border: 1px solid #d1d5db;
+    color: #9ca3af;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+    cursor: grab;
+    line-height: 0;
+}
+
+.dark .evidence-handle {
+    background: #3f3f46;
+    border-color: #52525b;
+    color: #71717a;
+}
+
+.evidence-item:hover .evidence-handle {
+    opacity: 1;
+}
+
+.evidence-handle:active {
+    cursor: grabbing;
+}
+
+/* ── Thumbnail ── */
+.evidence-thumb {
+    width: 72px;
+    height: 72px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.dark .evidence-thumb {
+    border-color: #3f3f46;
+}
+
+.evidence-thumb img {
+    display: block;
+}
+
+/* ── Position badge ── */
+.evidence-index {
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #f26c17;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 9999px;
+    z-index: 10;
+}
+
+/* ── Delete button ── */
+.evidence-delete {
+    position: absolute !important;
+    top: -6px !important;
+    right: -6px !important;
+    padding: 0 !important;
+    min-width: 0 !important;
+    width: 16px !important;
+    height: 16px !important;
+    font-size: 10px !important;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 10;
+}
+
+.evidence-item:hover .evidence-delete {
+    opacity: 1;
+}
+</style>
+
+<style>
+/* ── vuedraggable state classes (must be unscoped — applied by library) ── */
+
+/* The item being dragged */
+.evidence-chosen {
+    opacity: 0.4;
+    border-style: dashed !important;
+    border-color: #f26c17 !important;
+}
+
+/* The ghost placeholder where the item will land */
+.evidence-ghost {
+    opacity: 1 !important;
+    border: 2px dashed #f26c17 !important;
+    background: rgba(242, 108, 23, 0.08) !important;
+    border-radius: 8px;
+    min-width: 88px;
+    min-height: 104px;
+}
+
+.evidence-ghost .evidence-thumb,
+.evidence-ghost .evidence-handle,
+.evidence-ghost .evidence-index,
+.evidence-ghost .evidence-delete {
+    visibility: hidden;
+}
+
+/* The source item while dragging */
+.evidence-drag {
+    opacity: 0.3;
+}
+</style>

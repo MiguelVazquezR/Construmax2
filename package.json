@@ -30,6 +30,7 @@
         "element-plus": "^2.13.2",
         "lodash": "^4.17.23",
         "vue-echarts": "^8.0.1",
-        "vue3-apexcharts": "^1.10.0"
+        "vue3-apexcharts": "^1.10.0",
+        "vuedraggable": "^4.1.0"
     }
 }
