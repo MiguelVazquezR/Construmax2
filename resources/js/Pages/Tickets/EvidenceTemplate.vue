@@ -127,7 +127,7 @@ const tasksWithImages = computed(() => {
                                 <div
                                     :class="[
                                         'bg-white flex items-center justify-center p-2 print:p-2',
-                                        task.images.length === 1 ? 'h-80 print:h-64' : 'h-48 print:h-32'
+                                        task.images.length === 1 ? 'min-h-[60vh] print:min-h-[75vh]' : 'h-48 print:h-32'
                                     ]"
                                 >
                                     <img

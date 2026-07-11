@@ -27,6 +27,7 @@ Route::middleware([
     Route::post('/budgets/{budget}/ticket-auto', [TicketController::class, 'storeFromBudget'])->name('tickets.store-from-budget');
     Route::put('/tickets/{ticket}/status', [TicketController::class, 'updateStatus'])->name('tickets.update-status');
     Route::put('/tickets/{ticket}/technicians', [TicketController::class, 'updateTechnicians'])->name('tickets.update-technicians');
+    Route::put('/tickets/{ticket}/important-note', [TicketController::class, 'updateImportantNote'])->name('tickets.update-important-note');
     Route::put('/tickets/{ticket}/report-number', [TicketController::class, 'updateReportNumber'])->name('tickets.update-report-number');
     Route::put('/tickets/{ticket}/update-field', [TicketController::class, 'updateField'])->name('tickets.update-field');
 
