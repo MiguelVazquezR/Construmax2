@@ -3,12 +3,12 @@ import {
     User, 
     MapLocation, 
     Document, 
-    Money, 
     UploadFilled,
     Tools,
     Plus,
     Camera
 } from '@element-plus/icons-vue';
+import BankAccountsTab from './BankAccountsTab.vue';
 
 defineProps({
     form: {
@@ -22,6 +22,10 @@ defineProps({
     isEdit: {
         type: Boolean,
         default: false
+    },
+    technician: {
+        type: Object,
+        default: null
     }
 });
 
@@ -203,12 +207,17 @@ const mexicoStates = [
                     </el-form-item>
                 </div>
             </div>
+
+            <!-- 3. Cuentas bancarias (solo edición) -->
+            <div v-if="isEdit && technician" class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
+                <BankAccountsTab :technician="technician" />
+            </div>
         </div>
 
         <!-- COLUMNA DERECHA: Fiscal y Extras -->
         <div class="lg:col-span-1 space-y-6">
             
-            <!-- 3. Gestión de Estatus (SOLO EN EDICIÓN) -->
+            <!-- 4. Gestión de Estatus (SOLO EN EDICIÓN) -->
             <div v-if="isEdit" class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
                 <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2 border-b pb-2 border-gray-100 dark:border-gray-700">
                     <el-icon class="text-primary"><Tools /></el-icon> Estatus operativo
@@ -229,7 +238,7 @@ const mexicoStates = [
                 </el-form-item>
             </div>
 
-            <!-- 4. Datos Fiscales -->
+            <!-- 5. Datos Fiscales -->
             <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
                 <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2 border-b pb-2 border-gray-100 dark:border-gray-700">
                     <el-icon class="text-primary"><Document /></el-icon> Datos fiscales
@@ -265,26 +274,7 @@ const mexicoStates = [
                 </el-form-item>
             </div>
 
-            <!-- 5. Datos Bancarios -->
-            <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
-                <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2 border-b pb-2 border-gray-100 dark:border-gray-700">
-                    <el-icon class="text-primary"><Money /></el-icon> Pagos
-                </h3>
-
-                <el-form-item label="Banco" prop="bank_name">
-                    <el-input v-model="form.bank_name" placeholder="Opcional" />
-                </el-form-item>
-
-                <el-form-item label="Cuenta / tarjeta" prop="bank_account">
-                    <el-input v-model="form.bank_account" placeholder="Opcional" />
-                </el-form-item>
-
-                <el-form-item label="CLABE interbancaria" prop="clabe">
-                    <el-input v-model="form.clabe" placeholder="Opcional" maxlength="18" show-word-limit />
-                </el-form-item>
-            </div>
-
-            <!-- 6. Notas Internas y Submit -->
+            <!-- 5. Notas Internas y Submit -->
             <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
                 <el-form-item label="Notas internas (bitácora)">
                     <el-input 

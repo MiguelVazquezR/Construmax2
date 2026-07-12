@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { 
     MoreFilled, View, Edit, Delete, 
     OfficeBuilding, Warning, InfoFilled, Minus,
-    Timer, Check, Location
+    Timer, Check, Location, ChatDotSquare
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
@@ -51,7 +51,7 @@ const getPriorityClasses = (priority) => {
 
 const getHealthStatus = (ticket) => {
     // Finalized statuses: always show as Finalizado
-    if (['Ejecutado', 'Finalizado', 'Facturado', 'Pagado', 'Cancelado'].includes(ticket.status)) {
+    if (['Finalizado', 'Facturado', 'Pagado', 'Cancelado'].includes(ticket.status)) {
         return { color: 'success', text: 'Finalizado', icon: Check };
     }
 
@@ -103,6 +103,45 @@ const getBranchDetails = (ticket) => {
 
 const handleRowClick = (row) => {
     router.visit(route('tickets.show', row.id));
+};
+
+const handleImportantNote = (ticket) => {
+    ElMessageBox.prompt(
+        ticket.important_note ? 'Editar o eliminar la nota importante' : 'Agregar una nota importante',
+        'Nota importante',
+        {
+            confirmButtonText: ticket.important_note ? 'Actualizar' : 'Guardar',
+            cancelButtonText: ticket.important_note ? 'Eliminar nota' : 'Cancelar',
+            inputValue: ticket.important_note || '',
+            inputPlaceholder: 'Ej. Falta subir OC, Cotización pendiente...',
+            inputType: 'textarea',
+            inputValidator: (value) => {
+                if (value && value.length > 500) return 'Máximo 500 caracteres';
+                return true;
+            },
+            distinguishCancelAndClose: true,
+        }
+    )
+    .then(({ value }) => {
+        router.put(route('tickets.update-important-note', ticket.id), {
+            important_note: value || null,
+        }, {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => ElMessage.success('Nota importante actualizada.'),
+        });
+    })
+    .catch((action) => {
+        if (action === 'cancel' && ticket.important_note) {
+            router.put(route('tickets.update-important-note', ticket.id), {
+                important_note: null,
+            }, {
+                preserveScroll: true,
+                preserveState: true,
+                onSuccess: () => ElMessage.success('Nota importante eliminada.'),
+            });
+        }
+    });
 };
 
 const deleteTicket = (ticket) => {
@@ -200,11 +239,36 @@ const deleteTicket = (ticket) => {
                                     </span>
                                 </div>
                             </div>
-                            <!-- Indicador de catálogo de costos -->
+                            <!-- Indicador de catálogo de costos y nota importante -->
                             <div class="flex items-center gap-2 mt-1.5">
                                 <el-tag v-if="scope.row.budget?.latest_catalog" size="small" type="success" effect="plain" class="!text-[10px] !h-5 !px-1.5">
                                     Catálogo v{{ scope.row.budget.latest_catalog.version }}
+                                    <span class="ml-1 opacity-70">{{ formatDate(scope.row.budget.latest_catalog.created_at) }}</span>
                                 </el-tag>
+                                <el-tooltip
+                                    v-if="scope.row.important_note"
+                                    :content="scope.row.important_note"
+                                    placement="top"
+                                    :show-after="300"
+                                >
+                                    <el-button
+                                        type="warning"
+                                        :icon="ChatDotSquare"
+                                        size="small"
+                                        circle
+                                        class="!w-5 !h-5 !min-w-0 !p-0"
+                                        @click.stop="handleImportantNote(scope.row)"
+                                    />
+                                </el-tooltip>
+                                <el-button
+                                    v-else
+                                    :icon="ChatDotSquare"
+                                    size="small"
+                                    circle
+                                    class="!w-5 !h-5 !min-w-0 !p-0 !text-gray-300 dark:!text-gray-600 hover:!text-orange-500"
+                                    @click.stop="handleImportantNote(scope.row)"
+                                    title="Agregar nota importante"
+                                />
                             </div>
                         </div>
                     </template>
