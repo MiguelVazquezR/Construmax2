@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Technician;
+use App\Models\TechnicianBankAccount;
 use App\Models\User;
 use App\Models\Ticket;
 use App\Models\TechnicianPayment;
@@ -141,7 +142,7 @@ class TechnicianController extends Controller
 
     public function show(Technician $technician)
     {
-        $technician->load(['user', 'media']);
+        $technician->load(['user', 'media', 'bankAccounts.media']);
         
         $historyQuery = Ticket::with(['budget.customer', 'tasks'])
             ->where(function($query) use ($technician) {
@@ -181,8 +182,8 @@ class TechnicianController extends Controller
     public function edit(Technician $technician)
     {
         return Inertia::render('Technicians/Edit', [
-            'technician' => $technician->load('user'),
-            'availableSpecialties' => Technician::SPECIALTIES // Pasamos lista para editar
+            'technician' => $technician->load(['user', 'bankAccounts.media']),
+            'availableSpecialties' => Technician::SPECIALTIES
         ]);
     }
 
@@ -340,6 +341,87 @@ class TechnicianController extends Controller
         $media->delete();
 
         return back()->with('success', 'Documento eliminado.');
+    }
+
+    // --- BANK ACCOUNTS ---
+
+    public function storeBankAccount(Request $request, Technician $technician)
+    {
+        $validated = $request->validate([
+            'account_number' => 'nullable|string|max:50',
+            'card_number' => 'nullable|string|max:50',
+            'clabe' => 'nullable|string|max:50',
+            'branch_number' => 'nullable|string|max:50',
+            'qr_image' => 'nullable|image|max:2048',
+        ]);
+
+        // If this is the first account, make it favorite by default
+        $isFavorite = $technician->bankAccounts()->count() === 0;
+
+        $account = $technician->bankAccounts()->create([
+            'account_number' => $validated['account_number'] ?? null,
+            'card_number' => $validated['card_number'] ?? null,
+            'clabe' => $validated['clabe'] ?? null,
+            'branch_number' => $validated['branch_number'] ?? null,
+            'is_favorite' => $isFavorite,
+        ]);
+
+        if ($request->hasFile('qr_image')) {
+            $account->addMediaFromRequest('qr_image')
+                ->toMediaCollection('bank_qr');
+        }
+
+        return back()->with('success', 'Cuenta bancaria agregada.');
+    }
+
+    public function updateBankAccount(Request $request, Technician $technician, TechnicianBankAccount $account)
+    {
+        $validated = $request->validate([
+            'account_number' => 'nullable|string|max:50',
+            'card_number' => 'nullable|string|max:50',
+            'clabe' => 'nullable|string|max:50',
+            'branch_number' => 'nullable|string|max:50',
+            'qr_image' => 'nullable|image|max:2048',
+        ]);
+
+        $account->update([
+            'account_number' => $validated['account_number'] ?? null,
+            'card_number' => $validated['card_number'] ?? null,
+            'clabe' => $validated['clabe'] ?? null,
+            'branch_number' => $validated['branch_number'] ?? null,
+        ]);
+
+        if ($request->hasFile('qr_image')) {
+            $account->clearMediaCollection('bank_qr');
+            $account->addMediaFromRequest('qr_image')
+                ->toMediaCollection('bank_qr');
+        }
+
+        return back()->with('success', 'Cuenta bancaria actualizada.');
+    }
+
+    public function destroyBankAccount(Technician $technician, TechnicianBankAccount $account)
+    {
+        $wasFavorite = $account->is_favorite;
+        $account->delete();
+
+        // If the deleted account was favorite, make the first remaining one favorite
+        if ($wasFavorite) {
+            $next = $technician->bankAccounts()->first();
+            if ($next) {
+                $next->update(['is_favorite' => true]);
+            }
+        }
+
+        return back()->with('success', 'Cuenta bancaria eliminada.');
+    }
+
+    public function setFavoriteBankAccount(Technician $technician, TechnicianBankAccount $account)
+    {
+        $technician->bankAccounts()->update(['is_favorite' => false]);
+        $account->update(['is_favorite' => true]);
+
+        return back()->with('success', 'Cuenta favorita actualizada.');
     }
 
     public function destroy(Technician $technician)

@@ -51,7 +51,7 @@ const getPriorityClasses = (priority) => {
 
 const getHealthStatus = (ticket) => {
     // Finalized statuses: always show as Finalizado
-    if (['Ejecutado', 'Finalizado', 'Facturado', 'Pagado', 'Cancelado'].includes(ticket.status)) {
+    if (['Finalizado', 'Facturado', 'Pagado', 'Cancelado'].includes(ticket.status)) {
         return { color: 'success', text: 'Finalizado', icon: Check };
     }
 

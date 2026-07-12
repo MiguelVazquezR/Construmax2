@@ -19,9 +19,18 @@ const selectedBudgets = ref([]);
 const uploadedFiles = ref([]);
 const uploadRef = ref(null);
 
+const customerFilter = ref('');
+
 const filteredBudgets = computed(() => {
     if (!props.budgets) return [];
-    return props.budgets.filter(b => b.ticket?.name);
+    let result = props.budgets.filter(b => b.ticket?.name);
+    if (customerFilter.value) {
+        const search = customerFilter.value.toLowerCase();
+        result = result.filter(b =>
+            b.ticket?.customer?.name?.toLowerCase().includes(search)
+        );
+    }
+    return result;
 });
 
 const handleFileChange = (file) => {
@@ -65,6 +74,7 @@ const submit = () => {
 const close = () => {
     selectedBudgets.value = [];
     uploadedFiles.value = [];
+    customerFilter.value = '';
     form.reset();
     emit('update:show', false);
 };
@@ -79,6 +89,15 @@ const close = () => {
         @close="close"
     >
         <el-form :model="form" label-position="top">
+            <el-form-item label="Filtrar por cliente">
+                <el-input
+                    v-model="customerFilter"
+                    placeholder="Buscar cliente..."
+                    clearable
+                    prefix-icon="Search"
+                />
+            </el-form-item>
+
             <el-form-item label="Seleccionar presupuestos">
                 <el-select
                     v-model="selectedBudgets"

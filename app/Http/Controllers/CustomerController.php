@@ -65,7 +65,6 @@ class CustomerController extends Controller
             $rules['contacts.*.branch_indices.*'] = 'integer';
         } else {
             $rules['rfc'] = 'nullable|string|max:20';
-            $rules['contacts.*.phone'] = 'nullable|string|max:20';
         }
 
         $validated = $request->validate($rules);
@@ -74,7 +73,7 @@ class CustomerController extends Controller
             $customer = Customer::create([
                 'type' => $validated['type'],
                 'name' => $validated['name'],
-                'business_name' => $validated['business_name'],
+                'business_name' => $validated['business_name'] ?? null,
                 'rfc' => $validated['rfc'] ?? null,
                 'payment_condition' => $validated['payment_condition'] ?? '',
                 'payment_method' => $validated['payment_method'] ?? 'Transferencia',
@@ -156,7 +155,7 @@ class CustomerController extends Controller
         $rules = [
             'type' => 'required|string|in:customer,prospect',
             'name' => 'required|string|max:255',
-            'business_name' => 'required|string|max:255',
+            'business_name' => 'nullable|string|max:255',
             'rfc' => 'nullable|string|max:20',
             'contacts' => 'required|array|min:1',
             'contacts.*.id' => 'nullable|integer|exists:customer_contacts,id',
@@ -192,13 +191,13 @@ class CustomerController extends Controller
             $customer->update([
                 'type' => $validated['type'],
                 'name' => $validated['name'],
-                'business_name' => $validated['business_name'],
-                'rfc' => $validated['rfc'],
-                'payment_condition' => $validated['payment_condition'],
-                'payment_method' => $validated['payment_method'],
-                'invoice_usage' => $validated['invoice_usage'],
-                'currency' => $validated['currency'],
-                'payment_days' => $validated['payment_days'] ?? 0,
+                'business_name' => $validated['business_name'] ?? null,
+                'rfc' => $validated['rfc'] ?? null,
+                'payment_condition' => $validated['payment_condition'] ?? $customer->payment_condition,
+                'payment_method' => $validated['payment_method'] ?? $customer->payment_method,
+                'invoice_usage' => $validated['invoice_usage'] ?? $customer->invoice_usage,
+                'currency' => $validated['currency'] ?? $customer->currency,
+                'payment_days' => $validated['payment_days'] ?? $customer->payment_days,
             ]);
 
             // ── Sync branches (upsert instead of delete + recreate) - Only for customers ──
@@ -249,11 +248,13 @@ class CustomerController extends Controller
 
                 $incomingContactIds[] = $contact->id;
 
-                $branchIds = collect($branchIndices)->map(function ($idx) use ($createdBranches) {
-                    return $createdBranches[$idx]->id ?? null;
-                })->filter()->toArray();
+                if (!empty($createdBranches)) {
+                    $branchIds = collect($branchIndices)->map(function ($idx) use ($createdBranches) {
+                        return $createdBranches[$idx]->id ?? null;
+                    })->filter()->toArray();
 
-                $contact->branches()->sync($branchIds);
+                    $contact->branches()->sync($branchIds);
+                }
             }
 
             // Delete contacts removed by the user

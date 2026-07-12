@@ -16,6 +16,12 @@ Route::middleware([
     Route::put('technicians/{technician}/status', [TechnicianController::class, 'updateStatus'])->name('technicians.update-status');
     Route::delete('technicians/{technician}/media/{media}', [TechnicianController::class, 'deleteMedia'])->name('technicians.delete-media');
 
+    // Bank accounts
+    Route::post('technicians/{technician}/bank-accounts', [TechnicianController::class, 'storeBankAccount'])->name('technicians.bank-accounts.store');
+    Route::post('technicians/{technician}/bank-accounts/{account}', [TechnicianController::class, 'updateBankAccount'])->name('technicians.bank-accounts.update');
+    Route::delete('technicians/{technician}/bank-accounts/{account}', [TechnicianController::class, 'destroyBankAccount'])->name('technicians.bank-accounts.destroy');
+    Route::put('technicians/{technician}/bank-accounts/{account}/favorite', [TechnicianController::class, 'setFavoriteBankAccount'])->name('technicians.bank-accounts.favorite');
+
     Route::resource('technicians', TechnicianController::class);
     
 });

@@ -26,6 +26,7 @@ import ProfileTab from './Partials/ProfileTab.vue';
 import HistoryTab from './Partials/HistoryTab.vue';
 import DocumentsTab from './Partials/DocumentsTab.vue';
 import PaymentsTab from './Partials/PaymentsTab.vue'; // Nuevo componente
+import BankAccountsTab from './Partials/BankAccountsTab.vue';
 
 const { can } = usePermissions();
 
@@ -297,6 +298,10 @@ const getWhatsappUrl = (phone) => {
                         <div class="px-6">
                             <PaymentsTab :payments="payments" />
                         </div>
+                    </el-tab-pane>
+
+                    <el-tab-pane label="Cuentas bancarias" name="bank-accounts">
+                        <div class="px-6"> <BankAccountsTab :technician="technician" /> </div>
                     </el-tab-pane>
 
                     <el-tab-pane label="Documentos" name="documents">
