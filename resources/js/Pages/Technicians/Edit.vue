@@ -154,6 +154,7 @@ const submit = () => {
                     :form="form"
                     :photo-preview="photoPreview"
                     :is-edit="true"
+                    :technician="technician"
                     @photo-change="handlePhotoChange"
                     @tax-file-change="handleTaxFileChange"
                     @tax-file-remove="handleTaxFileRemove"

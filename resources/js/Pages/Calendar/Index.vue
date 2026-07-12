@@ -1,13 +1,12 @@
 <script setup>
 import { ref, reactive, computed } from 'vue';
-import { useForm, router, usePage, Link } from '@inertiajs/vue3';
+import { useForm, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { CircleCheck, CircleClose, InfoFilled, Tools, Warning, Timer, OfficeBuilding, Location, UserFilled } from '@element-plus/icons-vue';
+import { CircleCheck, CircleClose, InfoFilled } from '@element-plus/icons-vue';
 
 const props = defineProps({
     events: Array,
-    tickets: Array,
     users: Array,
 });
 
@@ -18,10 +17,6 @@ const showModal = ref(false);
 const isCreating = ref(false);
 const selectedDate = ref(new Date());
 const activeEvent = ref(null);
-
-// --- GESTIÓN DEL MODAL (tickets) ---
-const showTicketModal = ref(false);
-const activeTicket = ref(null);
 
 const form = useForm({
     id: null,
@@ -48,47 +43,7 @@ const getEventsForDate = (date) => {
     });
 };
 
-// --- TICKETS EN CALENDARIO ---
-
-const getTicketsForDate = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const dateStr = `${year}-${month}-${day}`;
-
-    return props.tickets.filter(t => {
-        return dateStr >= t.start && dateStr <= t.end;
-    });
-};
-
-const getTicketHealthClass = (ticket) => {
-    if (ticket.health === 'Vencido') {
-        return 'bg-red-500 text-white border-red-600';
-    }
-    if (ticket.health === 'Programado') {
-        return 'bg-indigo-100 text-indigo-700 border-indigo-200';
-    }
-    return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-};
-
-const getTicketHealthIcon = (ticket) => {
-    if (ticket.health === 'Vencido') return Warning;
-    if (ticket.health === 'Programado') return Timer;
-    return CircleCheck;
-};
-
-const handleTicketClick = (ticket, e) => {
-    e.stopPropagation();
-    activeTicket.value = ticket;
-    showTicketModal.value = true;
-};
-
-const formatDate = (dateStr) => {
-    if (!dateStr) return '--';
-    return new Date(dateStr + 'T12:00:00').toLocaleDateString('es-MX', {
-        day: '2-digit', month: 'short', year: 'numeric'
-    });
-};
+// --- ACCIONES DE CALENDARIO ---
 
 const handleDateClick = (data) => {
     isCreating.value = true;
@@ -244,12 +199,6 @@ const formatTime = (dateStr) => {
                     <span class="flex items-center gap-1"><span class="w-3 h-3 bg-green-100 border border-green-300 rounded"></span> Invitación Aceptada</span>
                     <span class="flex items-center gap-1"><span class="w-3 h-3 bg-gray-200 border border-gray-400 rounded"></span> Terminados</span>
                 </div>
-                <div class="flex flex-wrap gap-4 mb-4 text-xs border-t border-gray-100 dark:border-gray-700 pt-3">
-                    <span class="flex items-center gap-1 font-semibold text-gray-500 mr-4">Tickets:</span>
-                    <span class="flex items-center gap-1"><span class="w-3 h-3 bg-emerald-100 border border-emerald-300 rounded"></span> A tiempo</span>
-                    <span class="flex items-center gap-1"><span class="w-3 h-3 bg-indigo-100 border border-indigo-300 rounded"></span> Programado</span>
-                    <span class="flex items-center gap-1"><span class="w-3 h-3 bg-red-500 rounded"></span> Vencido</span>
-                </div>
 
                 <el-calendar v-model="selectedDate">
                     <template #date-cell="{ data }">
@@ -262,18 +211,6 @@ const formatTime = (dateStr) => {
                             </span>
                             
                             <div class="flex flex-col gap-1 overflow-y-auto custom-scrollbar pr-1">
-                                <!-- Tickets -->
-                                <div 
-                                    v-for="ticket in getTicketsForDate(data.date)" 
-                                    :key="'t-' + ticket.id"
-                                    class="text-[9px] px-1 py-0.5 rounded border truncate cursor-pointer hover:opacity-80 transition flex items-center gap-1 font-medium"
-                                    :class="getTicketHealthClass(ticket)"
-                                    @click="(e) => handleTicketClick(ticket, e)"
-                                >
-                                    <el-icon :size="10"><component :is="getTicketHealthIcon(ticket)" /></el-icon>
-                                    {{ ticket.folio }} {{ ticket.name }}
-                                </div>
-
                                 <!-- Events -->
                                 <div 
                                     v-for="event in getEventsForDate(data.date)" 
@@ -440,87 +377,6 @@ const formatTime = (dateStr) => {
                         <el-button @click="showModal = false">Cerrar</el-button>
                     </div>
                 </div>
-            </template>
-        </el-dialog>
-
-        <!-- MODAL DE DETALLES DE TICKET -->
-        <el-dialog
-            v-model="showTicketModal"
-            :title="`Ticket ${activeTicket?.folio}`"
-            width="500px"
-            destroy-on-close
-        >
-            <div v-if="activeTicket" class="space-y-4">
-                <!-- Health badge -->
-                <div class="flex items-center gap-2 mb-2">
-                    <el-tag
-                        :type="activeTicket.health === 'Vencido' ? 'danger' : activeTicket.health === 'Programado' ? 'info' : 'success'"
-                        effect="dark"
-                        size="small"
-                    >
-                        <el-icon class="mr-1"><component :is="getTicketHealthIcon(activeTicket)" /></el-icon>
-                        {{ activeTicket.health }}
-                    </el-tag>
-                    <el-tag v-if="activeTicket.priority" size="small" :type="activeTicket.priority === 'Urgente' || activeTicket.priority === 'Alta' ? 'danger' : 'info'" effect="plain">
-                        {{ activeTicket.priority }}
-                    </el-tag>
-                </div>
-
-                <!-- Project name -->
-                <h3 class="text-lg font-bold text-gray-800 dark:text-white">{{ activeTicket.name }}</h3>
-
-                <!-- Customer -->
-                <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                    <el-icon><OfficeBuilding /></el-icon>
-                    <span>{{ activeTicket.customer || 'Sin cliente' }}</span>
-                </div>
-
-                <!-- Branch -->
-                <div v-if="activeTicket.branch" class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                    <el-icon><Location /></el-icon>
-                    <span>{{ activeTicket.branch }}</span>
-                </div>
-
-                <!-- Seller -->
-                <div v-if="activeTicket.seller" class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                    <el-icon><UserFilled /></el-icon>
-                    <span>Asesor: {{ activeTicket.seller }}</span>
-                </div>
-
-                <!-- Dates -->
-                <div class="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-[#252529] p-3 rounded-lg">
-                    <div>
-                        <span class="text-xs text-gray-400 block">Inicio</span>
-                        <span class="text-sm font-medium dark:text-gray-200">{{ formatDate(activeTicket.start) }}</span>
-                    </div>
-                    <div>
-                        <span class="text-xs text-gray-400 block">Fin</span>
-                        <span class="text-sm font-medium dark:text-gray-200">{{ formatDate(activeTicket.end) }}</span>
-                    </div>
-                </div>
-
-                <!-- Progress -->
-                <div>
-                    <div class="flex justify-between text-xs text-gray-500 mb-1">
-                        <span>Progreso</span>
-                        <span>{{ activeTicket.progress }}%</span>
-                    </div>
-                    <el-progress
-                        :percentage="activeTicket.progress"
-                        :stroke-width="6"
-                        :show-text="false"
-                        :color="activeTicket.progress === 100 ? '#67c23a' : '#f26c17'"
-                    />
-                </div>
-            </div>
-
-            <template #footer>
-                <el-button @click="showTicketModal = false">Cerrar</el-button>
-                <Link :href="route('tickets.show', activeTicket?.id)">
-                    <el-button type="primary" color="#f26c17" :icon="Tools">
-                        Ver detalles del ticket
-                    </el-button>
-                </Link>
             </template>
         </el-dialog>
 

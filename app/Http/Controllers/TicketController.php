@@ -116,6 +116,16 @@ class TicketController extends Controller
         } elseif ($sort === 'delay') {
             $query->orderByRaw("CASE WHEN status IN ('Ejecutado', 'Facturado', 'Pagado', 'Cancelado') THEN 2 ELSE 1 END")
                   ->orderBy('scheduled_end', 'asc');
+        } elseif ($request->filled('has_catalog') && $request->input('has_catalog') === 'yes') {
+            // When filtering by catalog, sort by latest catalog creation date (newest first)
+            $query->orderBy(
+                \App\Models\BudgetCatalog::select('budget_catalogs.created_at')
+                    ->join('budgets', 'budgets.id', '=', 'budget_catalogs.budget_id')
+                    ->whereColumn('budgets.ticket_id', 'tickets.id')
+                    ->orderBy('budget_catalogs.version', 'desc')
+                    ->limit(1),
+                'desc'
+            );
         } else {
             // Default: created_at
             $query->orderBy('created_at', 'desc');
@@ -178,8 +188,18 @@ class TicketController extends Controller
 
         $ticket = Ticket::create($validated);
 
-        if (!empty($validated['task_template_id']) && !empty($validated['technicians'])) {
-            $ticket->generateTasksFromTemplate($validated['task_template_id'], $validated['technicians']);
+        // Generate tasks from template for lead technicians, or auxiliaries if no leads
+        $templateId = $validated['task_template_id'] ?? null;
+        $leadTechs = $validated['technicians'] ?? [];
+        $auxTechs = $validated['assistant_technicians'] ?? [];
+
+        if (!empty($templateId)) {
+            if (!empty($leadTechs)) {
+                $ticket->generateTasksFromTemplate($templateId, $leadTechs);
+            } elseif (!empty($auxTechs)) {
+                // No lead technicians — assign template tasks to the first auxiliary
+                $ticket->generateTasksFromTemplate($templateId, [$auxTechs[0]]);
+            }
         }
 
         // Handle file uploads
@@ -367,6 +387,17 @@ class TicketController extends Controller
                     ->update(['user_id' => $newId]);
             }
         }
+    }
+
+    public function updateImportantNote(Request $request, Ticket $ticket)
+    {
+        $validated = $request->validate([
+            'important_note' => 'nullable|string|max:500',
+        ]);
+
+        $ticket->update(['important_note' => $validated['important_note']]);
+
+        return back()->with('success', 'Nota importante actualizada.');
     }
 
     public function destroy(Ticket $ticket)

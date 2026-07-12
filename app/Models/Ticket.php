@@ -52,6 +52,7 @@ class Ticket extends Model implements HasMedia
         'scheduled_start',
         'scheduled_end',
         'instructions',
+        'important_note',
     ];
 
     protected $casts = [

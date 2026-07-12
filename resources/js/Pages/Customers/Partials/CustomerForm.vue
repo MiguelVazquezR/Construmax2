@@ -83,6 +83,8 @@ const form = useForm({
 });
 
 const isProspect = computed(() => form.type === 'prospect');
+const typeLabel = computed(() => isProspect.value ? 'prospecto' : 'cliente');
+const TypeLabel = computed(() => isProspect.value ? 'Prospecto' : 'Cliente');
 
 // Computed para media del cliente (en edición)
 const logoUrl = computed(() => {
@@ -99,7 +101,6 @@ const customerFiles = computed(() => {
 // Reglas de validación generales
 const rules = reactive({
     name: [{ required: true, message: 'Requerido', trigger: 'blur' }],
-    business_name: [{ required: true, message: 'Requerido', trigger: 'blur' }],
     payment_condition: [{ required: true, message: 'Requerido', trigger: 'change' }],
     payment_method: [{ required: true, message: 'Requerido', trigger: 'change' }],
     invoice_usage: [{ required: true, message: 'Requerido', trigger: 'change' }],
@@ -182,7 +183,7 @@ const removeLogo = () => {
         logoPreviewUrl.value = null;
         return;
     }
-    ElMessageBox.confirm('¿Eliminar el logo del cliente?', 'Confirmar', {
+    ElMessageBox.confirm(`¿Eliminar el logo del ${typeLabel.value}?`, 'Confirmar', {
         type: 'warning',
         confirmButtonText: 'Eliminar',
         cancelButtonText: 'Cancelar',
@@ -328,7 +329,7 @@ const uploadCustomerFiles = (customerId) => {
                     <el-form-item label="Nombre comercial" prop="name" :error="form.errors.name">
                         <el-input v-model="form.name" placeholder="Ej. Constructora del Norte" />
                     </el-form-item>
-                    <el-form-item label="Razón social" prop="business_name" :error="form.errors.business_name">
+                    <el-form-item label="Razón social (opcional)" prop="business_name" :error="form.errors.business_name">
                         <el-input v-model="form.business_name" placeholder="Ej. Constructora del Norte S.A. de C.V." />
                     </el-form-item>
                 </div>
@@ -344,7 +345,7 @@ const uploadCustomerFiles = (customerId) => {
                 </div>
                 
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <el-form-item label="RFC" prop="rfc" :error="form.errors.rfc" :rules="!isProspect ? requiredRules : []">
+                    <el-form-item :label="isProspect ? 'RFC (opcional)' : 'RFC'" prop="rfc" :error="form.errors.rfc" :rules="!isProspect ? requiredRules : []">
                         <el-input v-model="form.rfc" placeholder="XAXX010101000" />
                     </el-form-item>
 
@@ -566,7 +567,7 @@ const uploadCustomerFiles = (customerId) => {
                 <div class="p-6 border-b border-gray-100 dark:border-[#2b2b2e] bg-gray-50/50 dark:bg-[#252529]">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                         <el-icon class="text-primary"><Picture /></el-icon> 
-                        Logo del cliente
+                        Logo del {{ typeLabel }}
                     </h3>
                 </div>
                 
@@ -599,7 +600,7 @@ const uploadCustomerFiles = (customerId) => {
                         <!-- Upload -->
                         <div class="flex flex-col gap-2">
                             <p class="text-sm text-gray-500 dark:text-gray-400">
-                                Sube un logo para identificar al cliente. Formatos: JPG, PNG, WEBP. Máx. 2 MB.
+                                Sube un logo para identificar al {{ typeLabel }}. Formatos: JPG, PNG, WEBP. Máx. 2 MB.
                             </p>
                             <el-upload
                                 :show-file-list="false"
@@ -628,7 +629,7 @@ const uploadCustomerFiles = (customerId) => {
                             Archivos adjuntos
                         </h3>
                         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                            Sube documentos adicionales relacionados con el cliente (PDF, Word, Excel, imágenes).
+                            Sube documentos adicionales relacionados con el {{ typeLabel }} (PDF, Word, Excel, imágenes).
                         </p>
                     </div>
                     <div class="flex items-center gap-2">
@@ -749,7 +750,7 @@ const uploadCustomerFiles = (customerId) => {
                     color="#f26c17"
                     class="!font-bold"
                 >
-                    {{ isEdit ? 'Actualizar cliente' : 'Guardar cliente' }}
+                    {{ isEdit ? `Actualizar ${typeLabel}` : `Guardar ${typeLabel}` }}
                 </el-button>
             </div>
 

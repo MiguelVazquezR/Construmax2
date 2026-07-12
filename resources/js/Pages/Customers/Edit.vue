@@ -9,11 +9,11 @@ const props = defineProps({
 </script>
 
 <template>
-    <AppLayout title="Editar cliente">
+    <AppLayout :title="customer.type === 'prospect' ? 'Editar prospecto' : 'Editar cliente'">
         <template #header>
             <div class="flex items-center justify-between">
                 <h2 class="font-semibold text-xl text-gray-800 dark:text-white leading-tight">
-                    Editar cliente: {{ customer.name }}
+                    {{ customer.type === 'prospect' ? 'Editar prospecto' : 'Editar cliente' }}: {{ customer.name }}
                 </h2>
                 <Link :href="route('customers.index')">
                     <el-button icon="Back" circle />
