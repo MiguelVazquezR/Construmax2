@@ -6,6 +6,7 @@ import { ElMessage } from 'element-plus';
 const props = defineProps({
     show: Boolean,
     budgets: Array,
+    customers: Array,
 });
 
 const emit = defineEmits(['update:show']);
@@ -19,18 +20,27 @@ const selectedBudgets = ref([]);
 const uploadedFiles = ref([]);
 const uploadRef = ref(null);
 
-const customerFilter = ref('');
+const customerFilter = ref(null);
+
+const validBudgets = computed(() => {
+    if (!props.budgets) return [];
+    return props.budgets.filter(b => b.ticket?.name);
+});
 
 const filteredBudgets = computed(() => {
-    if (!props.budgets) return [];
-    let result = props.budgets.filter(b => b.ticket?.name);
-    if (customerFilter.value) {
-        const search = customerFilter.value.toLowerCase();
-        result = result.filter(b =>
-            b.ticket?.customer?.name?.toLowerCase().includes(search)
-        );
-    }
-    return result;
+    if (!customerFilter.value) return validBudgets.value;
+    return validBudgets.value.filter(b =>
+        b.ticket?.customer?.id === customerFilter.value
+    );
+});
+
+const isFilterActive = computed(() => customerFilter.value !== null);
+
+const totalCount = computed(() => validBudgets.value.length);
+
+const selectedCustomerName = computed(() => {
+    if (!customerFilter.value || !props.customers) return '';
+    return props.customers.find(c => c.id === customerFilter.value)?.name || '';
 });
 
 const handleFileChange = (file) => {
@@ -74,7 +84,7 @@ const submit = () => {
 const close = () => {
     selectedBudgets.value = [];
     uploadedFiles.value = [];
-    customerFilter.value = '';
+    customerFilter.value = null;
     form.reset();
     emit('update:show', false);
 };
@@ -90,12 +100,33 @@ const close = () => {
     >
         <el-form :model="form" label-position="top">
             <el-form-item label="Filtrar por cliente">
-                <el-input
+                <el-select
                     v-model="customerFilter"
-                    placeholder="Buscar cliente..."
+                    filterable
                     clearable
-                    prefix-icon="Search"
-                />
+                    placeholder="Buscar y seleccionar cliente..."
+                    class="w-full"
+                    :class="{ 'is-filter-active': isFilterActive }"
+                >
+                    <el-option
+                        v-for="customer in customers"
+                        :key="customer.id"
+                        :label="customer.name"
+                        :value="customer.id"
+                    />
+                </el-select>
+                <div
+                    v-if="isFilterActive"
+                    class="filter-feedback"
+                >
+                    <el-tag size="small" type="warning" effect="plain" round>
+                        {{ filteredBudgets.length }} de {{ totalCount }} presupuestos
+                    </el-tag>
+                    <div class="filter-hint">
+                        <span class="filter-hint-text">Despliega el selector de abajo para ver los elementos filtrados</span>
+                        <span class="filter-hint-arrow">▼</span>
+                    </div>
+                </div>
             </el-form-item>
 
             <el-form-item label="Seleccionar presupuestos">
@@ -143,3 +174,31 @@ const close = () => {
         </template>
     </el-dialog>
 </template>
+
+<style scoped>
+.filter-feedback {
+    margin-top: 6px;
+}
+
+.filter-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+}
+
+.filter-hint-arrow {
+    animation: bounce-down 0.8s ease-in-out infinite;
+}
+
+@keyframes bounce-down {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(4px); }
+}
+
+.is-filter-active :deep(.el-input__wrapper) {
+    box-shadow: 0 0 0 1px var(--el-color-warning) inset;
+}
+</style>

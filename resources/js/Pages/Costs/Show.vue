@@ -79,8 +79,8 @@ onMounted(() => {
         form.non_installation_labor = Number(props.budget.latest_catalog.non_installation_labor || 0);
         form.labor_utility = Number(props.budget.latest_catalog.labor_utility || 0);
     } else {
-        userEditedNonInstallationLabor = false;
-        userEditedLaborUtility = false;
+        userEditedNonInstallationLabor.value = false;
+        userEditedLaborUtility.value = false;
     }
     calculateTotals();
 });
@@ -171,8 +171,8 @@ function viewCatalogVersion(versionId) {
     form.include_iva = Number(cat.iva) > 0;
     form.non_installation_labor = Number(cat.non_installation_labor || 0);
     form.labor_utility = Number(cat.labor_utility || 0);
-    userEditedNonInstallationLabor = true;
-    userEditedLaborUtility = true;
+    userEditedNonInstallationLabor.value = true;
+    userEditedLaborUtility.value = true;
     calculateTotals();
     ElMessage.info(`Mostrando la versión ${cat.version}`);
 }
