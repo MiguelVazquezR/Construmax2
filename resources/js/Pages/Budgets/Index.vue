@@ -14,7 +14,8 @@ const showBulkUploadModal = ref(false);
 const props = defineProps({
     budgets: Object,
     filters: Object,
-    users: Array, // Nueva prop recibida del controlador
+    users: Array,
+    customers: Array,
 });
 
 const search = ref(props.filters.search || '');
@@ -150,7 +151,7 @@ watch([search, statusFilter, perPage, userFilter, branchFilter], fetchData);
             </el-alert>
             <TableList :budgets="budgets" />
 
-            <BulkFileUploadModal v-model:show="showBulkUploadModal" :budgets="budgets.data" />
+            <BulkFileUploadModal v-model:show="showBulkUploadModal" :budgets="budgets.data" :customers="customers" />
 
         </div>
     </AppLayout>
