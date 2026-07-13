@@ -55,6 +55,11 @@ const getHealthStatus = (ticket) => {
         return { color: 'success', text: 'Finalizado', icon: Check };
     }
 
+    // All tasks completed, regardless of dates
+    if (ticket.progress === 100) {
+        return { color: 'success', text: 'Tareas completadas', icon: Check };
+    }
+
     if (!ticket.scheduled_start || !ticket.scheduled_end) {
         return { color: 'info', text: 'Sin fechas', icon: Minus };
     }
@@ -299,7 +304,7 @@ const deleteTicket = (ticket) => {
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-400">Fin:</span>
-                                <span 
+                                <span
                                     :class="[
                                         'font-mono',
                                         getHealthStatus(scope.row).text === 'Vencido' 
@@ -314,7 +319,7 @@ const deleteTicket = (ticket) => {
                     </template>
                 </el-table-column>
 
-                <el-table-column label="Salud" width="120" align="center">
+                <el-table-column label="Salud" width="135" align="center">
                     <template #default="scope">
                         <div class="flex flex-col items-center">
                             <el-tooltip

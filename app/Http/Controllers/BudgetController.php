@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Budget;
 use App\Models\BudgetPayment;
 use App\Models\Calendar;
+use App\Models\Customer;
 use App\Models\Technician;
 use App\Models\Ticket;
 use App\Models\User;
@@ -39,6 +40,7 @@ class BudgetController extends Controller
                 ->withQueryString(),
             'filters' => $filters,
             'users' => User::where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'customers' => Customer::orderBy('name')->get(['id', 'name']),
         ]);
     }
 

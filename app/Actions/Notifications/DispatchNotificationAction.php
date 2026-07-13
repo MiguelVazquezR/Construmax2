@@ -4,7 +4,9 @@ namespace App\Actions\Notifications;
 
 use App\Models\Budget;
 use App\Models\BudgetCatalog;
+use App\Models\NotificationSetting;
 use App\Models\Ticket;
+use App\Models\User;
 use App\Notifications\CatalogCreated;
 use App\Notifications\InvoiceOverdue;
 use App\Notifications\TicketNeedsCatalog;
@@ -30,13 +32,31 @@ class DispatchNotificationAction
 
     /**
      * Notify when a new cost catalog has been created.
+     * Only the ticket's seller receives this notification, and only if
+     * they have the catalog.created notification type active.
      */
     public function catalogCreated(BudgetCatalog $catalog): void
     {
-        $this->notificationService->notifySubscribers(
-            NotificationService::TYPE_CATALOG_CREATED,
-            new CatalogCreated($catalog)
-        );
+        $sellerId = $catalog->budget->ticket->seller_id;
+
+        if (! $sellerId) {
+            return;
+        }
+
+        $isSubscribed = NotificationSetting::where('notification_type', NotificationService::TYPE_CATALOG_CREATED)
+            ->where('user_id', $sellerId)
+            ->where('is_active', true)
+            ->exists();
+
+        if (! $isSubscribed) {
+            return;
+        }
+
+        $seller = User::find($sellerId);
+
+        if ($seller && $seller->email) {
+            $seller->notify(new CatalogCreated($catalog));
+        }
     }
 
     /**
