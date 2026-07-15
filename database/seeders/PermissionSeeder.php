@@ -251,6 +251,38 @@ class PermissionSeeder extends Seeder
                 'category' => 'Configuración',
                 'description' => 'Gestionar configuraciones de notificaciones (quién recibe qué)'
             ],
+
+            // --- MÓDULO: DEPÓSITOS ---
+            [
+                'name' => 'deposits.index',
+                'category' => 'Depósitos',
+                'description' => 'Ver el módulo de depósitos (lista y calendario)'
+            ],
+            [
+                'name' => 'deposits.create',
+                'category' => 'Depósitos',
+                'description' => 'Programar nuevos depósitos a técnicos'
+            ],
+            [
+                'name' => 'deposits.edit',
+                'category' => 'Depósitos',
+                'description' => 'Editar depósitos existentes'
+            ],
+            [
+                'name' => 'deposits.delete',
+                'category' => 'Depósitos',
+                'description' => 'Eliminar depósitos del sistema'
+            ],
+            [
+                'name' => 'deposits.approve',
+                'category' => 'Depósitos',
+                'description' => 'Aprobar depósitos pendientes y recibir notificaciones'
+            ],
+            [
+                'name' => 'deposits.types.manage',
+                'category' => 'Depósitos',
+                'description' => 'Gestionar el catálogo de tipos de depósito'
+            ],
         ];
 
         foreach ($permissions as $permission) {

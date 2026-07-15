@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -198,5 +199,26 @@ class Ticket extends Model implements HasMedia
         if ($newStatus !== $currentStatus) {
             $this->update(['status' => $newStatus]);
         }
+    }
+
+    // --- SCOPES ---
+
+    /**
+     * Find tickets where a technician participated (via JSON technicians,
+     * assistant_technicians, or assigned tasks).
+     *
+     * @param int $userId The user_id of the technician (stored in tickets.technicians JSON).
+     */
+    public function scopeWhereInvolved(Builder $query, int $userId): Builder
+    {
+        return $query->where(function ($q) use ($userId) {
+            $q->whereJsonContains('technicians', (string) $userId)
+              ->orWhereJsonContains('technicians', (int) $userId)
+              ->orWhereJsonContains('assistant_technicians', (string) $userId)
+              ->orWhereJsonContains('assistant_technicians', (int) $userId)
+              ->orWhereHas('tasks', function ($t) use ($userId) {
+                  $t->where('user_id', $userId);
+              });
+        });
     }
 }

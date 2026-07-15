@@ -12,6 +12,7 @@ class NotificationService
     public const TYPE_CATALOG_CREATED = 'catalog.created';
     public const TYPE_TICKET_NEEDS_INVOICE = 'ticket.needs-invoice';
     public const TYPE_INVOICE_OVERDUE = 'invoice.overdue';
+    public const TYPE_DEPOSIT_PENDING_APPROVAL = 'deposit.pending-approval';
 
     /**
      * Get subscribers for a notification type.

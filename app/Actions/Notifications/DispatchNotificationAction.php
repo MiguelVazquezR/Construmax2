@@ -4,10 +4,12 @@ namespace App\Actions\Notifications;
 
 use App\Models\Budget;
 use App\Models\BudgetCatalog;
+use App\Models\Deposit;
 use App\Models\NotificationSetting;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Notifications\CatalogCreated;
+use App\Notifications\DepositPendingApproval;
 use App\Notifications\InvoiceOverdue;
 use App\Notifications\TicketNeedsCatalog;
 use App\Notifications\TicketNeedsInvoice;
@@ -78,6 +80,18 @@ class DispatchNotificationAction
         $this->notificationService->notifySubscribers(
             NotificationService::TYPE_INVOICE_OVERDUE,
             new InvoiceOverdue($ticket, $budget)
+        );
+    }
+
+    /**
+     * Notify when a new deposit is created and needs approval.
+     * Sends to all users with the deposits.approve permission.
+     */
+    public function depositPendingApproval(Deposit $deposit): void
+    {
+        $this->notificationService->notifySubscribers(
+            NotificationService::TYPE_DEPOSIT_PENDING_APPROVAL,
+            new DepositPendingApproval($deposit)
         );
     }
 }

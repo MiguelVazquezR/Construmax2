@@ -24,25 +24,32 @@ class TechnicianController extends Controller
     {
         $perPage = $request->input('perPage', 10);
 
+        $technicians = Technician::with('user')
+            ->filter($request->only('search', 'specialty', 'state'))
+            ->when($request->has('is_internal'), fn ($q) => $q->where('is_internal', $request->boolean('is_internal')))
+            ->orderBy('id', 'desc')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        // Return JSON for AJAX requests (e.g. deposit form technician search)
+        if ($request->expectsJson()) {
+            return response()->json($technicians);
+        }
+
         // Obtener listas únicas para los filtros del frontend
         $states = Technician::select('state')
             ->distinct()
             ->whereNotNull('state')
             ->orderBy('state')
             ->pluck('state');
-        
-        // Usamos la constante del Modelo para asegurar consistencia
+
         $specialties = Technician::SPECIALTIES;
 
         return Inertia::render('Technicians/Index', [
-            'technicians' => Technician::with('user')
-                ->filter($request->only('search', 'specialty', 'state'))
-                ->orderBy('id', 'desc')
-                ->paginate($perPage)
-                ->withQueryString(),
+            'technicians' => $technicians,
             'filters' => $request->only(['search', 'perPage', 'specialty', 'state']),
             'states' => $states,
-            'specialties' => $specialties 
+            'specialties' => $specialties,
         ]);
     }
 
