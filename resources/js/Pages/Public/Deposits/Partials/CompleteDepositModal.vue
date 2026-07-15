@@ -2,10 +2,12 @@
 import { ref, watch } from 'vue'
 import { useForm } from '@inertiajs/vue3'
 import { ElMessage } from 'element-plus'
+import { UploadFilled } from '@element-plus/icons-vue'
 
 const props = defineProps({
   modelValue: Boolean,
   deposit: Object,
+  completeUrl: String,
 })
 
 const emit = defineEmits(['update:modelValue', 'completed'])
@@ -14,15 +16,13 @@ const dialogVisible = ref(props.modelValue)
 watch(() => props.modelValue, (v) => { dialogVisible.value = v })
 watch(dialogVisible, (v) => emit('update:modelValue', v))
 
-const completeRoute = route('public.deposits.complete', props.deposit.id)
-
 const form = useForm({
   commission_amount: '',
   voucher: null,
 })
 
 function submit() {
-  form.post(completeRoute, {
+  form.post(props.completeUrl, {
     onSuccess: () => {
       ElMessage.success('Depósito marcado como realizado. El pago se registró automáticamente.')
       emit('completed')
@@ -37,6 +37,8 @@ function submit() {
     title="Marcar depósito como realizado"
     width="480px"
     destroy-on-close
+    :close-on-click-modal="false"
+    class="complete-deposit-dialog"
   >
     <el-form :model="form" label-position="top">
       <el-form-item label="Comisión (opcional)">
@@ -83,3 +85,12 @@ function submit() {
     </template>
   </el-dialog>
 </template>
+
+<style scoped>
+@media (max-width: 640px) {
+  .complete-deposit-dialog :deep(.el-dialog) {
+    width: 90% !important;
+    max-width: 480px;
+  }
+}
+</style>

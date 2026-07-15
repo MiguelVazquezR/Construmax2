@@ -1,7 +1,8 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { router } from '@inertiajs/vue3'
 import { Edit, Delete, Check, Share } from '@element-plus/icons-vue'
+import axios from 'axios'
 
 const props = defineProps({
   deposits: Object,
@@ -23,6 +24,38 @@ function shiftLabel(shift) {
   return shift === 'matutino' ? 'Matutino' : 'Vespertino'
 }
 
+function formatDate(dateString) {
+  if (!dateString) return ''
+  const date = new Date(dateString + 'T00:00:00')
+  return date.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function formatAmount(amount) {
+  return Number(amount).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+// --- Technician filter (load all external technicians on mount) ---
+const allTechnicians = ref([])
+const techniciansLoading = ref(false)
+
+async function loadTechnicians() {
+  techniciansLoading.value = true
+  try {
+    const { data } = await axios.get(route('technicians.index'), {
+      params: { is_internal: false, perPage: 200 }
+    })
+    allTechnicians.value = (data.data || data) ?? []
+  } catch {
+    allTechnicians.value = []
+  } finally {
+    techniciansLoading.value = false
+  }
+}
+
+onMounted(() => {
+  loadTechnicians()
+})
+
 function updateFilter(key, value) {
   const params = { ...props.filters }
   if (value) {
@@ -38,31 +71,41 @@ function updateFilter(key, value) {
   <div class="p-4">
     <!-- Filters -->
     <div class="flex flex-wrap gap-3 mb-4">
-      <el-input
-        :model-value="filters.search ?? ''"
+      <el-select
+        :model-value="filters.technician_id ?? ''"
+        filterable
+        :filter-method="(val) => { /* local filtering handled by el-select */ }"
+        :loading="techniciansLoading"
         placeholder="Buscar por nombre de técnico"
         class="w-60"
         clearable
-        @input="updateFilter('search', $event)"
-      />
+        @change="updateFilter('technician_id', $event)"
+      >
+        <el-option
+          v-for="tech in allTechnicians"
+          :key="tech.id"
+          :label="tech.user?.name ?? tech.name ?? 'N/A'"
+          :value="tech.id"
+        />
+      </el-select>
       <el-select
-        :model-value="filters.status ?? ''"
-        placeholder="Todos los estados"
+        :model-value="filters.status ?? 'pending'"
+        placeholder="Estado"
         class="w-40"
-        clearable
         @change="updateFilter('status', $event)"
       >
         <el-option label="Pendiente" value="pending" />
         <el-option label="Aprobado" value="approved" />
         <el-option label="Completado" value="completed" />
+        <el-option label="Todos los estados" value="" />
       </el-select>
       <el-select
         :model-value="filters.shift ?? ''"
-        placeholder="Todos los turnos"
+        placeholder="Turno"
         class="w-40"
-        clearable
         @change="updateFilter('shift', $event)"
       >
+        <el-option label="Ambos turnos" value="" />
         <el-option label="Matutino" value="matutino" />
         <el-option label="Vespertino" value="vespertino" />
       </el-select>
@@ -90,9 +133,9 @@ function updateFilter(key, value) {
           {{ row.deposit_type?.name ?? 'N/A' }}
         </template>
       </el-table-column>
-      <el-table-column label="Monto" width="120" align="right">
+      <el-table-column label="Monto" width="140" align="right">
         <template #default="{ row }">
-          <span class="font-mono">${{ Number(row.amount).toFixed(2) }}</span>
+          <span class="font-mono">${{ formatAmount(row.amount) }}</span>
         </template>
       </el-table-column>
       <el-table-column label="Turno" width="100">
@@ -100,9 +143,9 @@ function updateFilter(key, value) {
           {{ shiftLabel(row.shift) }}
         </template>
       </el-table-column>
-      <el-table-column label="Fecha" width="120">
+      <el-table-column label="Fecha" width="130">
         <template #default="{ row }">
-          {{ row.scheduled_date }}
+          {{ formatDate(row.scheduled_date) }}
         </template>
       </el-table-column>
       <el-table-column label="Estado" width="110">

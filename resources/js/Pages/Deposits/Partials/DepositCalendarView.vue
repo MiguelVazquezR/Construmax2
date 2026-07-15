@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
 
 const props = defineProps({
   events: Object,    // { '2026-07-14': [...deposits], ... }
@@ -40,6 +40,11 @@ function handleEventClick(deposit) {
     emit('edit', deposit)
   }
 }
+
+function handleCreateClick(data, event) {
+  event.stopPropagation()
+  emit('create-with-date', formatDateKey(data.date))
+}
 </script>
 
 <template>
@@ -67,16 +72,23 @@ function handleEventClick(deposit) {
 
     <el-calendar v-model="selectedDate">
       <template #date-cell="{ data }">
-        <div
-          class="h-full w-full flex flex-col gap-1 overflow-hidden"
-          @click="handleDateClick(data)"
-        >
-          <span
-            class="text-sm font-bold"
-            :class="data.isSelected ? 'text-primary' : 'text-gray-700 dark:text-gray-300'"
-          >
-            {{ data.date.getDate() }}
-          </span>
+        <div class="h-full w-full flex flex-col gap-1 overflow-hidden calendar-day-cell">
+          <div class="flex items-center justify-between">
+            <span
+              class="text-sm font-bold"
+              :class="data.isSelected ? 'text-primary' : 'text-gray-700 dark:text-gray-300'"
+            >
+              {{ data.date.getDate() }}
+            </span>
+            <el-button
+              v-if="can.create"
+              class="calendar-add-btn"
+              :icon="Plus"
+              size="small"
+              circle
+              @click="handleCreateClick(data, $event)"
+            />
+          </div>
 
           <div class="flex flex-col gap-0.5 overflow-y-auto pr-1">
             <div
@@ -100,3 +112,18 @@ function handleEventClick(deposit) {
     </el-calendar>
   </div>
 </template>
+
+<style scoped>
+.calendar-add-btn {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.calendar-day-cell:hover .calendar-add-btn {
+  opacity: 1;
+}
+@media (hover: none) and (pointer: coarse) {
+  .calendar-add-btn {
+    opacity: 1;
+  }
+}
+</style>

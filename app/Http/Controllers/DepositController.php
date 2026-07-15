@@ -38,12 +38,14 @@ class DepositController extends Controller
             'approvedBy',
         ])->latest();
 
-        if ($request->filled('search')) {
-            $query->filter(['search' => $request->search]);
+        if ($request->filled('technician_id')) {
+            $query->where('technician_id', $request->technician_id);
         }
-        if ($request->filled('status')) {
-            $query->filter(['status' => $request->status]);
-        }
+
+        // Default to pending if no status filter provided
+        $statusFilter = $request->filled('status') ? $request->status : 'pending';
+        $query->filter(['status' => $statusFilter]);
+
         if ($request->filled('shift')) {
             $query->filter(['shift' => $request->shift]);
         }
@@ -69,7 +71,7 @@ class DepositController extends Controller
                 'manageTypes' => $request->user()->can('deposits.types.manage'),
             ],
             'defaultShift'   => $this->depositService->defaultShift(),
-            'filters'        => $request->only(['search', 'status', 'shift']),
+            'filters'        => $request->only(['technician_id', 'status', 'shift']),
         ]);
     }
 

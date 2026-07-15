@@ -7,6 +7,7 @@ use App\Http\Requests\Deposits\CompleteDepositRequest;
 use App\Models\Deposit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\URL;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -24,14 +25,22 @@ class PublicDepositController extends Controller
     {
         $deposit->load([
             'technician.user',
-            'bankAccount',
+            'bankAccount.media',
             'ticket',
             'depositType',
             'approvedBy',
         ]);
 
+        $bankQrUrl = null;
+        if ($deposit->bankAccount) {
+            $qrMedia = $deposit->bankAccount->getFirstMedia('bank_qr');
+            $bankQrUrl = $qrMedia?->getUrl();
+        }
+
         return Inertia::render('Public/Deposits/Show', [
-            'deposit' => $deposit,
+            'deposit'      => $deposit,
+            'completeUrl'  => URL::signedRoute('public.deposits.complete', ['deposit' => $deposit->id]),
+            'bankQrUrl'    => $bankQrUrl,
         ]);
     }
 
@@ -46,7 +55,7 @@ class PublicDepositController extends Controller
     {
         $deposits = Deposit::with([
             'technician.user',
-            'bankAccount',
+            'bankAccount.media',
             'ticket',
             'depositType',
             'approvedBy',
@@ -66,6 +75,10 @@ class PublicDepositController extends Controller
      */
     public function complete(CompleteDepositRequest $request, Deposit $deposit): RedirectResponse
     {
+        if ($deposit->status === 'completed') {
+            return back()->with('error', 'Este depósito ya fue marcado como realizado.');
+        }
+
         if ($deposit->status !== 'approved') {
             return back()->with('error', 'Solo los depósitos aprobados pueden marcarse como realizados.');
         }

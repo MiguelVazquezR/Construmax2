@@ -2,18 +2,44 @@
 import { Head } from '@inertiajs/vue3'
 import CompleteDepositModal from './Partials/CompleteDepositModal.vue'
 import { ref, computed } from 'vue'
+import { Warning, CircleCheck } from '@element-plus/icons-vue'
 
 const props = defineProps({
   deposit: Object,
+  completeUrl: String,
+  bankQrUrl: { type: String, default: null },
 })
 
 const showCompleteModal = ref(false)
 
 const canComplete = computed(() => props.deposit.status === 'approved')
 
+function formatAmount(amount) {
+  return Number(amount).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function formatDate(dateString) {
+  if (!dateString) return ''
+  const date = new Date(dateString + 'T00:00:00')
+  return date.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function formatDateTime(dateString) {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  return date.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function statusLabel(status) {
+  return { pending: 'Pendiente', approved: 'Aprobado', completed: 'Realizado' }[status] || status
+}
+
+function statusTagType(status) {
+  return { pending: 'warning', approved: 'success', completed: 'info' }[status] || 'info'
+}
+
 function onCompleted() {
   showCompleteModal.value = false
-  // Reload page to reflect changes
   window.location.reload()
 }
 </script>
@@ -29,8 +55,8 @@ function onCompleted() {
         <h1 class="text-xl font-bold text-gray-800 dark:text-white mb-2">
           Depósito #{{ deposit.id }}
         </h1>
-        <el-tag :type="deposit.status === 'approved' ? 'success' : deposit.status === 'completed' ? 'info' : 'warning'" size="large">
-          {{ deposit.status }}
+        <el-tag :type="statusTagType(deposit.status)" size="large">
+          {{ statusLabel(deposit.status) }}
         </el-tag>
       </div>
 
@@ -59,7 +85,7 @@ function onCompleted() {
         <div class="grid grid-cols-2 gap-3">
           <div>
             <span class="text-xs text-gray-400">Monto</span>
-            <p class="font-mono font-bold text-gray-800 dark:text-white">${{ Number(deposit.amount).toFixed(2) }}</p>
+            <p class="font-mono font-bold text-gray-800 dark:text-white">${{ formatAmount(deposit.amount) }}</p>
           </div>
           <div>
             <span class="text-xs text-gray-400">Tipo</span>
@@ -71,7 +97,7 @@ function onCompleted() {
           </div>
           <div>
             <span class="text-xs text-gray-400">Fecha</span>
-            <p class="text-gray-800 dark:text-white">{{ deposit.scheduled_date }}</p>
+            <p class="text-gray-800 dark:text-white">{{ formatDate(deposit.scheduled_date) }}</p>
           </div>
           <div v-if="deposit.approved_by">
             <span class="text-xs text-gray-400">Aprobado por</span>
@@ -112,6 +138,11 @@ function onCompleted() {
             <p class="font-mono text-gray-800 dark:text-white">{{ deposit.bank_account?.branch_number ?? 'N/A' }}</p>
           </div>
         </div>
+
+        <!-- QR image -->
+        <div v-if="bankQrUrl" class="mt-4 flex justify-center">
+          <img :src="bankQrUrl" alt="QR de pago" class="max-w-[200px] rounded-lg border" />
+        </div>
       </div>
 
       <!-- Completed badge -->
@@ -121,14 +152,14 @@ function onCompleted() {
           <div>
             <h3 class="text-sm font-bold text-green-800 dark:text-green-200 mb-1">Depositado</h3>
             <p class="text-sm text-green-700 dark:text-green-300">
-              Completado el {{ deposit.completed_at }}
-              <span v-if="deposit.commission_amount"> — Comisión: ${{ Number(deposit.commission_amount).toFixed(2) }}</span>
+              Completado el {{ formatDateTime(deposit.completed_at) }}
+              <span v-if="deposit.commission_amount"> — Comisión: ${{ formatAmount(deposit.commission_amount) }}</span>
             </p>
           </div>
         </div>
       </div>
 
-      <!-- Complete button -->
+      <!-- Complete button (only if approved, not already completed) -->
       <div v-if="canComplete" class="text-center">
         <el-button type="primary" size="large" @click="showCompleteModal = true">
           Marcar como realizado
@@ -140,6 +171,7 @@ function onCompleted() {
         v-if="showCompleteModal"
         v-model="showCompleteModal"
         :deposit="deposit"
+        :complete-url="completeUrl"
         @completed="onCompleted"
       />
     </div>

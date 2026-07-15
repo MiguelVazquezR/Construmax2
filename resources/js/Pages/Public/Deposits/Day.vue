@@ -9,6 +9,36 @@ const props = defineProps({
 
 const matutinoDeposits = computed(() => props.deposits?.matutino || [])
 const vespertinoDeposits = computed(() => props.deposits?.vespertino || [])
+
+function formatAmount(amount) {
+  return Number(amount).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function formatDate(dateString) {
+  if (!dateString) return ''
+  const date = new Date(dateString + 'T00:00:00')
+  return date.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function formatDateTime(dateString) {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  return date.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function statusLabel(status) {
+  return { pending: 'Pendiente', approved: 'Aprobado', completed: 'Realizado' }[status] || status
+}
+
+function statusTagType(status) {
+  return { pending: 'warning', approved: 'success', completed: 'info' }[status] || 'info'
+}
+
+function bankQrUrl(account) {
+  if (!account?.media) return null
+  const qrMedia = account.media.find(m => m.collection_name === 'bank_qr')
+  return qrMedia?.original_url ?? null
+}
 </script>
 
 <template>
@@ -20,7 +50,7 @@ const vespertinoDeposits = computed(() => props.deposits?.vespertino || [])
       <!-- Header -->
       <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 mb-8">
         <h1 class="text-xl font-bold text-gray-800 dark:text-white">
-          Depósitos del {{ date }}
+          Depósitos del {{ formatDate(date) }}
         </h1>
         <p class="text-sm text-gray-500 mt-1">
           {{ matutinoDeposits.length + vespertinoDeposits.length }} depósito(s) programado(s)
@@ -45,9 +75,9 @@ const vespertinoDeposits = computed(() => props.deposits?.vespertino || [])
                 <p class="text-sm text-gray-500">{{ d.deposit_type?.name ?? 'N/A' }} — {{ d.ticket?.folio ?? 'N/A' }}</p>
               </div>
               <div class="text-right">
-                <p class="font-mono font-bold text-gray-800 dark:text-white">${{ Number(d.amount).toFixed(2) }}</p>
-                <el-tag :type="d.status === 'approved' ? 'success' : d.status === 'completed' ? 'info' : 'warning'" size="small">
-                  {{ d.status }}
+                <p class="font-mono font-bold text-gray-800 dark:text-white">${{ formatAmount(d.amount) }}</p>
+                <el-tag :type="statusTagType(d.status)" size="small">
+                  {{ statusLabel(d.status) }}
                 </el-tag>
               </div>
             </div>
@@ -61,6 +91,10 @@ const vespertinoDeposits = computed(() => props.deposits?.vespertino || [])
                 <div><span class="text-gray-400">Tarjeta:</span> {{ d.bank_account?.card_number ?? 'N/A' }}</div>
                 <div v-if="d.approved_by"><span class="text-gray-400">Aprobado por:</span> {{ d.approved_by?.name ?? 'N/A' }}</div>
               </div>
+              <!-- QR image -->
+              <div v-if="bankQrUrl(d.bank_account)" class="mt-3 flex justify-center">
+                <img :src="bankQrUrl(d.bank_account)" alt="QR de pago" class="max-w-[160px] rounded-lg border" />
+              </div>
             </div>
 
             <!-- Pending notice -->
@@ -70,8 +104,8 @@ const vespertinoDeposits = computed(() => props.deposits?.vespertino || [])
 
             <!-- Completed badge -->
             <div v-if="d.status === 'completed'" class="bg-green-50 dark:bg-green-900/30 rounded-lg p-3 text-xs text-green-700 dark:text-green-300 mt-2">
-              ✓ Completado {{ d.completed_at }}
-              <span v-if="d.commission_amount"> — Comisión: ${{ Number(d.commission_amount).toFixed(2) }}</span>
+              ✓ Completado {{ formatDateTime(d.completed_at) }}
+              <span v-if="d.commission_amount"> — Comisión: ${{ formatAmount(d.commission_amount) }}</span>
             </div>
 
             <!-- Direct link -->
@@ -105,9 +139,9 @@ const vespertinoDeposits = computed(() => props.deposits?.vespertino || [])
                 <p class="text-sm text-gray-500">{{ d.deposit_type?.name ?? 'N/A' }} — {{ d.ticket?.folio ?? 'N/A' }}</p>
               </div>
               <div class="text-right">
-                <p class="font-mono font-bold text-gray-800 dark:text-white">${{ Number(d.amount).toFixed(2) }}</p>
-                <el-tag :type="d.status === 'approved' ? 'success' : d.status === 'completed' ? 'info' : 'warning'" size="small">
-                  {{ d.status }}
+                <p class="font-mono font-bold text-gray-800 dark:text-white">${{ formatAmount(d.amount) }}</p>
+                <el-tag :type="statusTagType(d.status)" size="small">
+                  {{ statusLabel(d.status) }}
                 </el-tag>
               </div>
             </div>
@@ -120,6 +154,9 @@ const vespertinoDeposits = computed(() => props.deposits?.vespertino || [])
                 <div><span class="text-gray-400">Tarjeta:</span> {{ d.bank_account?.card_number ?? 'N/A' }}</div>
                 <div v-if="d.approved_by"><span class="text-gray-400">Aprobado por:</span> {{ d.approved_by?.name ?? 'N/A' }}</div>
               </div>
+              <div v-if="bankQrUrl(d.bank_account)" class="mt-3 flex justify-center">
+                <img :src="bankQrUrl(d.bank_account)" alt="QR de pago" class="max-w-[160px] rounded-lg border" />
+              </div>
             </div>
 
             <div v-if="d.status === 'pending'" class="bg-orange-50 dark:bg-orange-900/30 rounded-lg p-3 text-xs text-orange-700 dark:text-orange-300 mt-2">
@@ -127,8 +164,8 @@ const vespertinoDeposits = computed(() => props.deposits?.vespertino || [])
             </div>
 
             <div v-if="d.status === 'completed'" class="bg-green-50 dark:bg-green-900/30 rounded-lg p-3 text-xs text-green-700 dark:text-green-300 mt-2">
-              ✓ Completado {{ d.completed_at }}
-              <span v-if="d.commission_amount"> — Comisión: ${{ Number(d.commission_amount).toFixed(2) }}</span>
+              ✓ Completado {{ formatDateTime(d.completed_at) }}
+              <span v-if="d.commission_amount"> — Comisión: ${{ formatAmount(d.commission_amount) }}</span>
             </div>
 
             <div class="mt-3 text-right">
