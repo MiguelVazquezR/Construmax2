@@ -9,7 +9,7 @@ class CostService
 {
     public function getBudgetsForCosting(array $filters): LengthAwarePaginator
     {
-        return Budget::with(['ticket.customer', 'ticket.branch', 'ticket.contact', 'latestCatalog'])
+        return Budget::with(['ticket.customer', 'ticket.branch', 'ticket.contact', 'latestCatalog.approver'])
             ->when($filters['search'] ?? null, function ($query, $search) {
                 $query->whereHas('ticket', function ($q) use ($search) {
                     $q->where('name', 'like', '%' . $search . '%')
@@ -19,11 +19,19 @@ class CostService
                         });
                 });
             })
-            ->when($filters['catalog'] ?? 'all', function ($query, $catalogStatus) {
+            ->when($filters['catalog'] ?? 'pending', function ($query, $catalogStatus) {
                 if ($catalogStatus === 'with') {
                     $query->has('catalogs');
                 } elseif ($catalogStatus === 'without') {
                     $query->doesntHave('catalogs');
+                } elseif ($catalogStatus === 'pending') {
+                    $query->whereHas('latestCatalog', function ($q) {
+                        $q->where('status', \App\Models\BudgetCatalog::STATUS_PENDING_APPROVAL);
+                    });
+                } elseif ($catalogStatus === 'approved') {
+                    $query->whereHas('latestCatalog', function ($q) {
+                        $q->where('status', \App\Models\BudgetCatalog::STATUS_APPROVED);
+                    });
                 }
             })
             ->when($filters['branch'] ?? null, function ($query, $branch) {
@@ -38,23 +46,27 @@ class CostService
             ->paginate(15)
             ->through(function ($budget) {
                 return [
-                    'id'             => $budget->id,
-                    'ticket_name'    => $budget->ticket->name ?? 'N/A',
-                    'ticket_folio'   => $budget->ticket->folio ?? 'N/A',
-                    'customer_name'  => $budget->ticket->customer->name ?? 'N/A',
-                    'status'         => $budget->ticket->status ?? 'N/A',
-                    'total_cost'     => $budget->latestCatalog
+                    'id'               => $budget->id,
+                    'ticket_name'      => $budget->ticket->name ?? 'N/A',
+                    'ticket_folio'     => $budget->ticket->folio ?? 'N/A',
+                    'customer_name'    => $budget->ticket->customer->name ?? 'N/A',
+                    'status'           => $budget->ticket->status ?? 'N/A',
+                    'total_cost'       => $budget->latestCatalog
                         ? $budget->latestCatalog->total
                         : $budget->total_cost,
-                    'currency'       => $budget->currency,
-                    'concept_count'  => $budget->concepts()->count(),
-                    'latest_version' => $budget->latestCatalog ? $budget->latestCatalog->version : null,
-                    'has_catalog'    => $budget->latestCatalog !== null,
-                    'branch_name'    => $budget->ticket->branch->branch_name ?? '—',
-                    'branch_unit'    => $budget->ticket->branch->unit ?? '—',
-                    'branch_country' => $budget->ticket->branch->country ?? '—',
-                    'branch_region'  => $budget->ticket->branch->region ?? '—',
-                    'contact_name'   => $budget->ticket->contact->name ?? '—',
+                    'currency'         => $budget->currency,
+                    'concept_count'    => $budget->concepts()->count(),
+                    'latest_version'   => $budget->latestCatalog ? $budget->latestCatalog->version : null,
+                    'has_catalog'      => $budget->latestCatalog !== null,
+                    'catalog_status'   => $budget->latestCatalog ? $budget->latestCatalog->status : null,
+                    'catalog_status_label' => $budget->latestCatalog ? $budget->latestCatalog->statusLabel() : null,
+                    'catalog_approved_by' => $budget->latestCatalog?->approver?->name ?? null,
+                    'catalog_id'       => $budget->latestCatalog?->id ?? null,
+                    'branch_name'      => $budget->ticket->branch->branch_name ?? '—',
+                    'branch_unit'      => $budget->ticket->branch->unit ?? '—',
+                    'branch_country'   => $budget->ticket->branch->country ?? '—',
+                    'branch_region'    => $budget->ticket->branch->region ?? '—',
+                    'contact_name'     => $budget->ticket->contact->name ?? '—',
                 ];
             });
     }
@@ -70,7 +82,9 @@ class CostService
             'ticket.media',
             'concepts',
             'catalogs.items',
+            'catalogs.approver',
             'latestCatalog.items',
+            'latestCatalog.approver',
             'media',
         ]);
 
@@ -171,6 +185,10 @@ class CostService
                 'total'    => $budget->latestCatalog->total,
                 'non_installation_labor' => $budget->latestCatalog->non_installation_labor,
                 'labor_utility'         => $budget->latestCatalog->labor_utility,
+                'status'   => $budget->latestCatalog->status,
+                'status_label' => $budget->latestCatalog->statusLabel(),
+                'is_approved' => $budget->latestCatalog->isApproved(),
+                'approved_by_name' => $budget->latestCatalog->approver?->name ?? null,
                 'items'    => $budget->latestCatalog->items->map(function ($item) {
                     return [
                         'id'          => $item->id,
@@ -195,6 +213,10 @@ class CostService
                     'total'    => $catalog->total,
                     'non_installation_labor' => $catalog->non_installation_labor,
                     'labor_utility'         => $catalog->labor_utility,
+                    'status'   => $catalog->status,
+                    'status_label' => $catalog->statusLabel(),
+                    'is_approved' => $catalog->isApproved(),
+                    'approved_by_name' => $catalog->approver?->name ?? null,
                     'items'   => $catalog->items->map(function ($item) {
                         return [
                             'id'          => $item->id,

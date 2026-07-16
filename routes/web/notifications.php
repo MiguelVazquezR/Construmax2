@@ -17,4 +17,5 @@ Route::middleware(['auth', 'verified'])->prefix('config/notifications')->name('c
     Route::get('/', [NotificationController::class, 'index'])->name('index');
     Route::post('/', [NotificationController::class, 'store'])->name('store');
     Route::delete('/{setting}', [NotificationController::class, 'destroy'])->name('destroy');
+    Route::delete('/user/{user}', [NotificationController::class, 'deleteUserSettings'])->name('delete-user');
 });

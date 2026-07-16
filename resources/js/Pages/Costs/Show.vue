@@ -8,7 +8,7 @@ import MaterialsTable from '@/Components/Costs/MaterialsTable.vue';
 import LaborTable from '@/Components/Costs/LaborTable.vue';
 import EmpenoFacilTotals from '@/Components/Costs/EmpenoFacilTotals.vue';
 
-const props = defineProps({ budget: Object, canCreateCatalog: Boolean });
+const props = defineProps({ budget: Object, canCreateCatalog: Boolean, canApprove: Boolean });
 const { formatCurrency, copyToClipboard } = useCostsHelpers();
 
 const currentVersion = ref(null);
@@ -228,6 +228,31 @@ function formatDateStr(dateStr) {
     return date.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
+function approveCatalog() {
+    const catalogId = props.budget.latest_catalog?.id;
+    if (!catalogId) return;
+
+    ElMessageBox.confirm(
+        '¿Estás seguro de aprobar este catálogo de costos? Una vez aprobado, el asesor recibirá una notificación.',
+        'Aprobar catálogo',
+        {
+            confirmButtonText: 'Sí, aprobar',
+            cancelButtonText: 'Cancelar',
+            type: 'info',
+        }
+    ).then(() => {
+        router.post(route('costs.approve-catalog', { budget: props.budget.id, catalog: catalogId }), {}, {
+            preserveScroll: true,
+            onSuccess: () => {
+                ElMessage.success('Catálogo de costos aprobado correctamente.');
+            },
+            onError: () => {
+                ElMessage.error('Error al aprobar el catálogo.');
+            },
+        });
+    }).catch(() => {});
+}
+
 </script>
 
 <template>
@@ -244,6 +269,13 @@ function formatDateStr(dateStr) {
                             <span>{{ budget.ticket.folio }}</span>
                             <span class="text-gray-300 dark:text-gray-600">|</span>
                             <span>{{ budget.ticket.customer.name }}</span>
+                            <!-- Approval status badge -->
+                            <el-tag v-if="budget.latest_catalog" :type="budget.latest_catalog.is_approved ? 'success' : 'warning'" size="small" effect="dark">
+                                {{ budget.latest_catalog.status_label }}
+                            </el-tag>
+                            <span v-if="budget.latest_catalog?.approved_by_name" class="text-xs text-gray-400">
+                                por {{ budget.latest_catalog.approved_by_name }}
+                            </span>
                             <el-dropdown v-if="budget.catalogs.length > 0" trigger="click" @command="viewCatalogVersion">
                                 <span class="cursor-pointer text-sm text-green-600 hover:text-green-700 transition flex items-center gap-1 font-medium bg-green-50 px-2 py-0.5 rounded border border-green-200">
                                     Versión mostrada: {{ currentVersion }} <el-icon><ArrowDown /></el-icon>
@@ -257,6 +289,12 @@ function formatDateStr(dateStr) {
                                 </template>
                             </el-dropdown>
                             <el-tag v-else type="info" size="small" effect="plain">Sin catálogo previo</el-tag>
+                        </div>
+                        <!-- Approve button -->
+                        <div v-if="budget.latest_catalog && !budget.latest_catalog.is_approved && canApprove" class="mt-2">
+                            <el-button type="success" size="small" icon="Check" @click="approveCatalog">
+                                Aprobar catálogo
+                            </el-button>
                         </div>
                         <div class="flex items-center gap-2 text-sm text-gray-500 mt-1">
                             <span class="text-gray-400">No. Reporte:</span>

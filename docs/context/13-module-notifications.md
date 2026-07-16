@@ -12,7 +12,7 @@
 | Action | `DispatchNotificationAction.php` | Centralized dispatch for all 5 event types |
 | Service | `NotificationService.php` | Notify subscribers for a given notification type |
 | Model | `NotificationSetting.php` | Per-user toggles for each notification type |
-| Notification | `CatalogCreated.php` | Mail + database |
+| Notification | `CatalogApproved.php` | Mail + database |
 | Notification | `DepositPendingApproval.php` | Database only |
 | Notification | `InvoiceOverdue.php` | Mail + database |
 | Notification | `TicketNeedsCatalog.php` | Mail + database |
@@ -49,7 +49,7 @@ DELETE /config/notifications/{setting}         config.notifications.destroy
 | Type key | Trigger | Channels | Who receives it |
 |----------|---------|----------|----------------|
 | `ticket.needs-catalog` | Ticket status → `Catálogo` | mail + database | All subscribers |
-| `catalog.created` | BudgetCatalog created | mail + database | **Only the ticket's seller**, if they have the setting active |
+| `catalog.approved` | BudgetCatalog approved | mail + database | **Only the ticket's seller**, if they have the setting active |
 | `ticket.needs-invoice` | Ticket status → `Finalizado` | mail + database | All subscribers |
 | `invoice.overdue` | Cron detects due date reached | mail + database | All subscribers |
 | `deposit.pending-approval` | Deposit created | database only | All subscribers |
@@ -60,12 +60,13 @@ DELETE /config/notifications/{setting}         config.notifications.destroy
 
 ### `DispatchNotificationAction`
 Centralized class injected into:
-- `Ticket` model (booted::updated) — for `ticketNeedsCatalog` and `ticketNeedsInvoice`
+- `Ticket` model (booted::updated) — for `ticketNeedsInvoice` (status → Finalizado)
+- `CostController::approveCatalog()` — for `catalogApproved` (when catalog is approved)
 - `CheckOverdueInvoices` command — for `invoiceOverdue`
-- Controllers that create catalogs/deposits — for `catalogCreated` and `depositPendingApproval`
+- Controllers that create deposits — for `depositPendingApproval`
 
-### Special case: `catalogCreated`
-Unlike other notifications that go to all subscribers, catalog creation only notifies the **ticket's seller** — and only if they have the `catalog.created` notification setting active. This uses an explicit `NotificationSetting` check rather than the `notifySubscribers` helper.
+### Special case: `catalogApproved`
+Unlike other notifications that go to all subscribers, catalog approval only notifies the **ticket's seller** — and only if they have the `catalog.approved` notification setting active. This uses an explicit `NotificationSetting` check rather than the `notifySubscribers` helper. The notification fires when a user with `costs.approve` permission approves the catalog, not when the catalog is created.
 
 ### `NotificationService::notifySubscribers(string $type, Notification $notification)`
 - Queries `NotificationSetting::subscribersFor($type)` — returns users with active setting and valid email
@@ -109,9 +110,10 @@ All notification emails are written in **Spanish** (user-facing content) with En
 
 ## Known limitations / cautions
 
-- **`catalogCreated` is an exception:** Unlike the other 4 types, it doesn't use `notifySubscribers` — it manually checks the seller's setting. If you want to change who receives catalog notifications, edit `DispatchNotificationAction::catalogCreated`.
+- **`catalogApproved` is an exception:** Unlike the other 4 types, it doesn't use `notifySubscribers` — it manually checks the seller's setting. If you want to change who receives catalog approval notifications, edit `DispatchNotificationAction::catalogApproved`.
 - **No notification for calendar events:** Participant invitations exist in the data model but aren't wired to notifications
 - **30-second polling:** The bell polls every 30s — if many users are active, this generates constant requests. Consider WebSockets (Laravel Reverb/Echo) for scale.
 - **`deposit.pending-approval` is database-only:** No email is sent for deposit approvals — admins must check the notification bell
 - **Notification settings page is admin-only:** Regular users cannot configure their own notification preferences from the profile page
 - **No push notifications:** Only mail + database channels — no mobile push
+- **`ticket.needs-catalog` is no longer triggered by status change:** This notification type still exists in the system but is not currently dispatched by any automatic flow (was previously triggered on `Catálogo` status change; now catalogs go through `Pendiente de aprobación` → approval flow)

@@ -21,11 +21,12 @@ const columns = [
     { id: 'Programado', label: 'Programado', color: '#6366f1' },
     { id: 'Levantamiento', label: 'Levantamiento', color: '#0d9488' },
     { id: 'Catálogo', label: 'Cotización (Catálogo)', color: '#3b82f6' },
-    { id: 'Proceso de ejecución', label: 'En ejecución', color: '#f59e0b' },
-    { id: 'Ejecutado', label: 'Ejecutado', color: '#10b981' },
-    { id: 'Finalizado', label: 'Finalizado', color: '#059669' },
-    { id: 'Facturado', label: 'Facturado', color: '#eab308' },
-    { id: 'Pagado', label: 'Pagado', color: '#34d399' },
+    { id: 'Pendiente de aprobación', label: 'Pendiente de aprobación', color: '#f59e0b' },
+    { id: 'Proceso de ejecución', label: 'En ejecución', color: '#10b981' },
+    { id: 'Ejecutado', label: 'Ejecutado', color: '#059669' },
+    { id: 'Finalizado', label: 'Finalizado', color: '#eab308' },
+    { id: 'Facturado', label: 'Facturado', color: '#34d399' },
+    { id: 'Pagado', label: 'Pagado', color: '#22c55e' },
     { id: 'Cancelado', label: 'Cancelado', color: '#ef4444' },
 ];
 
@@ -93,6 +94,13 @@ const onDrop = async (e, targetStatus) => {
         } catch {
             // User chose "Más tarde" — do not change status
         }
+        draggedItem.value = null;
+        return;
+    }
+
+    // Pendiente de aprobación solo se alcanza al guardar un catálogo, no por drag-and-drop
+    if (targetStatus === 'Pendiente de aprobación') {
+        ElMessage.warning('Este estado se asigna automáticamente al guardar un catálogo de costos. No puede moverse manualmente.');
         draggedItem.value = null;
         return;
     }

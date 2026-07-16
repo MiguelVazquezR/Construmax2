@@ -244,6 +244,11 @@ class PermissionSeeder extends Seeder
                 'category' => 'Costos',
                 'description' => 'Crear versiones de catálogo de costos'
             ],
+            [
+                'name' => 'costs.approve',
+                'category' => 'Costos',
+                'description' => 'Aprobar catálogos de costos'
+            ],
 
             // --- MÓDULO: NOTIFICACIONES ---
             [

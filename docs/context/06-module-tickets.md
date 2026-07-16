@@ -27,14 +27,15 @@
 ## Ticket lifecycle (status flow)
 
 ```
-Borrador ──▶ Levantamiento ──▶ Catálogo ──▶ Proceso de ejecución ──▶ Ejecutado ──▶ Facturado ──▶ Pagado
+Borrador ──▶ Levantamiento ──▶ Catálogo ──▶ Pendiente de aprobación ──▶ Proceso de ejecución ──▶ Ejecutado ──▶ Facturado ──▶ Pagado
                                                                         │
                                                                         ▼
                                                                     Cancelado / Perdido
 ```
 
 **Auto-events on status change:**
-- `Catálogo` → dispatches `ticketNeedsCatalog` notification
+- `Pendiente de aprobación` → set automatically when a cost catalog is saved (via `CostController::storeCatalog`)
+- `Catálogo` (post-approval) → restored when catalog is approved; dispatches `catalogApproved` notification to seller
 - `Finalizado` (Ejecutado) → dispatches `ticketNeedsInvoice` notification
 
 **Priority levels:** Baja, Media, Alta, Urgente

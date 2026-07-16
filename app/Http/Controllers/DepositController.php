@@ -83,7 +83,11 @@ class DepositController extends Controller
                 'viewTickets'  => $request->user()->can('tickets.index'),
             ],
             'defaultShift'   => $this->depositService->defaultShift(),
-            'filters'        => $request->only(['technician_id', 'status', 'shift']),
+            'filters'        => [
+                'technician_id' => $request->input('technician_id', ''),
+                'status'        => $request->input('status', 'pending'),
+                'shift'         => $request->input('shift', ''),
+            ],
         ]);
     }
 

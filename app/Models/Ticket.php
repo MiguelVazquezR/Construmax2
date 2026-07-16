@@ -29,7 +29,6 @@ class Ticket extends Model implements HasMedia
                 $action = app(DispatchNotificationAction::class);
 
                 match ($ticket->status) {
-                    'Catálogo'   => $action->ticketNeedsCatalog($ticket),
                     'Finalizado' => $action->ticketNeedsInvoice($ticket),
                     default      => null,
                 };

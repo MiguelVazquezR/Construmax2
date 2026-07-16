@@ -21,18 +21,19 @@
 | Vue components | `Costs/LaborTable.vue` | Editable labor table |
 | Vue components | `Costs/EmpenoFacilTotals.vue` | Empeño Fácil totals card |
 | Composables | `useCostsHelpers.js` | Currency formatting, clipboard |
-| Routes | `routes/web/costs.php` | 5 routes |
+| Routes | `routes/web/costs.php` | 6 routes |
 
 ---
 
 ## Routes
 
 ```
-GET  /costs                              costs.index
-GET  /costs/{budget}                     costs.show
-GET  /costs/{budget}/print               costs.print
-GET  /costs/{budget}/print-empeno-facil  costs.print-empeno-facil
-POST /costs/{budget}/catalog             costs.store-catalog
+GET  /costs                                         costs.index
+GET  /costs/{budget}                                costs.show
+GET  /costs/{budget}/print                          costs.print
+GET  /costs/{budget}/print-empeno-facil             costs.print-empeno-facil
+POST /costs/{budget}/catalog                        costs.store-catalog
+POST /costs/{budget}/catalog/{catalog}/approve      costs.approve-catalog
 ```
 
 ---
@@ -44,6 +45,7 @@ POST /costs/{budget}/catalog             costs.store-catalog
 - `version`: integer, auto-incremented per budget
 - Financials: `subtotal`, `iva`, `total`
 - Empeño Fácil fields: `non_installation_labor` (12% overhead), `labor_utility` (18% utility)
+- Approval: `status` (`pending_approval` | `approved`), `approved_by` (FK to users), `approved_at` (timestamp)
 
 ### BudgetCatalogItem
 - `type`: `material` or `labor`
@@ -58,6 +60,15 @@ POST /costs/{budget}/catalog             costs.store-catalog
 - Each save creates a new version (incremented from `MAX(version) + 1`)
 - `Budget.latestCatalog` returns the highest-version catalog via `latestOfMany('version')`
 - Historical catalogs are preserved, not overwritten
+
+### Catalog approval flow
+- New catalogs are created with `status = pending_approval`
+- On catalog save, the ticket status changes to `Pendiente de aprobación`
+- Users with `costs.approve` permission can approve from the costs list or detail view
+- On approval: catalog status → `approved`, ticket status → `Catálogo`, notification sent to seller
+- There is no rejection flow — if adjustments are needed, create a new version (which resets to pending)
+- Print views show a large "ESPERANDO APROBACIÓN" watermark overlay when catalog is not approved
+- Filters in costs index default to `Pendientes de aprobación`; other options: `Aprobados`, `Todos`, `Sin catálogo`
 
 ### Empeño Fácil mode
 - Activated when the customer ID is 2 (hardcoded)
@@ -77,8 +88,10 @@ POST /costs/{budget}/catalog             costs.store-catalog
 
 ### `Costs/Index.vue`
 - Lists budgets with catalog info
-- Filters: search, catalog status (with/without/all), branch
-- Each row shows: ticket folio, customer, branch, catalog version, total
+- Filters: search, approval status (Pendientes de aprobación/Aprobados/Todos/Sin catálogo), branch
+- Default filter: Pendientes de aprobación
+- Each row shows: ticket folio, customer, branch, catalog status + approved by, total
+- Approve button for users with `costs.approve` permission (only on pending catalogs)
 
 ### `Costs/Show.vue` (core editor)
 - Two editable tables: `MaterialsTable` + `LaborTable`
@@ -87,7 +100,9 @@ POST /costs/{budget}/catalog             costs.store-catalog
 - IVA toggle
 - Empeño Fácil mode: shows `EmpenoFacilTotals` card with auto-calculations
 - Report number editing (updates ticket's `report_number`)
-- Save button creates a new catalog version
+- Save button creates a new catalog version (pending approval, ticket → Pendiente de aprobación)
+- Approve button in header for users with `costs.approve` (only on unapproved catalogs)
+- Approval status badge with approver name
 
 ### `Costs/Print.vue`
 - Print-friendly layout
@@ -119,3 +134,5 @@ POST /costs/{budget}/catalog             costs.store-catalog
 - **IVA calculation is client-side only:** The 16% IVA is hardcoded in JS — if the rate changes, multiple files need updates
 - **Catalog versioning is append-only:** There's no way to delete a catalog version or revert to a previous one from the UI
 - **Report number lives on the ticket:** Editing it from the costs page is a convenience feature — be aware of potential race conditions if edited from multiple places
+- **No rejection flow:** If a catalog needs changes, users must create a new version — the previous version remains in history but is superseded
+- **Approval is all-or-nothing:** There is no partial approval or per-item approval — the entire catalog is approved at once

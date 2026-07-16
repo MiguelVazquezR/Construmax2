@@ -29,11 +29,13 @@ const getStatusColor = (status) => {
         'Programado': 'info',
         'Levantamiento': 'warning',
         'Catálogo': 'primary',
+        'Pendiente de aprobación': 'warning',
         'Proceso de ejecución': 'warning',
         'Ejecutado': 'success',
         'Finalizado': 'success',
         'Facturado': 'primary',
         'Pagado': 'success',
+        'Cancelado': 'danger',
     };
     return map[status] || 'info';
 };

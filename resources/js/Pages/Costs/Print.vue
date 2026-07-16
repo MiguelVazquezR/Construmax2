@@ -24,6 +24,8 @@ const catalog = computed(() => {
     return props.budget.latest_catalog;
 });
 
+const isApproved = computed(() => catalog.value?.is_approved === true);
+
 const formatCurrency = (value) => {
     return new Intl.NumberFormat('es-MX', {
         minimumFractionDigits: 2,
@@ -54,8 +56,15 @@ const handlePrint = () => {
             </button>
         </div>
 
-        <div class="max-w-5xl mx-auto bg-white dark:bg-white print:shadow-none shadow-lg p-8 print:p-0 text-gray-900 dark:text-gray-900">
-            
+        <div class="max-w-5xl mx-auto bg-white dark:bg-white print:shadow-none shadow-lg p-8 print:p-0 text-gray-900 dark:text-gray-900 relative">
+
+            <!-- Approval watermark overlay -->
+            <div v-if="!isApproved" class="absolute inset-0 flex items-center justify-center z-50 pointer-events-none print:flex">
+                <div class="transform -rotate-12 bg-red-500/10 border-4 border-red-500 rounded-lg px-12 py-4">
+                    <span class="text-6xl font-black text-red-500 opacity-90 select-none">ESPERANDO APROBACIÓN</span>
+                </div>
+            </div>
+
             <!-- Header principal -->
             <div class="flex border-2 border-[#b9b9b9] mb-2">
                 <!-- Logo Area -->
