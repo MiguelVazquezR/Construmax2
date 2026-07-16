@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import { router } from '@inertiajs/vue3'
+import { router, Link } from '@inertiajs/vue3'
 import { Edit, Delete, Check, Share } from '@element-plus/icons-vue'
 import axios from 'axios'
 
@@ -26,12 +26,18 @@ function shiftLabel(shift) {
 
 function formatDate(dateString) {
   if (!dateString) return ''
-  const date = new Date(dateString + 'T00:00:00')
-  return date.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
+  // Handle both "2026-07-15" and "2026-07-15T00:00:00.000000Z" formats
+  const datePart = dateString.split('T')[0]
+  const date = new Date(datePart + 'T12:00:00Z')
+  return date.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
 }
 
 function formatAmount(amount) {
   return Number(amount).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function ticketRoute(ticketId) {
+  return route('tickets.show', ticketId)
 }
 
 // --- Technician filter (load all external technicians on mount) ---
@@ -58,11 +64,8 @@ onMounted(() => {
 
 function updateFilter(key, value) {
   const params = { ...props.filters }
-  if (value) {
-    params[key] = value
-  } else {
-    delete params[key]
-  }
+  // Always include the param, even if empty string (means "show all")
+  params[key] = value ?? ''
   router.get(route('deposits.index'), params, { preserveState: true, replace: true })
 }
 </script>
@@ -125,7 +128,14 @@ function updateFilter(key, value) {
       </el-table-column>
       <el-table-column label="Ticket" min-width="140">
         <template #default="{ row }">
-          {{ row.ticket?.folio ?? 'N/A' }}
+          <Link
+            v-if="can.viewTickets && row.ticket?.id"
+            :href="ticketRoute(row.ticket.id)"
+            class="text-primary hover:underline font-medium"
+          >
+            {{ row.ticket?.folio ?? 'N/A' }}
+          </Link>
+          <span v-else>{{ row.ticket?.folio ?? 'N/A' }}</span>
         </template>
       </el-table-column>
       <el-table-column label="Tipo" min-width="110">
@@ -160,7 +170,7 @@ function updateFilter(key, value) {
           {{ row.approved_by?.name ?? '—' }}
         </template>
       </el-table-column>
-      <el-table-column label="Acciones" width="200" fixed="right">
+      <el-table-column label="Acciones" width="170" fixed="right">
         <template #default="{ row }">
           <div class="flex gap-1">
             <el-button

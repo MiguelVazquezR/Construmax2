@@ -62,7 +62,7 @@ pending ──▶ approved ──▶ completed
 ### Flow
 1. **Create:** Admin/manager creates a deposit — selects technician, bank account, ticket, deposit type, amount, shift, scheduled date
 2. **Approve:** `ApproveDepositAction` sets `status=approved`, records `approved_by` and `approved_at`
-3. **Complete:** `CompleteDepositAction` creates a `TechnicianPayment` record linking the deposit amount to the budget, sets `status=completed`, stamps `completed_at`, records `commission_amount`
+3. **Complete:** `CompleteDepositAction` creates a `TechnicianPayment` record linking the deposit amount to the budget, sets `status=completed`, stamps `completed_at`, records `commission_amount`. Once completed, cannot be re-completed (guarded server-side).
 4. **Notifications:** On creation → `deposit.pending-approval` notification sent to subscribers
 
 ---
@@ -93,10 +93,33 @@ pending ──▶ approved ──▶ completed
 - `pendingTicketsForTechnician(Technician)`: Finds tickets where the technician has pending payments
 - `defaultShift()`: Returns `vespertino` if current hour ≥ 15, else `matutino`
 
+### List view filters
+- **Technician:** Select dropdown that loads all external technicians on mount (single request), with local filtering by name — avoids request-per-keystroke lag.
+- **Status:** Defaults to `pending`. Options: Pendiente, Aprobado, Completado, "Todos los estados" (empty value = no filter).
+- **Shift:** Defaults to "Ambos turnos" (empty value = no filter). Options: Matutino, Vespertino.
+- **Filter params:** Always sent to the server. Empty values mean "show all". Status defaults to `pending` only when the param is completely absent from the URL.
+- ⚠️ **PHP quirk:** Query string `?shift=` is parsed as `null` by PHP, not `""`. Backend checks for both `''` and `null` when determining "show all".
+
+### List view — ticket column
+- If user has `tickets.index` permission: the ticket folio is an Inertia `<Link>` to `tickets.show`.
+- Otherwise: plain text.
+
+### Calendar view
+- Element Plus Calendar with color-coded events (blue=matutino, orange=vespertino).
+- **"+" button:** Circular `Plus` icon button in each day cell header. Visible on hover for desktop (`opacity` transition), always visible on touch devices via `@media (hover: none)`.
+- Clicking an event opens the edit modal (non-completed only).
+- Date formatting: `15 jul, 2026` format (`toLocaleDateString('es-MX')`).
+- Amount formatting: comma thousand separators (`$1,234.56`).
+
 ### Public views
-- Accessible via permanent signed URLs (Laravel `URL::signedRoute` with `absolute=true`)
-- `Show`: Shows deposit details, bank account info (if approved/completed), completion button (if approved)
-- `Day`: Shows all deposits for a date, grouped by shift, with bank info per deposit
+- Accessible via permanent signed URLs (Laravel `URL::signedRoute`, no expiration).
+- **Show:** Shows deposit details and bank account info only if `approved` or `completed`. For `pending`, only shows "Pendiente de aprobación" notice (no technician, amount, or banking data).
+- **Day:** Shows deposits grouped by shift. Pending deposits show only technician name + notice. Approved/completed deposits have expandable banking details via inline toggle (no page navigation needed, avoiding 403 on unsigned routes).
+- **QR image:** Bank account QR (`bank_qr` media collection) displayed below banking details in both Show and Day views.
+- **Complete action:** Uses a signed URL (passed from backend via `completeUrl` prop) to avoid 403. Guarded server-side against re-completion. Confirmation modal is mobile-responsive (90% width, max 480px).
+- **Status labels:** Displayed in Spanish: "Pendiente", "Aprobado", "Realizado".
+- **Amounts:** Comma-separated thousands, 2 decimal places.
+- **Dates:** `15 jul, 2026` format.
 
 ### Bank account selection
 - When creating a deposit, selecting a technician loads their bank accounts
@@ -115,7 +138,8 @@ pending ──▶ approved ──▶ completed
 
 ### `DepositCalendarView.vue`
 - Element Plus Calendar with color-coded events (blue=matutino, orange=vespertino)
-- Click date to create, click event to edit
+- "+" button per day cell for creating deposits (hover on desktop, always visible on touch)
+- Click event to edit
 - Status-based opacity (pending=full, approved=medium, completed=light)
 
 ### `DepositForm.vue`
@@ -135,7 +159,7 @@ pending ──▶ approved ──▶ completed
 ## Dependencies on other modules
 
 - **Technicians** (`09`): Deposits reference technicians and their bank accounts
-- **Tickets** (`06`): Deposits can be associated with tickets
+- **Tickets** (`06`): Deposits can be associated with tickets; ticket folio links to ticket details
 - **Budgets** (`07`): `budget_id` is auto-derived; `CompleteDepositAction` creates a `TechnicianPayment` linked to the budget
 - **Notifications** (`13`): `deposit.pending-approval` notification
 - **Users** (`03`): `created_by`, `approved_by`
@@ -144,8 +168,9 @@ pending ──▶ approved ──▶ completed
 
 ## Known limitations / cautions
 
-- **Signed URLs are permanent:** Using `absolute=true` with no expiration — links never expire. This is intentional for long-lived technician access but means anyone with the link can view deposit details.
-- **Completion from public page:** Technicians can mark deposits as completed via the public link — ensure authorization is appropriate for the business workflow.
+- **Signed URLs are permanent:** No expiration — links never expire. This is intentional for long-lived technician access but means anyone with the link can view deposit details.
+- **Completion from public page:** Technicians can mark deposits as completed via the public link. The complete endpoint uses a signed URL (passed from backend, not generated client-side) to prevent 403 errors.
 - **Budget auto-derivation:** `budget_id` is set to `$ticket->budget->id` if the ticket has a budget — if no budget exists, it stays null. This silent fallback may cause issues if budget is created later.
 - **Shift auto-detection:** Default shift is based on server time when the form loads — users can override it. This works for Mexico timezones but may need adjustment for other regions.
 - **No bulk operations:** Each deposit must be created individually — no batch deposit creation for multiple technicians on the same day.
+- **PHP null coercion:** Empty query string values (`?shift=`) are parsed as `null` by PHP. Filter logic must explicitly check for both `''` and `null` when determining "show all".

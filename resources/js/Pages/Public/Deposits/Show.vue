@@ -18,15 +18,24 @@ function formatAmount(amount) {
   return Number(amount).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+function parseDate(dateString) {
+  if (!dateString) return null
+  // Handle both "2026-07-15" and "2026-07-15T00:00:00.000000Z" formats
+  const datePart = dateString.split('T')[0]
+  // Use noon UTC to avoid timezone offset shifting the day
+  return new Date(datePart + 'T12:00:00Z')
+}
+
 function formatDate(dateString) {
-  if (!dateString) return ''
-  const date = new Date(dateString + 'T00:00:00')
-  return date.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
+  const date = parseDate(dateString)
+  if (!date) return ''
+  return date.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
 }
 
 function formatDateTime(dateString) {
   if (!dateString) return ''
   const date = new Date(dateString)
+  if (isNaN(date.getTime())) return ''
   return date.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
@@ -67,20 +76,20 @@ function onCompleted() {
           <div>
             <h3 class="text-sm font-bold text-orange-800 dark:text-orange-200 mb-1">Pendiente de aprobación</h3>
             <p class="text-sm text-orange-700 dark:text-orange-300">
-              Este depósito aún no ha sido autorizado. La información bancaria no se puede mostrar hasta que sea aprobado.
+              Este depósito aún no ha sido autorizado. La información del depósito no se puede mostrar hasta que sea aprobado.
             </p>
           </div>
         </div>
       </div>
 
-      <!-- Technician info -->
-      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 mb-6">
+      <!-- Technician info (only for approved/completed) -->
+      <div v-if="deposit.status !== 'pending'" class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 mb-6">
         <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Técnico</h2>
         <p class="text-lg font-bold text-gray-800 dark:text-white">{{ deposit.technician?.user?.name ?? 'N/A' }}</p>
       </div>
 
-      <!-- Deposit details -->
-      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 mb-6">
+      <!-- Deposit details (only for approved/completed) -->
+      <div v-if="deposit.status !== 'pending'" class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 mb-6">
         <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Detalles del depósito</h2>
         <div class="grid grid-cols-2 gap-3">
           <div>

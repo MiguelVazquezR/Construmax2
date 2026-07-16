@@ -42,12 +42,23 @@ class DepositController extends Controller
             $query->where('technician_id', $request->technician_id);
         }
 
-        // Default to pending if no status filter provided
-        $statusFilter = $request->filled('status') ? $request->status : 'pending';
-        $query->filter(['status' => $statusFilter]);
+        // Status filter: default to pending only when NOT explicitly set
+        if ($request->has('status')) {
+            if ($request->status !== '' && $request->status !== null) {
+                $query->filter(['status' => $request->status]);
+            }
+            // If status param is present but empty/null → show all, no status filter
+        } else {
+            // No status param at all → default to pending
+            $query->filter(['status' => 'pending']);
+        }
 
-        if ($request->filled('shift')) {
-            $query->filter(['shift' => $request->shift]);
+        // Shift filter: only apply when explicitly set to a non-empty value
+        if ($request->has('shift')) {
+            if ($request->shift !== '' && $request->shift !== null) {
+                $query->filter(['shift' => $request->shift]);
+            }
+            // If shift param is present but empty/null → show all, no shift filter
         }
 
         $deposits = $query->paginate(20)->withQueryString();
@@ -64,11 +75,12 @@ class DepositController extends Controller
             'calendarEvents' => $calendarEvents,
             'depositTypes'   => DepositType::active()->orderBy('name')->get(),
             'can'            => [
-                'approve' => $request->user()->can('deposits.approve'),
-                'create'  => $request->user()->can('deposits.create'),
-                'edit'    => $request->user()->can('deposits.edit'),
-                'delete'  => $request->user()->can('deposits.delete'),
-                'manageTypes' => $request->user()->can('deposits.types.manage'),
+                'approve'      => $request->user()->can('deposits.approve'),
+                'create'       => $request->user()->can('deposits.create'),
+                'edit'         => $request->user()->can('deposits.edit'),
+                'delete'       => $request->user()->can('deposits.delete'),
+                'manageTypes'  => $request->user()->can('deposits.types.manage'),
+                'viewTickets'  => $request->user()->can('tickets.index'),
             ],
             'defaultShift'   => $this->depositService->defaultShift(),
             'filters'        => $request->only(['technician_id', 'status', 'shift']),
