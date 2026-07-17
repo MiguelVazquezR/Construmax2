@@ -105,6 +105,7 @@ Construmax2/
 | 13 | Notifications | `13-module-notifications.md` | 5 event types, subscriber management, notification bell with polling, cron-triggered overdue checks |
 | 14 | Service Types | `06-module-tickets.md` | Simple CRUD for service type taxonomy used by tickets |
 | 15 | Tutorials | `04-module-dashboard.md` | Hardcoded video tutorial gallery page |
+| 16 | Work Acceptance Reports | `14-module-work-acceptance-reports.md` | Digital "Acta de recepción": technician data entry, electronic signature, PDF export, locking mechanism |
 
 ---
 
@@ -134,6 +135,8 @@ Budget ──hasOneThrough──▶ Customer (via Ticket)
 Deposit ──belongsTo──▶ Technician, TechnicianBankAccount, Ticket, Budget, DepositType
 TaskTemplate ──hasMany──▶ TaskTemplateItem
 NotificationSetting ──belongsTo──▶ User
+Ticket ──hasOne──▶ WorkAcceptanceReport
+WorkAcceptanceReport ──belongsTo──▶ User (created_by)
 ```
 
 ---

@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { 
     MoreFilled, View, Edit, Delete, 
     OfficeBuilding, Warning, InfoFilled, Minus,
-    Timer, Check, Location, ChatDotSquare
+    Timer, Check, Location, ChatDotSquare, DocumentChecked
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
@@ -260,6 +260,18 @@ const deleteTicket = (ticket) => {
                                     Catálogo v{{ scope.row.budget.latest_catalog.version }}
                                     <span class="ml-1 opacity-70">{{ formatDate(scope.row.budget.latest_catalog.created_at) }}</span>
                                 </el-tag>
+                                <el-tooltip
+                                    v-if="scope.row.work_acceptance_report"
+                                    :content="scope.row.work_acceptance_report.is_signed ? 'Acta de recepción firmada' : 'Acta de recepción pendiente de firma'"
+                                    placement="top"
+                                >
+                                    <el-icon
+                                        :size="16"
+                                        :color="scope.row.work_acceptance_report.is_signed ? '#22c55e' : '#f59e0b'"
+                                    >
+                                        <DocumentChecked />
+                                    </el-icon>
+                                </el-tooltip>
                                 <el-tooltip
                                     v-if="scope.row.important_note"
                                     :content="scope.row.important_note"

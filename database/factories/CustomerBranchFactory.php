@@ -35,6 +35,7 @@ class CustomerBranchFactory extends Factory
         return [
             'country'     => $country,
             'region'      => $region,
+            'city'        => fake()->city(),
             'unit'        => fake()->randomElement([
                 'Centro Comercial', 'Planta', 'Oficinas Corporativas', 'Sucursal', 'Bodega',
                 'Piso', 'Nave Industrial', 'Hotel', 'Hospital', 'Tienda',

@@ -182,6 +182,7 @@ class TicketTaskController extends Controller
             'budget.technicianPayments.media',
             'budget.concepts',
             'media',
+            'workAcceptanceReport',
         ]);
 
         $tasks = $ticket->tasks()
@@ -206,10 +207,33 @@ class TicketTaskController extends Controller
             return $task;
         });
 
+        // Generate work acceptance report URLs + editable data
+        $workAcceptanceReportUrls = null;
+        $workAcceptanceReportData = null;
+        if ($ticket->workAcceptanceReport) {
+            $report = $ticket->workAcceptanceReport;
+            $workAcceptanceReportUrls = [
+                'public_show' => URL::signedRoute('work-acceptance-reports.public.show', ['report' => $report->id]),
+                'is_signed'   => $report->isSigned(),
+            ];
+            // Pass editable fields and the update URL for the technician
+            $workAcceptanceReportData = [
+                'id'                  => $report->id,
+                'work_description'    => $report->work_description,
+                'on_site_start'       => $report->on_site_start,
+                'on_site_end'         => $report->on_site_end,
+                'technician_comments' => $report->technician_comments,
+                'is_signed'           => $report->isSigned(),
+                'update_url'          => url()->signedRoute('work-acceptance-reports.public.update', ['report' => $report->id], absolute: true),
+            ];
+        }
+
         return Inertia::render('Tickets/PublicTask', [ 
             'ticket' => $ticket,
             'technician' => $user,
             'tasks' => $tasks,
+            'workAcceptanceReportUrls' => $workAcceptanceReportUrls,
+            'workAcceptanceReportData' => $workAcceptanceReportData,
         ]);
     }
 

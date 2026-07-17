@@ -13,6 +13,7 @@ import axios from 'axios';
 import TechnicianPaymentSection from './TechnicianPaymentSection.vue';
 import TaskFormModal from './TaskFormModal.vue';
 import IntegrateTechniciansModal from './IntegrateTechniciansModal.vue';
+import WorkAcceptanceReportCard from '@/Components/Tickets/WorkAcceptanceReportCard.vue';
 
 const { can } = usePermissions();
 
@@ -213,6 +214,9 @@ const reorderEvidence = (task) => {
 
 <template>
     <div class="py-4">
+        <!-- ACTA DE RECEPCIÓN -->
+        <WorkAcceptanceReportCard :ticket="ticket" />
+
         <!-- SECCIÓN DE PAGO A TÉCNICO -->
         <TechnicianPaymentSection
             :ticket="ticket"

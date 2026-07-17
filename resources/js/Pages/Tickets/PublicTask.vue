@@ -325,6 +325,125 @@
         </div>
       </div>
 
+      <!-- ACTA DE RECEPCIÓN -->
+      <div class="mb-8">
+        <div class="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm dark:bg-gray-800 dark:border-gray-700">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="size-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+              <el-icon class="text-green-600 dark:text-green-400" :size="20"><DocumentChecked /></el-icon>
+            </div>
+            <div>
+              <h2 class="text-base font-bold text-gray-900 dark:text-gray-100">Acta de recepción</h2>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                Los datos que registres aquí se reflejarán en el acta de recepción que firmará el gerente de sucursal.
+              </p>
+            </div>
+            <el-tag v-if="isReportSigned" type="success" size="small" effect="light" class="!rounded-full ml-auto">
+              Firmado
+            </el-tag>
+          </div>
+
+          <!-- Editable fields (only if report exists and not signed) -->
+          <template v-if="workAcceptanceReportData && !isReportSigned">
+            <div class="space-y-4">
+              <!-- Work description -->
+              <div>
+                <label class="block text-xs font-bold text-gray-600 dark:text-gray-300 mb-1">
+                  Descripción de trabajos realizados
+                </label>
+                <el-input
+                  v-model="reportForm.work_description"
+                  type="textarea"
+                  :rows="4"
+                  placeholder="Describe detalladamente los trabajos realizados en sitio..."
+                  maxlength="5000"
+                  show-word-limit
+                />
+              </div>
+
+              <!-- On-site dates -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-bold text-gray-600 dark:text-gray-300 mb-1">
+                    Fecha y hora de inicio en sitio
+                  </label>
+                  <el-date-picker
+                    v-model="reportForm.on_site_start"
+                    type="datetime"
+                    placeholder="Inicio en sitio"
+                    format="DD/MM/YYYY hh:mm a"
+                    class="!w-full"
+                  />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-gray-600 dark:text-gray-300 mb-1">
+                    Fecha y hora de finalización en sitio
+                  </label>
+                  <el-date-picker
+                    v-model="reportForm.on_site_end"
+                    type="datetime"
+                    placeholder="Fin en sitio"
+                    format="DD/MM/YYYY hh:mm a"
+                    class="!w-full"
+                  />
+                </div>
+              </div>
+
+              <!-- Technician comments -->
+              <div>
+                <label class="block text-xs font-bold text-gray-600 dark:text-gray-300 mb-1">
+                  Comentarios del técnico
+                </label>
+                <el-input
+                  v-model="reportForm.technician_comments"
+                  type="textarea"
+                  :rows="3"
+                  placeholder="Observaciones, notas o comentarios adicionales..."
+                  maxlength="2000"
+                  show-word-limit
+                />
+              </div>
+
+              <!-- Save button -->
+              <div class="flex justify-end">
+                <el-button
+                  type="primary"
+                  :loading="savingReport"
+                  @click="saveReport"
+                  :icon="Select"
+                >
+                  Guardar datos del acta
+                </el-button>
+              </div>
+            </div>
+          </template>
+
+          <!-- Read-only when signed -->
+          <div v-else-if="isReportSigned" class="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+            <p class="text-sm text-gray-500 dark:text-gray-400">
+              Este documento ya fue firmado por el gerente de sucursal. No se pueden realizar más modificaciones.
+            </p>
+          </div>
+
+          <!-- No report generated yet -->
+          <div v-else class="text-center py-4 text-sm text-gray-400 dark:text-gray-500">
+            El acta de recepción aún no ha sido generada desde la oficina.
+          </div>
+
+          <!-- View / Sign buttons -->
+          <div v-if="workAcceptanceReportUrls" class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 flex flex-wrap gap-2">
+            <a
+              :href="workAcceptanceReportUrls.public_show"
+              target="_blank"
+              class="inline-flex items-center gap-1.5 px-4 py-2 bg-[#f26c17] hover:bg-[#d95d0f] text-white text-sm font-bold rounded-lg transition-colors no-underline"
+            >
+              <el-icon :size="16"><View /></el-icon>
+              {{ workAcceptanceReportUrls.is_signed ? 'Ver acta firmada' : 'Ver acta de recepción' }}
+            </a>
+          </div>
+        </div>
+      </div>
+
       <!-- 3. RECORDATORIO FINAL (CHECKLIST DE CIERRE) -->
       <div class="bg-blue-50/50 border border-blue-100 rounded-2xl p-6 sm:p-8 mt-12 relative overflow-hidden dark:bg-blue-900/20 dark:border-blue-800">
           <div class="absolute -right-6 -top-6 text-blue-100 opacity-50 dark:text-blue-800">
@@ -371,7 +490,7 @@
 import { ref, computed, reactive } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
-import { 
+import {
     Check, 
     RefreshLeft, 
     Camera,
@@ -388,7 +507,8 @@ import {
     Document,
     Money,
     ChatDotSquare,
-    VideoCamera
+    VideoCamera,
+    View
 } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import dayjs from 'dayjs'; 
@@ -400,7 +520,15 @@ dayjs.locale('es');
 const props = defineProps({
   ticket: Object,
   technician: Object,
-  tasks: Array, 
+  tasks: Array,
+  workAcceptanceReportUrls: {
+    type: Object,
+    default: null,
+  },
+  workAcceptanceReportData: {
+    type: Object,
+    default: null,
+  },
 });
 
 const togglingTaskId = ref(null);
@@ -409,6 +537,42 @@ const savingNotesId = ref(null);
 // Per-task evidence tracking
 const pendingEvidence = reactive({});
 const uploadingTaskIds = reactive({});
+
+// --- Work acceptance report editable fields ---
+const reportForm = reactive({
+    work_description: props.workAcceptanceReportData?.work_description || '',
+    on_site_start: props.workAcceptanceReportData?.on_site_start
+        ? new Date(props.workAcceptanceReportData.on_site_start)
+        : '',
+    on_site_end: props.workAcceptanceReportData?.on_site_end
+        ? new Date(props.workAcceptanceReportData.on_site_end)
+        : '',
+    technician_comments: props.workAcceptanceReportData?.technician_comments || '',
+});
+const savingReport = ref(false);
+
+const isReportSigned = computed(() => props.workAcceptanceReportData?.is_signed || false);
+
+async function saveReport() {
+    if (!props.workAcceptanceReportData?.update_url) {
+        return;
+    }
+    savingReport.value = true;
+    try {
+        await axios.put(props.workAcceptanceReportData.update_url, {
+            work_description: reportForm.work_description,
+            on_site_start: reportForm.on_site_start || null,
+            on_site_end: reportForm.on_site_end || null,
+            technician_comments: reportForm.technician_comments,
+        });
+        ElMessage.success('Acta de recepción actualizada correctamente.');
+    } catch (err) {
+        const msg = err.response?.data?.message || 'Error al guardar los cambios.';
+        ElMessage.error(msg);
+    } finally {
+        savingReport.value = false;
+    }
+}
 
 const saveNotes = (task) => {
     savingNotesId.value = task.id;

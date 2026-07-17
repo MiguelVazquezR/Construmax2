@@ -416,13 +416,41 @@ Per-user toggles for notification types.
 
 ---
 
+## Domain: Work Acceptance Reports
+
+### `work_acceptance_reports`
+Digital "Acta de recepción" signed by branch managers.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | bigint PK | |
+| `ticket_id` | FK → tickets.id CASCADE (unique) | One report per ticket |
+| `report_date` | date | Auto-set to current date |
+| `work_description` | text | nullable — filled manually by technician |
+| `on_site_start` | datetime | nullable — technician-entered |
+| `on_site_end` | datetime | nullable — technician-entered |
+| `technician_comments` | text | nullable — technician-entered |
+| `client_comments` | text | nullable — entered at signing |
+| `manager_name` | string | nullable |
+| `signature_data` | longText | nullable — base64 PNG from canvas |
+| `signatory_name` | string | nullable |
+| `signed_at` | timestamp | nullable — auto-set on signature |
+| `is_signed` | boolean | default `false` — locks document when true |
+| `created_by` | FK → users.id | |
+| `created_at` / `updated_at` | timestamps | |
+
+**Relationships:** `belongsTo(Ticket)`, `belongsTo(User, created_by)`
+
+---
+
 ## Cross-domain foreign key summary
 
 ```
 users.id ──▶ employees.user_id, technicians.user_id, tickets.seller_id,
             ticket_tasks.user_id, budgets.user_id, calendars.user_id,
             calendar_participants.user_id, technician_payments.user_id,
-            deposits.created_by, deposits.approved_by, notification_settings.user_id
+            deposits.created_by, deposits.approved_by, notification_settings.user_id,
+            work_acceptance_reports.created_by
 
 customers.id ──▶ customer_branches.customer_id, customer_contacts.customer_id,
                  tickets.customer_id
@@ -433,7 +461,8 @@ customer_branches.id ──▶ customer_branch_contact.customer_branch_id,
 customer_contacts.id ──▶ customer_branch_contact.customer_contact_id,
                          tickets.customer_contact_id
 
-tickets.id ──▶ budgets.ticket_id, ticket_tasks.ticket_id, deposits.ticket_id
+tickets.id ──▶ budgets.ticket_id, ticket_tasks.ticket_id, deposits.ticket_id,
+            work_acceptance_reports.ticket_id
 
 budgets.id ──▶ budget_concepts.budget_id, budget_payments.budget_id,
               budget_catalogs.budget_id, technician_payments.budget_id,

@@ -311,6 +311,7 @@ class TechnicianController extends Controller
             'phone' => 'required|string|max:20',
             'is_internal' => 'boolean', // NUEVO CAMPO ACEPTADO
             'level' => 'nullable|string|in:' . implode(',', Technician::LEVELS),
+            'state' => 'nullable|string|max:255',
         ]);
 
         $user = null;
@@ -328,6 +329,7 @@ class TechnicianController extends Controller
                 'phone' => $validated['phone'],
                 'is_internal' => $validated['is_internal'] ?? false, // APLICADO AQUÍ
                 'level' => $validated['level'] ?? 'Encargado',
+                'state' => $validated['state'] ?? null,
                 'status' => 'Activo', 
                 'rating_avg' => 0,
                 'coverage_radius_km' => 10,

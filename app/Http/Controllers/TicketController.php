@@ -23,7 +23,7 @@ class TicketController extends Controller
         $perPage = $request->input('perPage', 20);
         $sort = $request->input('sort', 'created_at'); 
 
-        $query = Ticket::with(['customer', 'contact', 'branch', 'tasks.assignee', 'budget.latestCatalog', 'seller']);
+        $query = Ticket::with(['customer', 'contact', 'branch', 'tasks.assignee', 'budget.latestCatalog', 'seller', 'workAcceptanceReport']);
 
         // FILTRO POR ASESOR: si no tiene permiso de ver todos, solo muestra sus tickets
         if (!$request->user()->can('tickets.index-all')) {
@@ -230,7 +230,8 @@ class TicketController extends Controller
             'budget.technicianPayments.media',
             'tasks.assignee', 
             'tasks.media', 
-            'media'
+            'media',
+            'workAcceptanceReport',
         ]);
         
         $ticket->append('progress', 'folio'); 

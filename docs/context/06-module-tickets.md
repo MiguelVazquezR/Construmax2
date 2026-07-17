@@ -18,8 +18,8 @@
 | Model | `TaskTemplate.php` | Reusable task checklist templates |
 | Model | `TaskTemplateItem.php` | Line items in templates |
 | Model | `ServiceType.php` | Simple taxonomy |
-| Vue pages | `Tickets/` | Index, Create, Edit, Show, EvidenceTemplate, PublicTask |
-| Vue partials | `Tickets/Partials/` | 10 sub-components |
+| Vue pages | `Tickets/` | Index, Create, Edit, Show, EvidenceTemplate, PublicTask (includes "Acta de recepción" section) |
+| Vue partials | `Tickets/Partials/` | 11 sub-components (includes WorkAcceptanceReportCard) |
 | Routes | `routes/web/tickets.php` | 29 routes (5 public + 24 auth) |
 
 ---
@@ -204,6 +204,7 @@ When creating/editing a ticket, selecting a task template generates individual `
 - **Notifications** (`13`): Status changes dispatch notifications
 - **Users** (`03`): Seller assignment, task assignment
 - **Deposits** (`11`): Deposits reference tickets
+- **Work Acceptance Reports** (`14`): Each ticket can have one "Acta de recepción" — generated, signed, and tracked from ticket views
 
 ---
 

@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { OfficeBuilding, Timer, Location, UserFilled } from '@element-plus/icons-vue';
+import { OfficeBuilding, Timer, Location, UserFilled, DocumentChecked } from '@element-plus/icons-vue';
 
 const props = defineProps({
     tickets: Object,
@@ -224,6 +224,27 @@ const getTechDisplayName = (user) => {
                                 <span class="truncate">{{ [ticket.branch.branch_name, ticket.branch.unit].filter(Boolean).join(' · ') }}</span>
                             </div>
                             <div v-else class="mb-3"></div>
+
+                            <!-- Acta indicator -->
+                            <div v-if="ticket.work_acceptance_report" class="flex items-center gap-1.5 mb-2">
+                                <el-tooltip
+                                    :content="ticket.work_acceptance_report.is_signed ? 'Acta de recepción firmada' : 'Acta de recepción pendiente de firma'"
+                                    placement="top"
+                                >
+                                    <el-icon
+                                        :size="14"
+                                        :color="ticket.work_acceptance_report.is_signed ? '#22c55e' : '#f59e0b'"
+                                    >
+                                        <DocumentChecked />
+                                    </el-icon>
+                                </el-tooltip>
+                                <span
+                                    class="text-[10px] font-medium"
+                                    :class="ticket.work_acceptance_report.is_signed ? 'text-green-600' : 'text-amber-600'"
+                                >
+                                    {{ ticket.work_acceptance_report.is_signed ? 'Firmada' : 'Pendiente' }}
+                                </span>
+                            </div>
 
                             <div class="flex justify-between items-end border-t border-gray-100 dark:border-[#3f3f46] pt-2 mt-2 pr-2">
                                 <div class="flex -space-x-1">

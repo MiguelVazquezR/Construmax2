@@ -107,6 +107,11 @@ class Ticket extends Model implements HasMedia
         return $this->hasMany(TicketTask::class);
     }
 
+    public function workAcceptanceReport(): HasOne
+    {
+        return $this->hasOne(WorkAcceptanceReport::class);
+    }
+
     // --- LÓGICA DE NEGOCIO ---
 
     public function generateTasksFromTemplate($templateId, array $technicianIds)
