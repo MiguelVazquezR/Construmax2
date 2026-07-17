@@ -155,8 +155,15 @@ const approveCatalog = (row, event) => {
                             <div class="flex flex-col">
                                 <span class="font-bold text-gray-800 dark:text-gray-200 text-sm">{{
                                     scope.row.ticket_name }}</span>
-                                <span class="font-mono text-xs text-gray-500">Folio Ticket: {{ scope.row.ticket_folio
-                                    }}</span>
+                                <Link
+                                    v-if="can('tickets.index') && scope.row.ticket_id"
+                                    :href="route('tickets.show', scope.row.ticket_id)"
+                                    class="font-mono text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
+                                    @click.stop
+                                >
+                                    Folio Ticket: {{ scope.row.ticket_folio }}
+                                </Link>
+                                <span v-else class="font-mono text-xs text-gray-500">Folio Ticket: {{ scope.row.ticket_folio }}</span>
                             </div>
                         </template>
                     </el-table-column>

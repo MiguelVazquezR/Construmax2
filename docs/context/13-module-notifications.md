@@ -20,7 +20,7 @@
 | Command | `CheckOverdueInvoices.php` | Cron: daily overdue invoice check |
 | Vue component | `Components/NotificationBell.vue` | Bell icon with dropdown, 30s polling |
 | Vue page | `Config/Notifications/Index.vue` | Admin: toggle notification types per user |
-| Routes | `routes/web/notifications.php` | 8 routes |
+| Routes | `routes/web/notifications.php` | 9 routes |
 
 ---
 
@@ -40,6 +40,7 @@ DELETE /notifications                     notifications.delete-all
 GET    /config/notifications                   config.notifications.index
 POST   /config/notifications                   config.notifications.store
 DELETE /config/notifications/{setting}         config.notifications.destroy
+DELETE /config/notifications/user/{user}       config.notifications.delete-user
 ```
 
 ---
@@ -92,9 +93,11 @@ All notification emails are written in **Spanish** (user-facing content) with En
 
 ## Notification settings page (`Config/Notifications/Index.vue`)
 
-- Grid layout: rows = users, columns = notification types
-- Toggle switches to enable/disable each type per user
-- Types displayed with Spanish labels
+- Card-based grid layout with user cards showing name, email, role, and active notification count
+- Click a card to open a dialog with checkboxes for each notification type
+- **Filters**: search by name/email (debounced 300ms) and filter by Spatie role
+- **Per-user reset**: trash icon on each user card deletes all their settings (with confirmation)
+- Legacy `catalog.created` type is accepted and auto-mapped to `catalog.approved` on save
 
 ---
 
@@ -102,7 +105,7 @@ All notification emails are written in **Spanish** (user-facing content) with En
 
 - **Users** (`03`): `NotificationSetting` is per-user; subscribers filtered by valid email
 - **Tickets** (`06`): `ticketNeedsCatalog`, `ticketNeedsInvoice` triggered by status changes
-- **Budgets** (`07`): Catalog creation triggers `catalogCreated`
+- **Budgets** (`07`): Catalog approval triggers `catalogApproved`
 - **Deposits** (`11`): Deposit creation triggers `depositPendingApproval`
 - **Invoices** (`12`): Cron command triggers `invoiceOverdue`
 

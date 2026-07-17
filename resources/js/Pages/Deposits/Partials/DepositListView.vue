@@ -62,6 +62,12 @@ onMounted(() => {
   loadTechnicians()
 })
 
+const getTechLabel = (tech) => {
+    let label = tech.user?.name ?? tech.name ?? 'N/A';
+    label += tech.is_internal ? ' (Interno)' : ' (Externo)';
+    return label;
+};
+
 function updateFilter(key, value) {
   const params = { ...props.filters }
   // Always include the param, even if empty string (means "show all")
@@ -87,7 +93,7 @@ function updateFilter(key, value) {
         <el-option
           v-for="tech in allTechnicians"
           :key="tech.id"
-          :label="tech.user?.name ?? tech.name ?? 'N/A'"
+          :label="getTechLabel(tech)"
           :value="tech.id"
         />
       </el-select>

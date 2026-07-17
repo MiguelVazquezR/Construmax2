@@ -171,6 +171,8 @@ class TicketTaskController extends Controller
 
     public function publicJobOrder(Request $request, Ticket $ticket, User $user)
     {
+        $user->load('technician');
+
         $ticket->load([
             'customer',
             'contact',

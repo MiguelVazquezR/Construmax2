@@ -113,6 +113,13 @@ const getTicketStatusColor = (status) => {
                                                 <span class="text-sm text-gray-500">
                                                     Versión {{ budget.latest_catalog.version }}
                                                 </span>
+                                                <el-tag
+                                                    :type="budget.latest_catalog.status === 'approved' ? 'success' : 'warning'"
+                                                    size="small"
+                                                    effect="plain"
+                                                >
+                                                    {{ budget.latest_catalog.status === 'approved' ? 'Aprobado' : 'Pendiente de aprobación' }}
+                                                </el-tag>
                                             </div>
                                             <div class="flex gap-2">
                                                 <Link :href="route('costs.show', budget.id)">

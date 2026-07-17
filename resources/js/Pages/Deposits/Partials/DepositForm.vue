@@ -79,6 +79,12 @@ const filteredTechnicians = computed(() => {
   return allTechnicians.value.filter(t => (t.user?.name ?? '').toLowerCase().includes(q))
 })
 
+const getTechLabel = (tech) => {
+    let label = tech.user?.name ?? tech.name ?? 'N/A';
+    label += tech.is_internal ? ' (Interno)' : ' (Externo)';
+    return label;
+};
+
 // --- Bank accounts ---
 const bankAccounts = ref([])
 const selectedBankAccount = ref(null)
@@ -196,7 +202,7 @@ function submit() {
           <el-option
             v-for="tech in filteredTechnicians"
             :key="tech.id"
-            :label="tech.user?.name ?? tech.name"
+            :label="getTechLabel(tech)"
             :value="tech.id"
           />
         </el-select>

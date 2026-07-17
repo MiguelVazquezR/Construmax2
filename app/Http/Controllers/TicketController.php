@@ -134,7 +134,7 @@ class TicketController extends Controller
         return Inertia::render('Tickets/Index', [
             'tickets' => $query->paginate($perPage)->withQueryString(),
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(['id', 'name']),
-            'technicians' => User::whereHas('technician')->orderBy('name')->get(['id', 'name']),
+            'technicians' => User::whereHas('technician')->with('technician')->orderBy('name')->get(['id', 'name']),
             'sellers' => User::whereHas('ticketsAsSeller')->orderBy('name')->get(['id', 'name']),
             'canViewAll' => $request->user()->can('tickets.index-all'),
             'filters' => [

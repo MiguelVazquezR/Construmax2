@@ -45,7 +45,18 @@
             <span class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 dark:text-gray-300">Técnico asignado</span>
             <div class="flex items-center gap-3">
                 <el-avatar :size="32" :src="technician.profile_photo_url" class="border border-gray-100 shadow-sm dark:border-gray-600">{{ technician.name.charAt(0) }}</el-avatar>
-                <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ technician.name }}</span>
+                <div>
+                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ technician.name }}</span>
+                    <el-tag
+                        v-if="technician.technician"
+                        size="small"
+                        :type="technician.technician.is_internal ? 'success' : 'warning'"
+                        effect="dark"
+                        class="ml-2 !h-4 !text-[9px] !px-1"
+                    >
+                        {{ technician.technician.is_internal ? 'Interno' : 'Externo' }}
+                    </el-tag>
+                </div>
             </div>
           </div>
           <div>

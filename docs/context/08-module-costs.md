@@ -9,7 +9,7 @@
 
 | Layer | File | Purpose |
 |-------|------|---------|
-| Controller | `CostController.php` | List, show, catalog CRUD, print views |
+| Controller | `CostController.php` | List, show, catalog CRUD, approval, print views |
 | Service | `CostService.php` | Budget listing for costing, catalog details |
 | Model | `BudgetCatalog.php` | Versioned catalog header |
 | Model | `BudgetCatalogItem.php` | Line items (materials + labor) |
@@ -90,8 +90,9 @@ POST /costs/{budget}/catalog/{catalog}/approve      costs.approve-catalog
 - Lists budgets with catalog info
 - Filters: search, approval status (Pendientes de aprobación/Aprobados/Todos/Sin catálogo), branch
 - Default filter: Pendientes de aprobación
-- Each row shows: ticket folio, customer, branch, catalog status + approved by, total
+- Each row shows: ticket folio (clickable link to ticket if user has `tickets.index` permission), customer, branch, catalog status + approved by, total
 - Approve button for users with `costs.approve` permission (only on pending catalogs)
+- Info alert explaining the no-rejection flow (create new version instead)
 
 ### `Costs/Show.vue` (core editor)
 - Two editable tables: `MaterialsTable` + `LaborTable`
@@ -110,20 +111,23 @@ POST /costs/{budget}/catalog/{catalog}/approve      costs.approve-catalog
 - Concepts table with totals
 - Bank info section
 - PDF instructions dialog
+- **Approval watermark**: large red "ESPERANDO APROBACIÓN" overlay when catalog is not yet approved
 
 ### `Costs/PrintEmpenoFacil.vue`
 - Empeño Fácil specific print layout
 - Separates materials and labor sections with subtotals
 - Custom calculations displayed
 - Bank details with copy-to-clipboard
+- **Approval watermark**: same overlay as Print.vue when catalog is not yet approved
 
 ---
 
 ## Dependencies on other modules
 
-- **Budgets** (`07`): Catalogs belong to budgets; budget's `total_cost` falls back to catalog total
-- **Tickets** (`06`): Ticket folio, customer, branch info displayed; report number editing updates ticket
+- **Budgets** (`07`): Catalogs belong to budgets; budget's `total_cost` falls back to catalog total; `Budgets/Show.vue` shows approval status tag
+- **Tickets** (`06`): Ticket folio, customer, branch info displayed; report number editing updates ticket; `TicketInfo.vue` shows catalog approval status; ticket status changes to `Pendiente de aprobación` on catalog save
 - **Customers** (`05`): Customer ID #2 is the Empeño Fácil customer
+- **Notifications** (`13`): `CatalogApproved` notification dispatched on catalog approval
 
 ---
 
@@ -136,3 +140,4 @@ POST /costs/{budget}/catalog/{catalog}/approve      costs.approve-catalog
 - **Report number lives on the ticket:** Editing it from the costs page is a convenience feature — be aware of potential race conditions if edited from multiple places
 - **No rejection flow:** If a catalog needs changes, users must create a new version — the previous version remains in history but is superseded
 - **Approval is all-or-nothing:** There is no partial approval or per-item approval — the entire catalog is approved at once
+- **`status` field must be present in serialized catalog data:** Views like `Budgets/Show.vue` and `TicketInfo.vue` read `latest_catalog.status` directly — ensure the BudgetCatalog model's `status` column is included in API responses
