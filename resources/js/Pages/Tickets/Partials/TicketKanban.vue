@@ -148,6 +148,14 @@ const getAssignedTechnicians = (ticket) => {
     }
     return Array.from(techs.values());
 };
+
+const getTechDisplayName = (user) => {
+    let label = user.name;
+    if (user.technician) {
+        label += user.technician.is_internal ? ' (Interno)' : ' (Externo)';
+    }
+    return label;
+};
 </script>
 
 <template>
@@ -219,15 +227,20 @@ const getAssignedTechnicians = (ticket) => {
 
                             <div class="flex justify-between items-end border-t border-gray-100 dark:border-[#3f3f46] pt-2 mt-2 pr-2">
                                 <div class="flex -space-x-1">
-                                    <el-avatar 
-                                        v-for="tech in getAssignedTechnicians(ticket).slice(0, 3)" 
+                                    <el-tooltip
+                                        v-for="tech in getAssignedTechnicians(ticket).slice(0, 3)"
                                         :key="tech.id"
-                                        :size="22" 
-                                        :src="tech.profile_photo_url"
-                                        class="border border-white dark:border-[#252529]"
+                                        :content="getTechDisplayName(tech)"
+                                        placement="top"
                                     >
-                                        {{ tech.name.charAt(0) }}
-                                    </el-avatar>
+                                        <el-avatar 
+                                            :size="22" 
+                                            :src="tech.profile_photo_url"
+                                            class="border border-white dark:border-[#252529]"
+                                        >
+                                            {{ tech.name.charAt(0) }}
+                                        </el-avatar>
+                                    </el-tooltip>
                                     <div v-if="getAssignedTechnicians(ticket).length > 3" class="flex items-center justify-center w-[22px] h-[22px] rounded-full border border-white bg-gray-100 text-[9px] text-gray-600 font-bold z-10">
                                         +{{ getAssignedTechnicians(ticket).length - 3 }}
                                     </div>

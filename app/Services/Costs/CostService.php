@@ -47,6 +47,7 @@ class CostService
             ->through(function ($budget) {
                 return [
                     'id'               => $budget->id,
+                    'ticket_id'        => $budget->ticket->id ?? null,
                     'ticket_name'      => $budget->ticket->name ?? 'N/A',
                     'ticket_folio'     => $budget->ticket->folio ?? 'N/A',
                     'customer_name'    => $budget->ticket->customer->name ?? 'N/A',

@@ -153,9 +153,9 @@ When creating/editing a ticket, selecting a task template generates individual `
 - Supports reordering via `order_column`
 
 ### Kanban board (`TicketKanban.vue`)
-- 10 columns matching status flow
+- 11 columns matching status flow (includes `Pendiente de aprobación`)
 - Drag-and-drop with optimistic UI
-- Async validation (e.g., moving to "Catálogo" requires budget to exist)
+- Async validation: moving to "Catálogo" requires budget; "Pendiente de aprobación" is blocked from manual drag (only set by backend on catalog save)
 
 ---
 
@@ -186,6 +186,7 @@ When creating/editing a ticket, selecting a task template generates individual `
 - Operational details display
 - Print buttons for cost catalog and evidence template
 - Evidence upload section
+- Catalog card shows version tag + approval status tag ("Aprobado" / "Pendiente de aprobación")
 
 ### `TicketTimeline.vue`
 - Vertical timeline + Gantt chart (ApexCharts)
@@ -198,7 +199,7 @@ When creating/editing a ticket, selecting a task template generates individual `
 - **Customers** (`05`): Customer/Branch/Contact selection
 - **Technicians** (`09`): Technician assignment (JSON arrays of user IDs)
 - **Budgets** (`07`): 1:1 relationship; ticket status changes trigger budget workflows
-- **Costs** (`08`): Cost catalog is created for ticket's budget
+- **Costs** (`08`): Cost catalog is created for ticket's budget; `Pendiente de aprobación` status managed by catalog save/approval flow
 - **Invoices** (`12`): Invoice upload triggers ticket status to "Facturado"
 - **Notifications** (`13`): Status changes dispatch notifications
 - **Users** (`03`): Seller assignment, task assignment
@@ -210,7 +211,8 @@ When creating/editing a ticket, selecting a task template generates individual `
 
 - **Technicians stored as JSON:** `technicians` and `assistant_technicians` are JSON columns, not FK relationships — no referential integrity, harder to query
 - **Service types as free text:** `service_type` on tickets is a string, not an FK to `service_types` — the ServiceType model is just a suggestion list
-- **Status flow is linear but not enforced:** The Kanban allows drag-and-drop to any column; validation happens async
+- **Status flow is linear but not enforced:** The Kanban allows drag-and-drop to any column; validation happens async; `Pendiente de aprobación` is locked from manual drag-and-drop
 - **Ticket-to-budget is 1:1 only:** Each ticket can have at most one budget; there's no support for multiple revisions/proposals
 - **Public routes use signed URLs:** These expire based on Laravel's signed URL configuration — long-lived technician links may break
 - **Task template application on edit:** Applying a template to an existing ticket may duplicate tasks if not handled carefully — check the controller logic
+- **`ticketNeedsCatalog` notification no longer auto-dispatched:** The `Catálogo` status change in `Ticket::booted()` no longer triggers notifications — catalog notifications now go through the approval flow (`CatalogApproved`)

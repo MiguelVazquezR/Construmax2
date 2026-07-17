@@ -96,6 +96,14 @@ const getAssignedTechnicians = (ticket) => {
     return Array.from(techs.values());
 };
 
+const getTechDisplayName = (user) => {
+    let label = user.name;
+    if (user.technician) {
+        label += user.technician.is_internal ? ' (Interno)' : ' (Externo)';
+    }
+    return label;
+};
+
 // Devuelve "Sucursal - Unidad (Región, País)" a partir de la relación branch del ticket
 const getBranchDetails = (ticket) => {
     const b = ticket.branch;
@@ -207,7 +215,7 @@ const deleteTicket = (ticket) => {
                             <el-tooltip 
                                 v-for="tech in getAssignedTechnicians(scope.row).slice(0, 4)" 
                                 :key="tech.id"
-                                :content="tech.name"
+                                :content="getTechDisplayName(tech)"
                                 placement="top"
                             >
                                 <el-avatar 
