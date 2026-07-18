@@ -63,7 +63,8 @@ const statuses = [
     'Borrador',
     'Programado',
     'Levantamiento', 
-    'Catálogo', 
+    'Catálogo',
+    'Pendiente de aprobación',
     'Proceso de ejecución', 
     'Ejecutado',
     'Finalizado',
@@ -72,7 +73,7 @@ const statuses = [
     'Cancelado',
 ];
 
-const defaultStatuses = ['Borrador', 'Programado', 'Levantamiento', 'Catálogo', 'Proceso de ejecución', 'Ejecutado'];
+const defaultStatuses = ['Borrador', 'Programado', 'Levantamiento', 'Catálogo', 'Pendiente de aprobación', 'Proceso de ejecución', 'Ejecutado'];
 
 // Status filter uses an array for multi-select support
 const rawStatus = getFilter('status', defaultStatuses);

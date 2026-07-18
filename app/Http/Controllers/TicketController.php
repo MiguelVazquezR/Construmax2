@@ -91,7 +91,7 @@ class TicketController extends Controller
         }
 
         // Default active statuses (exclude finalized/completed)
-        $defaultStatuses = ['Borrador', 'Programado', 'Levantamiento', 'Catálogo', 'Proceso de ejecución', 'Ejecutado', 'Finalizado'];
+        $defaultStatuses = ['Borrador', 'Programado', 'Levantamiento', 'Catálogo', 'Pendiente de aprobación', 'Proceso de ejecución', 'Ejecutado', 'Finalizado'];
 
         if ($request->has('status')) {
             $statusFilter = $request->input('status', []);
@@ -269,11 +269,20 @@ class TicketController extends Controller
     public function updateField(Request $request, Ticket $ticket)
     {
         $validated = $request->validate([
-            'field' => 'required|string|in:report_number,scheduled_start,scheduled_end',
+            'field' => 'required|string|in:name,report_number,service_type,scheduled_start,scheduled_end',
             'value' => 'nullable|string|max:255',
         ]);
 
         $ticket->update([$validated['field'] => $validated['value']]);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'Campo actualizado.',
+                'field' => $validated['field'],
+                'value' => $validated['value'],
+            ]);
+        }
+
         return back()->with('success', 'Campo actualizado.');
     }
 

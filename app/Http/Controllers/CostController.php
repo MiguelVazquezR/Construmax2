@@ -86,9 +86,8 @@ class CostController extends Controller
         $catalog->items()->createMany($validated['items']);
 
         // Update ticket status to Pendiente de aprobación
-        $ticket = $budget->ticket;
-        if ($ticket) {
-            $ticket->update(['status' => 'Pendiente de aprobación']);
+        if ($budget->ticket_id) {
+            \App\Models\Ticket::where('id', $budget->ticket_id)->update(['status' => 'Pendiente de aprobación']);
         }
 
         return back()->with('success', 'Nueva versión del catálogo guardada correctamente. Queda pendiente de aprobación.');
@@ -110,9 +109,11 @@ class CostController extends Controller
         $catalog->approve($request->user()->id);
 
         // Move ticket back to Catálogo status (approved)
-        $ticket = $budget->ticket;
-        if ($ticket && $ticket->status === 'Pendiente de aprobación') {
-            $ticket->update(['status' => 'Catálogo']);
+        if ($budget->ticket_id) {
+            $ticket = \App\Models\Ticket::find($budget->ticket_id);
+            if ($ticket && $ticket->status === 'Pendiente de aprobación') {
+                $ticket->update(['status' => 'Catálogo']);
+            }
         }
 
         // Dispatch notification: catalog approved

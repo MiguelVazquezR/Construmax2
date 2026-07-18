@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Calendar;
 use App\Models\User;
+use App\Models\CustomerBranch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -80,6 +81,20 @@ class CalendarController extends Controller
         return Inertia::render('Calendar/Index', [
             'events' => $events,
             'users' => User::where('id', '!=', $userId)->where('is_active', true)->get(),
+            'technicians' => User::whereHas('technician')->with('technician')->orderBy('name')->get()
+                ->map(fn ($u) => [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'is_internal' => $u->technician?->is_internal ?? false,
+                ]),
+            'branches' => CustomerBranch::with('customer')
+                ->orderBy('branch_name')
+                ->get()
+                ->map(fn ($b) => [
+                    'id' => $b->id,
+                    'branch_name' => $b->branch_name,
+                    'customer_name' => $b->customer?->name,
+                ]),
         ]);
     }
 

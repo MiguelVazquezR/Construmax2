@@ -142,6 +142,9 @@ When creating/editing a ticket, selecting a task template generates individual `
 ### Overlap detection
 `TicketTaskController@checkForOverlaps` detects scheduling conflicts between tasks and returns a warning string.
 
+### Field updates via `updateField`
+The `updateField` endpoint (`PUT /tickets/{ticket}/update-field`) allows updating individual ticket fields via `{ field, value }` payload. Accepted fields: `name`, `report_number`, `service_type`, `scheduled_start`, `scheduled_end`. Used by the Field Work calendar edit modal to update ticket metadata alongside schedule changes. **Returns JSON `200` for AJAX requests** (`$request->expectsJson()`) with `{ message, field, value }` payload, or a `303` redirect for normal Inertia requests. The calendar modal uses `axios.put` with `Accept: application/json` to avoid request cancellation from competing Inertia navigations.
+
 ### Public technician view (`PublicTask.vue`)
 - Accessible via signed URL (`/t/job-order/{ticket}/{user}`)
 - Shows safety notice, customer/location info, task checklist, evidence upload
@@ -163,7 +166,8 @@ When creating/editing a ticket, selecting a task template generates individual `
 
 ### `Tickets/Index.vue`
 - Toggle between list view (`TicketList.vue`) and kanban view (`TicketKanban.vue`), persisted in localStorage
-- Extensive filters: folio, customer, region, priority, technician, seller, catalog status, sort
+- Status multi-select filter: defaults to all active statuses including `Pendiente de aprobación`; `Finalizado`, `Facturado`, `Pagado`, and `Cancelado` are available in the dropdown but excluded by default
+- Additional filters: folio, customer, region, priority, technician, seller, catalog status, sort
 
 ### `TicketForm.vue` (core)
 - Customer → contact/branch cascading selectors
@@ -204,6 +208,7 @@ When creating/editing a ticket, selecting a task template generates individual `
 - **Notifications** (`13`): Status changes dispatch notifications
 - **Users** (`03`): Seller assignment, task assignment
 - **Deposits** (`11`): Deposits reference tickets
+- **Calendar** (`10`): Field work schedules are linked 1:1 to tickets; task timestamps are auto-synced on schedule create/update; `updateField` endpoint used by calendar edit modal
 - **Work Acceptance Reports** (`14`): Each ticket can have one "Acta de recepción" — generated, signed, and tracked from ticket views
 
 ---

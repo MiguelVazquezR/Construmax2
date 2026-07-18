@@ -1,6 +1,6 @@
 # Construmax2 ERP — 01: Database Schema
 
-> Summarizes all ~30 tables grouped by domain. Focuses on relationships and business-meaningful columns.
+> Summarizes all ~31 tables grouped by domain. Focuses on relationships and business-meaningful columns.
 
 ---
 
@@ -167,6 +167,7 @@ The central work-order entity.
 | `important_note` | string(500) | nullable, highlighted note |
 
 **Computed:** `progress` (task completion %), `folio` (#ID-REGION-COUNTRY format)  
+**Relationships:** `hasOne(Budget)`, `hasMany(TicketTask)`, `hasOne(WorkAcceptanceReport)`, `hasOne(FieldWorkSchedule)`
 **Auto-events:** On status change → dispatches `ticketNeedsCatalog` (status=Catálogo) or `ticketNeedsInvoice` (status=Finalizado)
 
 ### `ticket_tasks`
@@ -363,6 +364,19 @@ Shared calendar events.
 ### `calendar_participants` (pivot)
 Many-to-many calendar ↔ users with `status` and `rejection_reason` pivot columns.
 
+### `field_work_schedules`
+Field work scheduling for service tickets (1:1 with tickets).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | bigint PK | |
+| `ticket_id` | FK → tickets.id CASCADE | **unique** — one schedule per ticket |
+| `user_id` | FK → users.id | Creator |
+| `start_time` | datetime | |
+| `end_time` | datetime | |
+| `color` | string(20) | hex color, default `#409EFF` |
+| `notes` | text | nullable |
+
 ---
 
 ## Domain: Deposits
@@ -450,7 +464,7 @@ users.id ──▶ employees.user_id, technicians.user_id, tickets.seller_id,
             ticket_tasks.user_id, budgets.user_id, calendars.user_id,
             calendar_participants.user_id, technician_payments.user_id,
             deposits.created_by, deposits.approved_by, notification_settings.user_id,
-            work_acceptance_reports.created_by
+            work_acceptance_reports.created_by, field_work_schedules.user_id
 
 customers.id ──▶ customer_branches.customer_id, customer_contacts.customer_id,
                  tickets.customer_id
@@ -462,7 +476,7 @@ customer_contacts.id ──▶ customer_branch_contact.customer_contact_id,
                          tickets.customer_contact_id
 
 tickets.id ──▶ budgets.ticket_id, ticket_tasks.ticket_id, deposits.ticket_id,
-            work_acceptance_reports.ticket_id
+            work_acceptance_reports.ticket_id, field_work_schedules.ticket_id
 
 budgets.id ──▶ budget_concepts.budget_id, budget_payments.budget_id,
               budget_catalogs.budget_id, technician_payments.budget_id,

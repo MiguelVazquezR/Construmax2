@@ -213,6 +213,17 @@ class PermissionSeeder extends Seeder
                 'category' => 'Tickets',
                 'description' => 'Eliminar plantillas de tareas'
             ],
+            [
+                'name' => 'tickets.calendar.view',
+                'category' => 'Tickets',
+                'description' => 'Ver el calendario de trabajos en sitio de tickets'
+            ],
+            [
+                'name' => 'tickets.calendar.create',
+                'category' => 'Tickets',
+                'description' => 'Crear eventos en el calendario de actividades'
+            ],
+            
 
             // --- MÓDULO: ANALÍTICAS (DASHBOARDS) ---
             [

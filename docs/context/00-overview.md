@@ -32,6 +32,7 @@ Construmax2/
 ├── app/
 │   ├── Actions/          # Single-use-case orchestrators (per module)
 │   │   ├── Deposits/     # ApproveDepositAction, CompleteDepositAction
+│   │   ├── FieldWork/    # Create|Update|DeleteFieldWorkScheduleAction
 │   │   ├── Fortify/      # CreateNewUser, ResetUserPassword, etc.
 │   │   ├── Invoices/     # UploadInvoiceAction
 │   │   ├── Jetstream/    # DeleteUser
@@ -41,12 +42,14 @@ Construmax2/
 │   │   ├── Controllers/  # Thin controllers — delegate to Actions/Services
 │   │   ├── Middleware/   # Standard Laravel + Jetstream middleware
 │   │   └── Requests/     # Form Requests (all validation lives here)
-│   ├── Models/           # 22 Eloquent models with rich relationships/scopes
+│   │       ├── FieldWork/ # Store|UpdateFieldWorkScheduleRequest
+│   ├── Models/           # 23 Eloquent models with rich relationships/scopes
 │   ├── Notifications/    # 5 notification classes (mail + database)
 │   ├── Providers/        # AppServiceProvider, Fortify, Jetstream
 │   └── Services/         # Reusable business logic (per module)
 │       ├── Costs/        # CostService
 │       ├── Deposits/     # DepositService
+│       ├── FieldWork/    # FieldWorkScheduleService
 │       ├── Invoices/     # InvoiceService
 │       ├── Media/        # ImageOptimizerService
 │       └── Notifications/# NotificationService
@@ -59,7 +62,7 @@ Construmax2/
 │   └── Layouts/          # AppLayout.vue, AppSidebar.vue, AppTopbar.vue
 ├── routes/
 │   ├── web.php           # Top-level routes + requires all web/*.php files
-│   ├── web/              # 14 modular route files (one per module)
+│   ├── web/              # 15 modular route files (one per module)
 │   ├── api.php           # Sanctum-protected /api/user
 │   └── console.php       # Scheduled command: check-overdue-invoices (daily 07:00)
 └── docs/context/         # THIS DOCUMENTATION SET
@@ -99,7 +102,7 @@ Construmax2/
 | 7 | Budgets | `07-module-budgets.md` | Budgets linked to tickets: concepts, payments, technician payments, multi-currency, file uploads |
 | 8 | Costs | `08-module-costs.md` | Cost catalogs (materials + labor), versioning, IVA, Empeño Fácil special calculations, print views |
 | 9 | Technicians | `09-module-technicians.md` | Technician profiles, specialties, bank accounts, ratings, status management |
-| 10 | Calendar | `10-module-calendar.md` | Shared calendar with event CRUD, participant management, status responses |
+| 10 | Calendar | `10-module-calendar.md` | Dual-mode calendar: personal events with participant invitations + field work scheduling with task timestamp automation, Day/Week/Month views |
 | 11 | Deposits | `11-module-deposits.md` | Deposit tracking: creation, approval workflow, bank accounts, public signed-URL views, shift management |
 | 12 | Invoices | `12-module-invoices.md` | Invoice upload, tracking overdue invoices, status syncing with tickets |
 | 13 | Notifications | `13-module-notifications.md` | 5 event types, subscriber management, notification bell with polling, cron-triggered overdue checks |
@@ -136,6 +139,8 @@ Deposit ──belongsTo──▶ Technician, TechnicianBankAccount, Ticket, Budg
 TaskTemplate ──hasMany──▶ TaskTemplateItem
 NotificationSetting ──belongsTo──▶ User
 Ticket ──hasOne──▶ WorkAcceptanceReport
+Ticket ──hasOne──▶ FieldWorkSchedule
+FieldWorkSchedule ──belongsTo──▶ User (creator)
 WorkAcceptanceReport ──belongsTo──▶ User (created_by)
 ```
 
