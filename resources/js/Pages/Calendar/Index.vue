@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useForm, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -9,6 +9,10 @@ import FieldWorkFormModal from './Partials/FieldWorkFormModal.vue';
 import DayView from '@/Components/MyComponents/DayView.vue';
 import WeekView from '@/Components/MyComponents/WeekView.vue';
 import { usePermissions } from '@/Composables/usePermissions';
+
+// ---------------------------------------------------------------------------
+// Props (from CalendarController@index)
+// ---------------------------------------------------------------------------
 
 const props = defineProps({
     events: { type: Array, default: () => [] },
@@ -125,10 +129,9 @@ const prefilledTime = ref('');
 
 const showPersonalModal = ref(false);
 const isCreating = ref(false);
-const selectedDate = ref(new Date());
 const activeEvent = ref(null);
 
-const form = useForm({
+const personalForm = useForm({
     id: null,
     title: '',
     type: 'Reunión',
@@ -140,7 +143,9 @@ const form = useForm({
 
 const types = ['Reunión', 'Tarea', 'Llamada', 'Recordatorio', 'Evento'];
 
-// --- ACCIONES DE CALENDARIO ---
+// ---------------------------------------------------------------------------
+// Day/Week view event handlers
+// ---------------------------------------------------------------------------
 
 function onDayWeekCreate(payload) {
     if (calendarMode.value === 'field-work') {
@@ -223,10 +228,10 @@ function onFieldWorkSaved() {
 const selectedDate = ref(new Date());
 
 const getEventsForDate = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const dateStr = `${year}-${month}-${day}`;
+    const y = date.getFullYear();
+    const mo = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${mo}-${d}`;
 
     return activeEvents.value.filter((e) => {
         const start = (e.start_time || e.start || '').substring(0, 10);
@@ -247,97 +252,90 @@ const handleDateClick = (data) => {
         return;
     }
 
-const handleDateClick = (data) => {
     isCreating.value = true;
     activeEvent.value = null;
-    
     const start = new Date(data.date);
-    start.setHours(9, 0, 0); 
-    
+    start.setHours(9, 0, 0);
     const end = new Date(data.date);
-    end.setHours(10, 0, 0); 
-
-    form.reset();
-    form.start_time = formatDateToString(start);
-    form.end_time = formatDateToString(end);
-    
-    showModal.value = true;
+    end.setHours(10, 0, 0);
+    personalForm.reset();
+    personalForm.start_time = formatDateToString(start);
+    personalForm.end_time = formatDateToString(end);
+    showPersonalModal.value = true;
 };
 
 const formatDateToString = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    const y = date.getFullYear();
+    const mo = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const h = String(date.getHours()).padStart(2, '0');
+    const mi = String(date.getMinutes()).padStart(2, '0');
+    return `${y}-${mo}-${d} ${h}:${mi}:00`;
 };
 
 const handleEventClick = (event, e) => {
     e.stopPropagation();
+
+    if (calendarMode.value === 'field-work') {
+        editingSchedule.value = event;
+        showFieldWorkModal.value = true;
+        return;
+    }
+
     isCreating.value = false;
     activeEvent.value = event;
-    
-    form.id = event.id;
-    form.title = event.title;
-    form.type = event.type;
-    form.description = event.description;
-    form.start_time = event.start; 
-    form.end_time = event.end;
-    form.participants = event.participants.map(p => p.id);
-
-    showModal.value = true;
+    personalForm.id = event.id;
+    personalForm.title = event.title;
+    personalForm.type = event.type;
+    personalForm.description = event.description;
+    personalForm.start_time = event.start;
+    personalForm.end_time = event.end;
+    personalForm.participants = (event.participants || []).map((p) => p.id);
+    showPersonalModal.value = true;
 };
 
-// --- CRUD ---
+// ---------------------------------------------------------------------------
+// Personal CRUD
+// ---------------------------------------------------------------------------
 
-const submitEvent = () => {
+const submitPersonalEvent = () => {
     if (isCreating.value) {
-        form.post(route('calendar.store'), {
+        personalForm.post(route('calendar.store'), {
             onSuccess: () => {
-                showModal.value = false;
-                ElMessage.success('Evento agendado');
-            }
+                showPersonalModal.value = false;
+                ElMessage.success('Evento creado correctamente.');
+            },
         });
     } else {
-        form.put(route('calendar.update', form.id), {
+        personalForm.put(route('calendar.update', personalForm.id), {
             onSuccess: () => {
-                showModal.value = false;
-                ElMessage.success('Evento actualizado');
-            }
+                showPersonalModal.value = false;
+                ElMessage.success('Evento actualizado correctamente.');
+            },
         });
     }
 };
 
-const deleteEvent = () => {
+const deletePersonalEvent = () => {
     ElMessageBox.confirm('¿Eliminar este evento?', 'Confirmar', { type: 'warning' })
         .then(() => {
             router.delete(route('calendar.destroy', activeEvent.value.id), {
                 onSuccess: () => {
-                    showModal.value = false;
-                    ElMessage.success('Evento eliminado');
-                }
+                    showPersonalModal.value = false;
+                    ElMessage.success('Evento eliminado correctamente.');
+                },
             });
-        }).catch(() => {});
+        })
+        .catch(() => {});
 };
 
-// --- TOGGLE COMPLETADO ---
 const toggleComplete = () => {
     router.put(route('calendar.toggle-complete', activeEvent.value.id), {}, {
-        onSuccess: () => {
-            showModal.value = false;
-            // No necesitamos ElMessage aquí si el controlador ya envía un flash message, 
-            // pero si usas el componente de flash global, está bien.
-        }
+        onSuccess: () => { showPersonalModal.value = false; },
     });
 };
 
-// --- RESPUESTA ---
-const responseForm = useForm({
-    status: '',
-    rejection_reason: '',
-});
+const responseForm = useForm({ status: '', rejection_reason: '' });
 
 const submitResponse = (status) => {
     if (status === 'Rechazado') {
@@ -359,21 +357,22 @@ const submitResponse = (status) => {
 const sendResponse = () => {
     responseForm.put(route('calendar.respond', activeEvent.value.id), {
         onSuccess: () => {
-            showModal.value = false;
-            ElMessage.success('Respuesta enviada');
-        }
+            showPersonalModal.value = false;
+            ElMessage.success('Respuesta enviada.');
+        },
     });
 };
 
-// --- ESTILOS ---
-const getEventColorClass = (event) => {
-    // Si está completado, gris y tachado
-    if (event.is_completed) return 'bg-gray-100 text-gray-400 border-gray-200 line-through decoration-gray-400';
+// ---------------------------------------------------------------------------
+// Styling helpers
+// ---------------------------------------------------------------------------
 
+const getEventColorClass = (event) => {
+    if (event.is_completed) return 'bg-gray-100 text-gray-400 border-gray-200 line-through decoration-gray-400';
     if (event.is_creator) return 'bg-blue-100 text-blue-700 border-blue-200';
     if (event.my_status === 'Aceptado') return 'bg-green-100 text-green-700 border-green-200';
     if (event.my_status === 'Rechazado') return 'bg-red-50 text-red-400 border-red-100 line-through opacity-60';
-    return 'bg-orange-100 text-orange-700 border-orange-200'; 
+    return 'bg-orange-100 text-orange-700 border-orange-200';
 };
 
 const getFieldWorkEventStyle = (event) => {
@@ -392,14 +391,21 @@ const getFieldWorkEventStyle = (event) => {
 };
 
 const formatTime = (dateStr) => {
-    if(!dateStr) return '';
-    const date = new Date(dateStr.replace(/-/g, '/')); 
+    if (!dateStr) return '';
+    const date = new Date(dateStr.replace(/-/g, '/'));
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
+
+function openFieldWorkCreate() {
+    editingSchedule.value = null;
+    prefilledDate.value = '';
+    prefilledTime.value = '';
+    showFieldWorkModal.value = true;
+}
 </script>
 
 <template>
-    <AppLayout title="Calendario">
+    <AppLayout :title="calendarMode === 'field-work' ? 'Calendario de trabajo en campo' : 'Mi calendario'">
         <template #header>
             <div class="flex items-center justify-between">
                 <h2 class="font-semibold text-xl text-gray-800 dark:text-white leading-tight">
@@ -524,55 +530,80 @@ const formatTime = (dateStr) => {
                                     class="text-sm font-bold"
                                     :class="data.isSelected ? 'text-primary' : 'text-gray-700 dark:text-gray-300'"
                                 >
-                                    <el-icon v-if="event.is_completed" size="10"><CircleCheck /></el-icon>
-                                    <span class="font-bold">{{ formatTime(event.start) }}</span> {{ event.title }}
+                                    {{ data.date.getDate() }}
+                                </span>
+                                <div class="flex flex-col gap-1 overflow-y-auto custom-scrollbar pr-1">
+                                    <template v-if="calendarMode === 'field-work'">
+                                        <div
+                                            v-for="ev in getEventsForDate(data.date)"
+                                            :key="'fw-' + ev.id"
+                                            class="text-[10px] px-1.5 py-0.5 rounded border-l-2 truncate cursor-pointer hover:opacity-80 transition"
+                                            :style="getFieldWorkEventStyle(ev)"
+                                            @click="(e) => handleEventClick(ev, e)"
+                                        >
+                                            <span class="font-bold">{{ formatTime(ev.start_time) }}</span> {{ ev.title }}
+                                        </div>
+                                    </template>
+                                    <template v-else>
+                                        <div
+                                            v-for="event in getEventsForDate(data.date)"
+                                            :key="'pe-' + event.id"
+                                            class="text-[10px] px-1 py-0.5 rounded border truncate cursor-pointer hover:opacity-80 transition flex items-center gap-1"
+                                            :class="getEventColorClass(event)"
+                                            @click="(e) => handleEventClick(event, e)"
+                                        >
+                                            <el-icon v-if="event.is_completed" size="10"><CircleCheck /></el-icon>
+                                            <span class="font-bold">{{ formatTime(event.start) }}</span> {{ event.title }}
+                                        </div>
+                                    </template>
                                 </div>
                             </div>
-                        </div>
-                    </template>
-                </el-calendar>
+                        </template>
+                    </el-calendar>
+                </div>
+
             </div>
         </div>
 
+        <!-- Field Work Form Modal -->
+        <FieldWorkFormModal
+            v-model:visible="showFieldWorkModal"
+            :schedule="editingSchedule"
+            :prefilled-date="prefilledDate"
+            :prefilled-time="prefilledTime"
+            @saved="onFieldWorkSaved"
+        />
+
+        <!-- Personal Calendar Event Modal -->
         <el-dialog
-            v-model="showModal"
-            :title="isCreating ? 'Nuevo Evento / Tarea' : 'Detalles del Evento'"
+            v-model="showPersonalModal"
+            :title="isCreating ? 'Nuevo evento' : 'Detalles del evento'"
             width="600px"
             destroy-on-close
         >
-            <!-- MODO VISUALIZACIÓN / EDICIÓN PARA INVITADOS -->
-            <div v-if="!isCreating && !activeEvent.is_creator" class="mb-6">
+            <div v-if="!isCreating && activeEvent && !activeEvent.is_creator" class="mb-6">
                 <div class="bg-gray-50 dark:bg-[#252529] p-4 rounded-lg border border-gray-200 dark:border-[#3f3f46]">
                     <div class="flex justify-between items-start mb-2">
                         <div class="flex items-center gap-2">
-                            <h3 class="text-lg font-bold text-gray-800 dark:text-white" :class="{'line-through text-gray-400': activeEvent.is_completed}">
+                            <h3 class="text-lg font-bold text-gray-800 dark:text-white" :class="{ 'line-through text-gray-400': activeEvent.is_completed }">
                                 {{ activeEvent.title }}
                             </h3>
-                            <el-tag v-if="activeEvent.is_completed" type="success" size="small" effect="dark">Terminado</el-tag>
+                            <el-tag v-if="activeEvent.is_completed" type="success" size="small" effect="dark">Completado</el-tag>
                         </div>
                         <el-tag>{{ activeEvent.type }}</el-tag>
                     </div>
-                    
                     <p class="text-sm text-gray-500 mb-2">
-                        Organizado por: <span class="font-bold">{{ activeEvent.creator.name }}</span>
+                        Organizado por: <span class="font-bold">{{ activeEvent.creator?.name }}</span>
                     </p>
                     <p class="text-sm text-gray-600 dark:text-gray-300 mb-4 whitespace-pre-line">
                         {{ activeEvent.description || 'Sin descripción' }}
                     </p>
-                    
                     <div class="grid grid-cols-2 gap-4 text-sm mb-4">
-                        <div>
-                            <span class="text-gray-400 block">Inicio</span>
-                            <span class="font-medium dark:text-gray-200">{{ activeEvent.start }}</span>
-                        </div>
-                        <div>
-                            <span class="text-gray-400 block">Fin</span>
-                            <span class="font-medium dark:text-gray-200">{{ activeEvent.end }}</span>
-                        </div>
+                        <div><span class="text-gray-400 block">Inicio</span><span class="font-medium dark:text-gray-200">{{ activeEvent.start }}</span></div>
+                        <div><span class="text-gray-400 block">Fin</span><span class="font-medium dark:text-gray-200">{{ activeEvent.end }}</span></div>
                     </div>
-
                     <div v-if="activeEvent.my_status === 'Pendiente'" class="flex gap-2 justify-end border-t pt-4 dark:border-gray-700">
-                        <el-button type="success" @click="submitResponse('Aceptado')">Aceptar Invitación</el-button>
+                        <el-button type="success" @click="submitResponse('Aceptado')">Aceptar</el-button>
                         <el-button type="danger" plain @click="submitResponse('Rechazado')">Rechazar</el-button>
                     </div>
                     <div v-else class="text-right">
@@ -582,66 +613,63 @@ const formatTime = (dateStr) => {
                 </div>
             </div>
 
-            <!-- MODO FORMULARIO (CREADOR) -->
             <div v-else>
-                <!-- Botón de Completar (Solo visible si ya existe el evento) -->
                 <div v-if="!isCreating && activeEvent" class="mb-4 flex justify-end">
-                    <el-button 
-                        :type="activeEvent.is_completed ? 'warning' : 'success'" 
+                    <el-button
+                        :type="activeEvent.is_completed ? 'warning' : 'success'"
                         :icon="activeEvent.is_completed ? CircleClose : CircleCheck"
                         plain
                         class="w-full"
                         @click="toggleComplete"
                     >
-                        {{ activeEvent.is_completed ? 'Reactivar evento (Marcar pendiente)' : 'Marcar como terminado' }}
+                        {{ activeEvent.is_completed ? 'Reactivar (marcar pendiente)' : 'Marcar como completado' }}
                     </el-button>
                 </div>
 
-                <el-form :model="form" label-position="top" :disabled="activeEvent?.is_completed">
-                    <el-form-item label="Motivo / Título">
-                        <el-input v-model="form.title" placeholder="Ej. Reunión de proyecto" />
+                <el-form :model="personalForm" label-position="top" :disabled="activeEvent?.is_completed">
+                    <el-form-item label="Título">
+                        <el-input v-model="personalForm.title" placeholder="Ej. Reunión de proyecto" />
                     </el-form-item>
-                    
                     <div class="grid grid-cols-2 gap-4">
                         <el-form-item label="Tipo">
-                            <el-select v-model="form.type" class="w-full">
+                            <el-select v-model="personalForm.type" class="w-full">
                                 <el-option v-for="t in types" :key="t" :label="t" :value="t" />
                             </el-select>
                         </el-form-item>
                         <el-form-item label="Participantes">
-                            <el-select v-model="form.participants" multiple placeholder="Invitar usuarios" class="w-full">
+                            <el-select v-model="personalForm.participants" multiple placeholder="Invitar usuarios" class="w-full">
                                 <el-option v-for="u in users" :key="u.id" :label="u.name" :value="u.id" />
                             </el-select>
                         </el-form-item>
                     </div>
-
                     <div class="grid grid-cols-2 gap-4">
                         <el-form-item label="Inicio">
-                            <el-date-picker 
-                                v-model="form.start_time" 
-                                type="datetime" 
-                                class="!w-full" 
+                            <el-date-picker
+                                v-model="personalForm.start_time"
+                                type="datetime"
+                                class="!w-full"
                                 format="DD/MM/YYYY HH:mm"
                                 value-format="YYYY-MM-DD HH:mm:ss"
                             />
                         </el-form-item>
                         <el-form-item label="Fin">
-                            <el-date-picker 
-                                v-model="form.end_time" 
-                                type="datetime" 
+                            <el-date-picker
+                                v-model="personalForm.end_time"
+                                type="datetime"
                                 class="!w-full"
                                 format="DD/MM/YYYY HH:mm"
                                 value-format="YYYY-MM-DD HH:mm:ss"
                             />
                         </el-form-item>
                     </div>
-
                     <el-form-item label="Descripción">
-                        <el-input v-model="form.description" type="textarea" :rows="3" />
+                        <el-input v-model="personalForm.description" type="textarea" :rows="3" />
                     </el-form-item>
-
-                    <div v-if="!isCreating && activeEvent && activeEvent.participants.length > 0" class="mt-4 p-3 bg-gray-50 rounded border dark:bg-[#18181b] dark:border-[#3f3f46]">
-                        <p class="text-xs font-bold text-gray-500 uppercase mb-2">Estatus de invitados</p>
+                    <div
+                        v-if="!isCreating && activeEvent && activeEvent.participants?.length > 0"
+                        class="mt-4 p-3 bg-gray-50 rounded border dark:bg-[#18181b] dark:border-[#3f3f46]"
+                    >
+                        <p class="text-xs font-bold text-gray-500 uppercase mb-2">Estado de invitados</p>
                         <ul class="space-y-1">
                             <li v-for="p in activeEvent.participants" :key="p.id" class="text-sm flex justify-between">
                                 <span class="dark:text-gray-300">{{ p.name }}</span>
@@ -661,25 +689,24 @@ const formatTime = (dateStr) => {
 
             <template #footer>
                 <div class="dialog-footer flex justify-between">
-                    <el-button v-if="!isCreating && activeEvent?.is_creator" type="danger" link @click="deleteEvent">
+                    <el-button v-if="!isCreating && activeEvent?.is_creator" type="danger" link @click="deletePersonalEvent">
                         Eliminar evento
                     </el-button>
-                    <div v-else></div> 
-
+                    <div v-else />
                     <div v-if="isCreating || activeEvent?.is_creator">
-                        <el-button @click="showModal = false">Cancelar</el-button>
-                        <el-button 
-                            type="primary" 
-                            color="#f26c17" 
-                            @click="submitEvent" 
-                            :loading="form.processing"
+                        <el-button @click="showPersonalModal = false">Cancelar</el-button>
+                        <el-button
+                            type="primary"
+                            color="#f26c17"
+                            :loading="personalForm.processing"
                             :disabled="activeEvent?.is_completed"
+                            @click="submitPersonalEvent"
                         >
-                            {{ isCreating ? 'Agendar' : 'Guardar Cambios' }}
+                            {{ isCreating ? 'Agendar' : 'Guardar cambios' }}
                         </el-button>
                     </div>
                     <div v-else>
-                        <el-button @click="showModal = false">Cerrar</el-button>
+                        <el-button @click="showPersonalModal = false">Cerrar</el-button>
                     </div>
                 </div>
             </template>
