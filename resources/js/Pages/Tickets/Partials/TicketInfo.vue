@@ -123,10 +123,20 @@ const deleteEvidence = (mediaId) => {
                 <div class="bg-gray-50 dark:bg-[#252529] rounded-lg p-4 border border-gray-200 dark:border-[#3f3f46]">
                     <div class="flex items-center justify-between mb-3">
                         <h4 class="text-sm font-bold text-gray-700 dark:text-gray-300">Último catálogo de costos</h4>
-                        <el-tag v-if="ticket.budget?.latest_catalog" type="success" size="small" effect="dark">
-                            V{{ ticket.budget.latest_catalog.version }}
-                        </el-tag>
-                        <el-tag v-else type="info" size="small" effect="plain">Sin catálogo</el-tag>
+                        <div class="flex items-center gap-2">
+                            <el-tag v-if="ticket.budget?.latest_catalog" type="success" size="small" effect="dark">
+                                V{{ ticket.budget.latest_catalog.version }}
+                            </el-tag>
+                            <el-tag
+                                v-if="ticket.budget?.latest_catalog"
+                                :type="ticket.budget.latest_catalog.status === 'approved' ? 'success' : 'warning'"
+                                size="small"
+                                effect="plain"
+                            >
+                                {{ ticket.budget.latest_catalog.status === 'approved' ? 'Aprobado' : 'Pendiente de aprobación' }}
+                            </el-tag>
+                            <el-tag v-else type="info" size="small" effect="plain">Sin catálogo</el-tag>
+                        </div>
                     </div>
                     <div v-if="ticket.budget?.latest_catalog" class="space-y-2 text-sm">
                         <div class="flex justify-between">

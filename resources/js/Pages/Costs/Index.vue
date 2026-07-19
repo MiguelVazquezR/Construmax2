@@ -4,6 +4,7 @@ import { router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { debounce } from 'lodash';
 import { usePermissions } from '@/Composables/usePermissions';
+import { ElMessage, ElMessageBox } from 'element-plus';
 
 const { can } = usePermissions();
 
@@ -13,7 +14,7 @@ const props = defineProps({
 });
 
 const search = ref(props.filters.search || '');
-const catalogFilter = ref(props.filters.catalog || 'all');
+const catalogFilter = ref(props.filters.catalog || 'pending');
 const branchFilter = ref(props.filters.branch || '');
 
 const fetchData = debounce(() => {
@@ -47,6 +48,15 @@ const getStatusColor = (status) => {
         'Trabajo en proceso': 'primary',
         'Trabajo terminado': 'success',
         'Pagado': 'success',
+        'Pendiente de aprobación': 'warning',
+    };
+    return map[status] || 'info';
+};
+
+const getCatalogStatusColor = (status) => {
+    const map = {
+        'pending_approval': 'warning',
+        'approved': 'success',
     };
     return map[status] || 'info';
 };
@@ -68,6 +78,31 @@ const getCatalogTotalLabel = (row) => {
     }
     return 'Presupuesto';
 };
+
+const approveCatalog = (row, event) => {
+    event.stopPropagation();
+
+    ElMessageBox.confirm(
+        '¿Estás seguro de aprobar este catálogo de costos? Una vez aprobado, el asesor recibirá una notificación.',
+        'Aprobar catálogo',
+        {
+            confirmButtonText: 'Sí, aprobar',
+            cancelButtonText: 'Cancelar',
+            type: 'info',
+        }
+    ).then(() => {
+        router.post(route('costs.approve-catalog', { budget: row.id, catalog: row.catalog_id }), {}, {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => {
+                ElMessage.success('Catálogo de costos aprobado correctamente.');
+            },
+            onError: () => {
+                ElMessage.error('Error al aprobar el catálogo.');
+            },
+        });
+    }).catch(() => {});
+};
 </script>
 
 <template>
@@ -86,13 +121,21 @@ const getCatalogTotalLabel = (row) => {
                     <el-input v-model="branchFilter" placeholder="Filtrar sucursal, unidad, país, región..." clearable
                         prefix-icon="Search" class="w-full sm:w-64" />
 
-                    <el-select v-model="catalogFilter" placeholder="Filtro de catálogo" clearable class="lg:!w-1/4">
-                        <el-option label="Todos los presupuestos" value="all" />
-                        <el-option label="Con catálogo" value="with" />
+                    <el-select v-model="catalogFilter" placeholder="Filtro de aprobación" class="lg:!w-1/4">
+                        <el-option label="Pendientes de aprobación" value="pending" />
+                        <el-option label="Aprobados" value="approved" />
+                        <el-option label="Todos" value="all" />
                         <el-option label="Sin catálogo" value="without" />
                     </el-select>
                 </div>
             </div>
+
+            <!-- Info: no rejection flow -->
+            <el-alert type="info" :closable="false" show-icon class="mx-0">
+                <template #title>
+                    <span class="text-sm">Si un catálogo requiere ajustes, simplemente crea una nueva versión desde la vista de detalle. El catálogo anterior permanecerá en el historial.</span>
+                </template>
+            </el-alert>
 
             <!-- Tabla de presupuestos para catálogos -->
             <div
@@ -112,8 +155,15 @@ const getCatalogTotalLabel = (row) => {
                             <div class="flex flex-col">
                                 <span class="font-bold text-gray-800 dark:text-gray-200 text-sm">{{
                                     scope.row.ticket_name }}</span>
-                                <span class="font-mono text-xs text-gray-500">Folio Ticket: {{ scope.row.ticket_folio
-                                    }}</span>
+                                <Link
+                                    v-if="can('tickets.index') && scope.row.ticket_id"
+                                    :href="route('tickets.show', scope.row.ticket_id)"
+                                    class="font-mono text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
+                                    @click.stop
+                                >
+                                    Folio Ticket: {{ scope.row.ticket_folio }}
+                                </Link>
+                                <span v-else class="font-mono text-xs text-gray-500">Folio Ticket: {{ scope.row.ticket_folio }}</span>
                             </div>
                         </template>
                     </el-table-column>
@@ -154,7 +204,7 @@ const getCatalogTotalLabel = (row) => {
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Estado" width="140" align="center">
+                    <el-table-column label="Estado ticket" width="160" align="center">
                         <template #default="scope">
                             <el-tag :type="getStatusColor(scope.row.status)" size="small" effect="light"
                                 class="w-full text-center">
@@ -163,11 +213,17 @@ const getCatalogTotalLabel = (row) => {
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Catálogo" width="120" align="center">
+                    <el-table-column label="Catálogo" width="200" align="center">
                         <template #default="scope">
-                            <el-tag v-if="scope.row.has_catalog" type="success" size="small" effect="light">
-                                Versión {{ scope.row.latest_version }}
-                            </el-tag>
+                            <div v-if="scope.row.has_catalog" class="flex flex-col items-center gap-1">
+                                <el-tag :type="getCatalogStatusColor(scope.row.catalog_status)" size="small" effect="light">
+                                    {{ scope.row.catalog_status_label }}
+                                </el-tag>
+                                <span class="text-[10px] text-gray-400">v{{ scope.row.latest_version }}</span>
+                                <span v-if="scope.row.catalog_approved_by" class="text-[10px] text-gray-400">
+                                    por {{ scope.row.catalog_approved_by }}
+                                </span>
+                            </div>
                             <el-tag v-else type="info" size="small" effect="light" class="text-gray-500">
                                 Sin registro
                             </el-tag>
@@ -182,6 +238,21 @@ const getCatalogTotalLabel = (row) => {
                                 </span>
                                 <span class="text-xs text-gray-400">{{ getCatalogTotalLabel(scope.row) }}</span>
                             </div>
+                        </template>
+                    </el-table-column>
+
+                    <el-table-column label="Acciones" width="120" align="center" fixed="right">
+                        <template #default="scope">
+                            <el-button
+                                v-if="scope.row.has_catalog && scope.row.catalog_status === 'pending_approval' && can('costs.approve')"
+                                type="success" size="small" plain
+                                @click="approveCatalog(scope.row, $event)">
+                                Aprobar
+                            </el-button>
+                            <span v-else-if="scope.row.has_catalog && scope.row.catalog_status === 'approved'"
+                                class="text-xs text-green-600 font-medium">
+                                ✓ Aprobado
+                            </span>
                         </template>
                     </el-table-column>
                 </el-table>

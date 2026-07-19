@@ -213,6 +213,17 @@ class PermissionSeeder extends Seeder
                 'category' => 'Tickets',
                 'description' => 'Eliminar plantillas de tareas'
             ],
+            [
+                'name' => 'tickets.calendar.view',
+                'category' => 'Tickets',
+                'description' => 'Ver el calendario de trabajos en sitio de tickets'
+            ],
+            [
+                'name' => 'tickets.calendar.create',
+                'category' => 'Tickets',
+                'description' => 'Crear eventos en el calendario de actividades'
+            ],
+            
 
             // --- MÓDULO: ANALÍTICAS (DASHBOARDS) ---
             [
@@ -244,12 +255,49 @@ class PermissionSeeder extends Seeder
                 'category' => 'Costos',
                 'description' => 'Crear versiones de catálogo de costos'
             ],
+            [
+                'name' => 'costs.approve',
+                'category' => 'Costos',
+                'description' => 'Aprobar catálogos de costos'
+            ],
 
             // --- MÓDULO: NOTIFICACIONES ---
             [
                 'name' => 'config.notifications',
                 'category' => 'Configuración',
                 'description' => 'Gestionar configuraciones de notificaciones (quién recibe qué)'
+            ],
+
+            // --- MÓDULO: DEPÓSITOS ---
+            [
+                'name' => 'deposits.index',
+                'category' => 'Depósitos',
+                'description' => 'Ver el módulo de depósitos (lista y calendario)'
+            ],
+            [
+                'name' => 'deposits.create',
+                'category' => 'Depósitos',
+                'description' => 'Programar nuevos depósitos a técnicos'
+            ],
+            [
+                'name' => 'deposits.edit',
+                'category' => 'Depósitos',
+                'description' => 'Editar depósitos existentes'
+            ],
+            [
+                'name' => 'deposits.delete',
+                'category' => 'Depósitos',
+                'description' => 'Eliminar depósitos del sistema'
+            ],
+            [
+                'name' => 'deposits.approve',
+                'category' => 'Depósitos',
+                'description' => 'Aprobar depósitos pendientes y recibir notificaciones'
+            ],
+            [
+                'name' => 'deposits.types.manage',
+                'category' => 'Depósitos',
+                'description' => 'Gestionar el catálogo de tipos de depósito'
             ],
         ];
 

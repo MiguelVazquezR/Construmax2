@@ -216,6 +216,14 @@ const assistantTechnicians = computed(() => {
 const sellerUsers = computed(() => {
     return props.users.filter(u => u.employee);
 });
+
+const getTechLabel = (user) => {
+    let label = user.name;
+    if (user.technician) {
+        label += user.technician.is_internal ? ' (Interno)' : ' (Externo)';
+    }
+    return label;
+};
 </script>
 
 <template>
@@ -392,7 +400,7 @@ const sellerUsers = computed(() => {
                         collapse-tags
                         collapse-tags-tooltip
                     >
-                        <el-option v-for="tech in technicianUsers" :key="tech.id" :label="tech.name" :value="tech.id" />
+                        <el-option v-for="tech in technicianUsers" :key="tech.id" :label="getTechLabel(tech)" :value="tech.id" />
                     </el-select>
                 </el-form-item>
 
@@ -410,7 +418,7 @@ const sellerUsers = computed(() => {
                         collapse-tags
                         collapse-tags-tooltip
                     >
-                        <el-option v-for="tech in assistantTechnicians" :key="tech.id" :label="tech.name" :value="tech.id" />
+                        <el-option v-for="tech in assistantTechnicians" :key="tech.id" :label="getTechLabel(tech)" :value="tech.id" />
                     </el-select>
                 </el-form-item>
 
