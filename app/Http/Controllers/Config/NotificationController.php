@@ -25,16 +25,30 @@ class NotificationController extends Controller
 
         $users = User::select('id', 'name', 'email')
             ->where('is_active', true)
+            ->when($request->filled('search'), function ($query) use ($request) {
+                $query->where('name', 'like', '%' . $request->search . '%')
+                    ->orWhere('email', 'like', '%' . $request->search . '%');
+            })
+            ->when($request->filled('role'), function ($query) use ($request) {
+                $query->whereHas('roles', function ($q) use ($request) {
+                    $q->where('name', $request->role);
+                });
+            })
             ->orderBy('name')
+            ->with('roles:id,name')
             ->get();
 
         $settings = NotificationSetting::with('user')->get()
             ->groupBy('notification_type');
 
+        $roles = \Spatie\Permission\Models\Role::select('id', 'name')->orderBy('name')->get();
+
         return Inertia::render('Config/Notifications/Index', [
             'users'    => $users,
             'settings' => $settings,
             'types'    => $this->notificationService->getTypes(),
+            'roles'    => $roles,
+            'filters'  => $request->only(['search', 'role']),
         ]);
     }
 
@@ -44,13 +58,23 @@ class NotificationController extends Controller
             abort(403);
         }
 
+        $allowedTypes = array_merge(
+            array_keys(NotificationSetting::TYPES),
+            ['catalog.created'], // Legacy: accepted for backward compatibility, mapped to catalog.approved
+        );
+
         $validated = $request->validate([
             'user_id'           => ['required', 'integer', 'exists:users,id'],
             'notification_types' => ['required', 'array'],
-            'notification_types.*' => ['string', 'in:' . implode(',', array_keys(NotificationSetting::TYPES))],
+            'notification_types.*' => ['string', 'in:' . implode(',', $allowedTypes)],
         ]);
 
-        $this->notificationService->syncSettings($validated['user_id'], $validated['notification_types']);
+        // Map legacy catalog.created to catalog.approved
+        $types = array_map(function ($type) {
+            return $type === 'catalog.created' ? 'catalog.approved' : $type;
+        }, $validated['notification_types']);
+
+        $this->notificationService->syncSettings($validated['user_id'], $types);
 
         return back()->with('success', 'Notification settings saved successfully.');
     }
@@ -64,6 +88,20 @@ class NotificationController extends Controller
         $setting->delete();
 
         return back()->with('success', 'Notification setting removed.');
+    }
+
+    /**
+     * Delete all notification settings for a specific user.
+     */
+    public function deleteUserSettings(Request $request, User $user): RedirectResponse
+    {
+        if (!$request->user()->can('config.notifications')) {
+            abort(403);
+        }
+
+        NotificationSetting::where('user_id', $user->id)->delete();
+
+        return back()->with('success', "Notification settings cleared for {$user->name}.");
     }
 
     /**

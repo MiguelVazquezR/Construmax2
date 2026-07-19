@@ -24,25 +24,32 @@ class TechnicianController extends Controller
     {
         $perPage = $request->input('perPage', 10);
 
+        $technicians = Technician::with('user')
+            ->filter($request->only('search', 'specialty', 'state'))
+            ->when($request->has('is_internal'), fn ($q) => $q->where('is_internal', $request->boolean('is_internal')))
+            ->orderBy('id', 'desc')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        // Return JSON for AJAX requests (e.g. deposit form technician search)
+        if ($request->expectsJson()) {
+            return response()->json($technicians);
+        }
+
         // Obtener listas únicas para los filtros del frontend
         $states = Technician::select('state')
             ->distinct()
             ->whereNotNull('state')
             ->orderBy('state')
             ->pluck('state');
-        
-        // Usamos la constante del Modelo para asegurar consistencia
+
         $specialties = Technician::SPECIALTIES;
 
         return Inertia::render('Technicians/Index', [
-            'technicians' => Technician::with('user')
-                ->filter($request->only('search', 'specialty', 'state'))
-                ->orderBy('id', 'desc')
-                ->paginate($perPage)
-                ->withQueryString(),
+            'technicians' => $technicians,
             'filters' => $request->only(['search', 'perPage', 'specialty', 'state']),
             'states' => $states,
-            'specialties' => $specialties 
+            'specialties' => $specialties,
         ]);
     }
 
@@ -304,6 +311,7 @@ class TechnicianController extends Controller
             'phone' => 'required|string|max:20',
             'is_internal' => 'boolean', // NUEVO CAMPO ACEPTADO
             'level' => 'nullable|string|in:' . implode(',', Technician::LEVELS),
+            'state' => 'nullable|string|max:255',
         ]);
 
         $user = null;
@@ -321,6 +329,7 @@ class TechnicianController extends Controller
                 'phone' => $validated['phone'],
                 'is_internal' => $validated['is_internal'] ?? false, // APLICADO AQUÍ
                 'level' => $validated['level'] ?? 'Encargado',
+                'state' => $validated['state'] ?? null,
                 'status' => 'Activo', 
                 'rating_avg' => 0,
                 'coverage_radius_km' => 10,
@@ -348,6 +357,7 @@ class TechnicianController extends Controller
     public function storeBankAccount(Request $request, Technician $technician)
     {
         $validated = $request->validate([
+            'bank_name' => 'nullable|string|max:100',
             'account_number' => 'nullable|string|max:50',
             'card_number' => 'nullable|string|max:50',
             'clabe' => 'nullable|string|max:50',
@@ -359,6 +369,7 @@ class TechnicianController extends Controller
         $isFavorite = $technician->bankAccounts()->count() === 0;
 
         $account = $technician->bankAccounts()->create([
+            'bank_name' => $validated['bank_name'] ?? null,
             'account_number' => $validated['account_number'] ?? null,
             'card_number' => $validated['card_number'] ?? null,
             'clabe' => $validated['clabe'] ?? null,
@@ -377,6 +388,7 @@ class TechnicianController extends Controller
     public function updateBankAccount(Request $request, Technician $technician, TechnicianBankAccount $account)
     {
         $validated = $request->validate([
+            'bank_name' => 'nullable|string|max:100',
             'account_number' => 'nullable|string|max:50',
             'card_number' => 'nullable|string|max:50',
             'clabe' => 'nullable|string|max:50',
@@ -385,6 +397,7 @@ class TechnicianController extends Controller
         ]);
 
         $account->update([
+            'bank_name' => $validated['bank_name'] ?? null,
             'account_number' => $validated['account_number'] ?? null,
             'card_number' => $validated['card_number'] ?? null,
             'clabe' => $validated['clabe'] ?? null,

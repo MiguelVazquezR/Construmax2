@@ -77,8 +77,11 @@ require __DIR__ . '/web/calendar.php';
 require __DIR__ . '/web/technicians.php';
 require __DIR__ . '/web/invoices.php';
 require __DIR__ . '/web/costs.php';
+require __DIR__ . '/web/work-acceptance-reports.php';
 require __DIR__ . '/web/notifications.php';
 require __DIR__ . '/web/tutorials.php';
+require __DIR__ . '/web/deposits.php';
+require __DIR__ . '/web/field-work.php';
 
 // --- SOLUCIÓN PARA HOSTING SIN SYMLINK ---
 // Esta ruta intercepta las peticiones a imágenes y documentos

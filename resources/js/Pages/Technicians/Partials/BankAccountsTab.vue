@@ -11,7 +11,34 @@ const props = defineProps({
 const showForm = ref(false);
 const editingAccount = ref(null);
 
+const mexicanBanks = [
+    'BBVA',
+    'Santander',
+    'Banamex',
+    'Banorte',
+    'HSBC',
+    'Scotiabank',
+    'Inbursa',
+    'Banco Azteca',
+    'BanCoppel',
+    'Banregio',
+    'Afirme',
+    'BanBajío',
+    'Intercam',
+    'Mifel',
+    'Multiva',
+    'CIBanco',
+    'Banco del Bienestar',
+    'Mercado Pago',
+    'Nu México',
+    'Klar',
+    'Cuenca',
+    'STP',
+    'Oxxo Pay / Spin',
+];
+
 const form = useForm({
+    bank_name: '',
     account_number: '',
     card_number: '',
     clabe: '',
@@ -27,6 +54,7 @@ const openNew = () => {
 };
 
 const openEdit = (account) => {
+    form.bank_name = account.bank_name || '';
     form.account_number = account.account_number || '';
     form.card_number = account.card_number || '';
     form.clabe = account.clabe || '';
@@ -107,6 +135,11 @@ const handleQrChange = (file) => {
                 {{ editingAccount ? 'Editar cuenta' : 'Nueva cuenta bancaria' }}
             </h4>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <el-form-item label="Banco">
+                    <el-select v-model="form.bank_name" placeholder="Selecciona el banco" class="w-full" filterable allow-create clearable>
+                        <el-option v-for="bank in mexicanBanks" :key="bank" :label="bank" :value="bank" />
+                    </el-select>
+                </el-form-item>
                 <el-form-item label="Número de cuenta">
                     <el-input v-model="form.account_number" placeholder="Ej. 1234567890" />
                 </el-form-item>
@@ -157,6 +190,10 @@ const handleQrChange = (file) => {
                 <div class="flex items-start justify-between gap-4">
                     <!-- Info -->
                     <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div v-if="account.bank_name">
+                            <p class="text-[10px] text-gray-400 uppercase font-bold">Banco</p>
+                            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ account.bank_name }}</p>
+                        </div>
                         <div v-if="account.account_number">
                             <p class="text-[10px] text-gray-400 uppercase font-bold">Núm. de cuenta</p>
                             <p class="text-sm font-mono text-gray-700 dark:text-gray-300">{{ account.account_number }}</p>

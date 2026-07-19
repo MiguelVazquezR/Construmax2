@@ -30,6 +30,9 @@ const activeMenu = computed(() => {
     // Presupuestos
     if (route().current('budgets.*')) return 'budgets.index';
 
+    // Deposits
+    if (route().current('deposits.*')) return 'deposits.index';
+
     // Invoices
     if (route().current('invoices.*')) return 'invoices.index';
 
@@ -140,6 +143,14 @@ const activeMenu = computed(() => {
                     <el-menu-item class="!bg-dark" index="invoices.index">
                         <el-icon><Document/></el-icon>
                         <template #title><span>Facturación</span></template>
+                    </el-menu-item>
+                </Link>
+
+                <!-- Depósitos -->
+                <Link v-if="can('deposits.index')" :href="route('deposits.index')">
+                    <el-menu-item class="!bg-dark" index="deposits.index">
+                       <el-icon><Coin /></el-icon>
+                        <template #title><span>Depósitos</span></template>
                     </el-menu-item>
                 </Link>
 

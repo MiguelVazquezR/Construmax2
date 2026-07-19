@@ -4,10 +4,12 @@ namespace App\Actions\Notifications;
 
 use App\Models\Budget;
 use App\Models\BudgetCatalog;
+use App\Models\Deposit;
 use App\Models\NotificationSetting;
 use App\Models\Ticket;
 use App\Models\User;
-use App\Notifications\CatalogCreated;
+use App\Notifications\CatalogApproved;
+use App\Notifications\DepositPendingApproval;
 use App\Notifications\InvoiceOverdue;
 use App\Notifications\TicketNeedsCatalog;
 use App\Notifications\TicketNeedsInvoice;
@@ -31,11 +33,11 @@ class DispatchNotificationAction
     }
 
     /**
-     * Notify when a new cost catalog has been created.
+     * Notify when a cost catalog has been approved.
      * Only the ticket's seller receives this notification, and only if
-     * they have the catalog.created notification type active.
+     * they have the catalog.approved notification type active.
      */
-    public function catalogCreated(BudgetCatalog $catalog): void
+    public function catalogApproved(BudgetCatalog $catalog): void
     {
         $sellerId = $catalog->budget->ticket->seller_id;
 
@@ -43,7 +45,7 @@ class DispatchNotificationAction
             return;
         }
 
-        $isSubscribed = NotificationSetting::where('notification_type', NotificationService::TYPE_CATALOG_CREATED)
+        $isSubscribed = NotificationSetting::where('notification_type', NotificationService::TYPE_CATALOG_APPROVED)
             ->where('user_id', $sellerId)
             ->where('is_active', true)
             ->exists();
@@ -55,7 +57,7 @@ class DispatchNotificationAction
         $seller = User::find($sellerId);
 
         if ($seller && $seller->email) {
-            $seller->notify(new CatalogCreated($catalog));
+            $seller->notify(new CatalogApproved($catalog));
         }
     }
 
@@ -78,6 +80,18 @@ class DispatchNotificationAction
         $this->notificationService->notifySubscribers(
             NotificationService::TYPE_INVOICE_OVERDUE,
             new InvoiceOverdue($ticket, $budget)
+        );
+    }
+
+    /**
+     * Notify when a new deposit is created and needs approval.
+     * Sends to all users with the deposits.approve permission.
+     */
+    public function depositPendingApproval(Deposit $deposit): void
+    {
+        $this->notificationService->notifySubscribers(
+            NotificationService::TYPE_DEPOSIT_PENDING_APPROVAL,
+            new DepositPendingApproval($deposit)
         );
     }
 }

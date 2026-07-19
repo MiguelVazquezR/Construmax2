@@ -51,11 +51,20 @@ const toggleViewMode = (mode) => {
     localStorage.setItem('ticketViewMode', mode);
 };
 
+const getTechLabel = (user) => {
+    let label = user.name;
+    if (user.technician) {
+        label += user.technician.is_internal ? ' (Interno)' : ' (Externo)';
+    }
+    return label;
+};
+
 const statuses = [
     'Borrador',
     'Programado',
     'Levantamiento', 
-    'Catálogo', 
+    'Catálogo',
+    'Pendiente de aprobación',
     'Proceso de ejecución', 
     'Ejecutado',
     'Finalizado',
@@ -64,7 +73,7 @@ const statuses = [
     'Cancelado',
 ];
 
-const defaultStatuses = ['Borrador', 'Programado', 'Levantamiento', 'Catálogo', 'Proceso de ejecución', 'Ejecutado'];
+const defaultStatuses = ['Borrador', 'Programado', 'Levantamiento', 'Catálogo', 'Pendiente de aprobación', 'Proceso de ejecución', 'Ejecutado'];
 
 // Status filter uses an array for multi-select support
 const rawStatus = getFilter('status', defaultStatuses);
@@ -177,7 +186,7 @@ watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilt
                     </el-select>
 
                     <el-select v-model="technicianFilter" placeholder="Técnico asignado" clearable filterable class="w-full">
-                        <el-option v-for="t in technicians" :key="t.id" :label="t.name" :value="t.id" />
+                        <el-option v-for="t in technicians" :key="t.id" :label="getTechLabel(t)" :value="t.id" />
                     </el-select>
 
                     <el-select v-model="sellerFilter" placeholder="Vendedor / Asesor" clearable filterable class="w-full">
