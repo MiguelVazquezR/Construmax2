@@ -78,6 +78,9 @@ const getTechnicianLabel = (user) => {
     let label = user.name;
     if (user.technician) {
         label += user.technician.is_internal ? ' (Interno)' : ' (Externo)';
+        if (user.technician.state) {
+            label += ` — ${user.technician.state}`;
+        }
     }
     return label;
 };

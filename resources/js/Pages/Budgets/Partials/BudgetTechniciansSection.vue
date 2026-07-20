@@ -1,8 +1,9 @@
 <script setup>
 import { ref, computed } from 'vue';
-import { useForm, router } from '@inertiajs/vue3';
+import { router } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Avatar } from '@element-plus/icons-vue';
+import { Avatar, Coin } from '@element-plus/icons-vue';
+import RequestDepositModal from '@/Components/Deposits/RequestDepositModal.vue';
 
 const props = defineProps({
     budget: Object,
@@ -10,19 +11,32 @@ const props = defineProps({
 
 const emit = defineEmits(['preview']);
 
-const showTechPaymentModal = ref(false);
-const techPaymentUploadRef = ref(null);
-const selectedTechnician = ref(null);
+// --- DEPOSIT REQUEST MODAL ---
+const showDepositModal = ref(false);
+const selectedTechForDeposit = ref(null);
 
-const techPaymentForm = useForm({
-    user_id: null,
-    amount: 0,
-    payment_date: new Date().toISOString().split('T')[0],
-    payment_method: 'Transferencia',
-    reference: '',
-    notes: '',
-    proof: null,
+const depositTicketInfo = computed(() => {
+    const ticket = props.budget?.ticket;
+    return {
+        id: ticket?.id,
+        folio: ticket?.folio ?? `#${ticket?.id}`,
+        name: ticket?.name,
+        customer_name: ticket?.customer?.name ?? '',
+    };
 });
+
+const openDepositModal = (tech) => {
+    selectedTechForDeposit.value = {
+        id: tech.user.id,
+        name: tech.user.name,
+        technician: {
+            id: tech.user.technician?.id,
+            is_internal: tech.user.technician?.is_internal,
+            state: tech.user.technician?.state,
+        },
+    };
+    showDepositModal.value = true;
+};
 
 const formatCurrency = (value) => {
     return new Intl.NumberFormat('es-MX', {
@@ -105,30 +119,6 @@ const totalTechnicianAmount = computed(() => {
         .reduce((sum, c) => sum + parseFloat(c.amount), 0);
 });
 
-const openTechPaymentModal = (tech) => {
-    selectedTechnician.value = tech;
-    techPaymentForm.reset();
-    techPaymentForm.user_id = tech.user.id;
-    if (techPaymentUploadRef.value) techPaymentUploadRef.value.clearFiles();
-    showTechPaymentModal.value = true;
-};
-
-const handleTechProofChange = (file) => {
-    techPaymentForm.proof = file.raw;
-};
-
-const submitTechPayment = () => {
-    techPaymentForm.post(route('budgets.technician-payments.store', props.budget.id), {
-        onSuccess: () => {
-            showTechPaymentModal.value = false;
-            techPaymentForm.reset();
-            ElMessage.success('Pago a técnico registrado');
-        },
-        onError: () => ElMessage.error('Error al registrar pago'),
-        forceFormData: true,
-    });
-};
-
 const deleteTechPayment = (paymentId) => {
     ElMessageBox.confirm('¿Eliminar este registro de pago a técnico?', 'Confirmar', {
         type: 'warning',
@@ -177,8 +167,8 @@ const openPreview = (file) => {
                             <p class="text-xs text-gray-400">Total pagado</p>
                             <p class="font-bold text-green-600">{{ formatCurrency(tech.total_paid) }}</p>
                         </div>
-                        <el-button type="success" size="small" plain icon="Money" @click="openTechPaymentModal(tech)">
-                            Pagar
+                        <el-button type="warning" size="small" plain :icon="Coin" @click="openDepositModal(tech)">
+                            Solicitar depósito
                         </el-button>
                     </div>
                 </div>
@@ -211,74 +201,12 @@ const openPreview = (file) => {
         </div>
     </div>
 
-    <!-- Modal pago a técnico -->
-    <el-dialog
-        v-model="showTechPaymentModal"
-        :title="`Pago a técnico: ${selectedTechnician?.user?.name}`"
-        width="450px"
-    >
-        <el-form :model="techPaymentForm" label-position="top">
-            <el-alert
-                title="Información"
-                type="info"
-                description="El comprobante de pago es opcional. Puedes adjuntarlo después si lo requieres."
-                show-icon
-                :closable="false"
-                class="mb-4"
-            />
-
-            <el-form-item label="Monto a pagar">
-                <el-input-number v-model="techPaymentForm.amount" :min="0.01" :precision="2" class="!w-full">
-                    <template #prefix>$</template>
-                </el-input-number>
-            </el-form-item>
-
-            <div class="grid grid-cols-2 gap-4">
-                <el-form-item label="Fecha">
-                    <el-date-picker v-model="techPaymentForm.payment_date" type="date" class="!w-full" format="DD/MM/YYYY" value-format="YYYY-MM-DD" />
-                </el-form-item>
-                <el-form-item label="Método">
-                    <el-select v-model="techPaymentForm.payment_method" class="w-full">
-                        <el-option label="Transferencia" value="Transferencia" />
-                        <el-option label="Efectivo" value="Efectivo" />
-                        <el-option label="Nómina" value="Nómina" />
-                    </el-select>
-                </el-form-item>
-            </div>
-
-            <el-form-item label="Referencia bancaria">
-                <el-input v-model="techPaymentForm.reference" placeholder="Ej. SPEI-123456" />
-            </el-form-item>
-
-            <el-form-item label="Notas">
-                <el-input v-model="techPaymentForm.notes" type="textarea" placeholder="Concepto o detalles..." />
-            </el-form-item>
-
-            <el-form-item label="Comprobante de pago (Opcional)" :error="techPaymentForm.errors.proof">
-                <el-upload
-                    ref="techPaymentUploadRef"
-                    class="w-full"
-                    :auto-upload="false"
-                    :limit="1"
-                    :on-change="handleTechProofChange"
-                    accept="image/*,.pdf"
-                >
-                    <template #trigger>
-                        <el-button type="primary" plain icon="Upload">Adjuntar comprobante</el-button>
-                    </template>
-                    <template #tip>
-                        <div class="el-upload__tip">Archivos PDF o Imagen (Máx. 5MB)</div>
-                    </template>
-                </el-upload>
-            </el-form-item>
-        </el-form>
-        <template #footer>
-            <span class="dialog-footer">
-                <el-button @click="showTechPaymentModal = false">Cancelar</el-button>
-                <el-button type="success" @click="submitTechPayment" :loading="techPaymentForm.processing">
-                    Registrar pago
-                </el-button>
-            </span>
-        </template>
-    </el-dialog>
+    <!-- Modal solicitar depósito -->
+    <RequestDepositModal
+        v-if="selectedTechForDeposit"
+        v-model="showDepositModal"
+        :technician="selectedTechForDeposit"
+        :ticket="depositTicketInfo"
+        @saved="showDepositModal = false"
+    />
 </template>

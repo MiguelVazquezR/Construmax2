@@ -13,8 +13,15 @@ const props = defineProps({
     filters: Object,
 });
 
+const normalizeCatalogFilter = (value) => {
+    if (!value) return ['without', 'pending'];
+    if (Array.isArray(value)) return value;
+    if (value === 'all') return ['without', 'pending', 'approved'];
+    return [value];
+};
+
 const search = ref(props.filters.search || '');
-const catalogFilter = ref(props.filters.catalog || 'pending');
+const catalogFilter = ref(normalizeCatalogFilter(props.filters.catalog));
 const branchFilter = ref(props.filters.branch || '');
 
 const fetchData = debounce(() => {
@@ -121,11 +128,10 @@ const approveCatalog = (row, event) => {
                     <el-input v-model="branchFilter" placeholder="Filtrar sucursal, unidad, país, región..." clearable
                         prefix-icon="Search" class="w-full sm:w-64" />
 
-                    <el-select v-model="catalogFilter" placeholder="Filtro de aprobación" class="lg:!w-1/4">
+                    <el-select v-model="catalogFilter" placeholder="Filtro de catálogo" multiple collapse-tags class="lg:!w-1/3">
+                        <el-option label="Sin catálogo" value="without" />
                         <el-option label="Pendientes de aprobación" value="pending" />
                         <el-option label="Aprobados" value="approved" />
-                        <el-option label="Todos" value="all" />
-                        <el-option label="Sin catálogo" value="without" />
                     </el-select>
                 </div>
             </div>

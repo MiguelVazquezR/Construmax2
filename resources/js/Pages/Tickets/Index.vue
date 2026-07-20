@@ -3,10 +3,11 @@ import { ref, watch } from 'vue';
 import { router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { debounce } from 'lodash';
-import { Plus, Sort, DataBoard, List as ListIcon, Location, Search } from '@element-plus/icons-vue';
+import { Plus, Sort, DataBoard, List as ListIcon, Location, Search, Money } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import TicketList from './Partials/TicketList.vue';
 import TicketKanban from './Partials/TicketKanban.vue';
+import PendingTechnicianPaymentsModal from './Partials/PendingTechnicianPaymentsModal.vue';
 
 const { can } = usePermissions();
 
@@ -45,6 +46,8 @@ const sortFilter = ref(initialSort);
 const perPage = ref(parseInt(getFilter('perPage', 20))); 
 
 const viewMode = ref(localStorage.getItem('ticketViewMode') || 'list');
+
+const showPendingPaymentsModal = ref(false);
 
 const toggleViewMode = (mode) => {
     viewMode.value = mode;
@@ -228,6 +231,15 @@ watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilt
                             </el-radio-button>
                         </el-radio-group>
 
+                        <el-button
+                            type="warning"
+                            plain
+                            :icon="Money"
+                            @click="showPendingPaymentsModal = true"
+                        >
+                            Pagos pendientes
+                        </el-button>
+
                         <Link v-if="can('tickets.create')" :href="route('tickets.create')">
                             <el-button type="primary" color="#f26c17" icon="Plus" class="!font-bold">
                                 Nuevo ticket
@@ -255,5 +267,7 @@ watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilt
             </transition>
 
         </div>
+
+        <PendingTechnicianPaymentsModal v-model="showPendingPaymentsModal" />
     </AppLayout>
 </template>

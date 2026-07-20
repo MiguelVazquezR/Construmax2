@@ -341,6 +341,9 @@ watch(() => props.visible, (val) => {
                         </el-option>
                     </el-select>
                 </el-form-item>
+                <p class="text-xs text-zinc-400 -mt-2 mb-2">
+                    Solo se muestran tickets con estatus "Proceso de ejecución" que aún no tengan una agenda de trabajo en campo asignada.
+                </p>
             </template>
             <template v-else>
                 <!-- Edit mode: read-only ticket display -->

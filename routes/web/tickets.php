@@ -23,6 +23,7 @@ Route::middleware([
     
     // Rutas de Tickets
     Route::get('/tickets/dashboard', [TicketAnalyticsController::class, 'index'])->name('tickets.dashboard');
+    Route::get('/tickets/pending-tech-payments', [TicketController::class, 'pendingTechnicianPayments'])->name('tickets.pending-tech-payments');
     Route::resource('tickets', TicketController::class);
     Route::post('/budgets/{budget}/ticket-auto', [TicketController::class, 'storeFromBudget'])->name('tickets.store-from-budget');
     Route::put('/tickets/{ticket}/status', [TicketController::class, 'updateStatus'])->name('tickets.update-status');
