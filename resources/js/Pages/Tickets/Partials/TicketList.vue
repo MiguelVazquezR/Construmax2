@@ -256,9 +256,27 @@ const deleteTicket = (ticket) => {
                             </div>
                             <!-- Indicador de catálogo de costos y nota importante -->
                             <div class="flex items-center gap-2 mt-1.5">
-                                <el-tag v-if="scope.row.budget?.latest_catalog" size="small" type="success" effect="plain" class="!text-[10px] !h-5 !px-1.5">
+                                <el-tag
+                                    v-if="scope.row.budget?.latest_catalog"
+                                    size="small"
+                                    :type="scope.row.budget.latest_catalog.status === 'approved' ? 'success' : 'warning'"
+                                    effect="plain"
+                                    class="!text-[10px] !h-5 !px-1.5"
+                                >
                                     Catálogo v{{ scope.row.budget.latest_catalog.version }}
-                                    <span class="ml-1 opacity-70">{{ formatDate(scope.row.budget.latest_catalog.created_at) }}</span>
+                                    <span class="ml-1 opacity-70">
+                                        — {{ scope.row.budget.latest_catalog.status === 'approved' ? 'Aprobado' : 'Pendiente' }}
+                                    </span>
+                                    <span class="ml-1 opacity-60">{{ formatDate(scope.row.budget.latest_catalog.created_at) }}</span>
+                                </el-tag>
+                                <el-tag
+                                    v-else
+                                    size="small"
+                                    type="info"
+                                    effect="plain"
+                                    class="!text-[10px] !h-5 !px-1.5 !bg-gray-100 !text-gray-500 !border-gray-300 dark:!bg-gray-800 dark:!text-gray-400 dark:!border-gray-700"
+                                >
+                                    Sin catálogo
                                 </el-tag>
                                 <el-tooltip
                                     v-if="scope.row.work_acceptance_report"

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BudgetConcept extends Model
 {
@@ -15,4 +16,9 @@ class BudgetConcept extends Model
         'paid_to_technician' => 'boolean',
         'payment_date' => 'date',
     ];
+
+    public function budget(): BelongsTo
+    {
+        return $this->belongsTo(Budget::class);
+    }
 }

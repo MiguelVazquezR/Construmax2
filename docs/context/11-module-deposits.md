@@ -163,6 +163,7 @@ pending ──▶ approved ──▶ completed
 - **Budgets** (`07`): `budget_id` is auto-derived; `CompleteDepositAction` creates a `TechnicianPayment` linked to the budget
 - **Notifications** (`13`): `deposit.pending-approval` notification
 - **Users** (`03`): `created_by`, `approved_by`
+- **Dashboard** (`04`): Dashboard KPI card shows pending deposit count and today's scheduled deposits
 
 ---
 

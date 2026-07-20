@@ -8,7 +8,7 @@ import { usePermissions } from '@/Composables/usePermissions';
 import { 
     Calendar, Plus, DocumentAdd, User, Setting, 
     Clock, Tools, TrendCharts, List, Warning, 
-    Money, Document 
+    Money, Document, Coin 
 } from '@element-plus/icons-vue';
 
 const props = defineProps({
@@ -280,6 +280,46 @@ const getBudgetServiceType = (budget) => {
 
                     <div class="mt-4 pt-4 border-t border-gray-200 dark:border-[#3f3f46] text-center">
                         <Link :href="route('invoices.index')" class="text-sm text-primary font-medium hover:underline">Ver todos en facturación</Link>
+                    </div>
+                </div>
+
+                <!-- KPI DEPÓSITOS -->
+                <div v-if="can('deposits.index')" class="bg-gradient-to-br from-white to-gray-50 dark:from-[#1e1e20] dark:to-[#252529] rounded-lg shadow-sm border border-gray-200 dark:border-[#2b2b2e] p-5">
+                    <div class="flex justify-between items-center mb-4">
+                        <h4 class="font-bold text-gray-600 dark:text-gray-300 text-sm uppercase">Depósitos</h4>
+                        <el-icon class="text-amber-500"><Coin /></el-icon>
+                    </div>
+                    <p class="text-3xl font-bold text-gray-800 dark:text-white">{{ kpis.deposits?.pending || 0 }}</p>
+                    <p class="text-xs text-gray-500">Depósitos pendientes de aprobación</p>
+
+                    <div class="mt-4 flex gap-4 text-xs">
+                        <div>
+                            <span class="block font-bold text-gray-700 dark:text-gray-300">{{ kpis.deposits?.today || 0 }}</span>
+                            <span class="text-gray-500">Programados hoy</span>
+                        </div>
+                    </div>
+
+                    <div v-if="kpis.deposits?.list?.length > 0" class="mt-4 space-y-2">
+                        <div v-for="deposit in kpis.deposits.list" :key="deposit.id" class="flex items-center justify-between p-2 bg-amber-50 dark:bg-amber-900/10 rounded text-xs">
+                            <div class="flex-1 min-w-0">
+                                <p class="font-medium text-gray-700 dark:text-gray-300 truncate">
+                                    {{ deposit.technician?.user?.name || 'Sin técnico' }}
+                                </p>
+                                <p class="text-gray-500 truncate">
+                                    {{ deposit.deposit_type?.name || 'Sin tipo' }} — {{ formatCurrency(deposit.amount, 'MXN') }}
+                                </p>
+                            </div>
+                            <el-tag
+                                size="small"
+                                :type="deposit.status === 'pending' ? 'warning' : deposit.status === 'approved' ? 'success' : 'info'"
+                            >
+                                {{ deposit.status === 'pending' ? 'Pendiente' : deposit.status === 'approved' ? 'Aprobado' : 'Completado' }}
+                            </el-tag>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 pt-4 border-t border-gray-200 dark:border-[#3f3f46] text-center">
+                        <Link :href="route('deposits.index')" class="text-sm text-primary font-medium hover:underline">Ver todos los depósitos</Link>
                     </div>
                 </div>
 

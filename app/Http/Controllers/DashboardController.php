@@ -11,6 +11,7 @@ use App\Models\Calendar;
 use App\Models\Ticket;
 use App\Models\Budget;
 use App\Models\Customer;
+use App\Models\Deposit;
 
 class DashboardController extends Controller
 {
@@ -112,6 +113,19 @@ class DashboardController extends Controller
         $kpis['invoicing'] = [
             'total' => Budget::whereHas('ticket', fn($q) => $q->where('status', 'Ejecutado'))->count(),
             'budgets' => $invoicingBudgets,
+        ];
+
+        // Módulo de Depósitos
+        $depositsToday = Deposit::whereDate('scheduled_date', $today->toDateString())
+            ->with(['technician.user', 'depositType'])
+            ->latest()
+            ->limit(5)
+            ->get();
+
+        $kpis['deposits'] = [
+            'pending'  => Deposit::where('status', 'pending')->count(),
+            'today'    => Deposit::whereDate('scheduled_date', $today->toDateString())->count(),
+            'list'     => $depositsToday,
         ];
 
         return Inertia::render('Dashboard', [
