@@ -33,6 +33,7 @@
 | **Operations** | Active tickets, overdue tickets |
 | **Costs** | Budgets needing catalog |
 | **Invoicing** | Budgets with executed-status tickets |
+| **Deposits** | Pending deposits count, today's scheduled deposits, list of today's deposits with status tags |
 
 ### Quick-access links
 New ticket, new budget, new customer
@@ -85,6 +86,7 @@ A hardcoded array of 8 video tutorial entries displayed as a card grid. Each car
 - **Users** (`03`): Seller filter in analytics
 - **Calendar** (`10`): My Day section shows calendar events
 - **Invoices** (`12`): Invoice status donut chart
+- **Deposits** (`11`): Dashboard shows pending deposits count and today's scheduled deposits
 
 ---
 

@@ -13,26 +13,37 @@ class CostService
             ->when($filters['search'] ?? null, function ($query, $search) {
                 $query->whereHas('ticket', function ($q) use ($search) {
                     $q->where('name', 'like', '%' . $search . '%')
-                        ->orWhere('folio', 'like', '%' . $search . '%')
                         ->orWhereHas('customer', function ($q) use ($search) {
                             $q->where('name', 'like', '%' . $search . '%');
                         });
                 });
             })
-            ->when($filters['catalog'] ?? 'pending', function ($query, $catalogStatus) {
-                if ($catalogStatus === 'with') {
-                    $query->has('catalogs');
-                } elseif ($catalogStatus === 'without') {
-                    $query->doesntHave('catalogs');
-                } elseif ($catalogStatus === 'pending') {
-                    $query->whereHas('latestCatalog', function ($q) {
-                        $q->where('status', \App\Models\BudgetCatalog::STATUS_PENDING_APPROVAL);
-                    });
-                } elseif ($catalogStatus === 'approved') {
-                    $query->whereHas('latestCatalog', function ($q) {
-                        $q->where('status', \App\Models\BudgetCatalog::STATUS_APPROVED);
-                    });
+            ->when(true, function ($query) use ($filters) {
+                // Normalize: accept string or array, default to ['without', 'pending']
+                $catalogValues = $filters['catalog'] ?? ['without', 'pending'];
+                $catalogValues = (array) $catalogValues;
+                $catalogValues = array_filter($catalogValues);
+
+                // Empty array or 'all' means no filter
+                if (empty($catalogValues) || in_array('all', $catalogValues, true)) {
+                    return;
                 }
+
+                $query->where(function ($q) use ($catalogValues) {
+                    foreach ($catalogValues as $value) {
+                        match ($value) {
+                            'with'     => $q->orWhereHas('catalogs'),
+                            'without'  => $q->orWhereDoesntHave('catalogs'),
+                            'pending'  => $q->orWhereHas('latestCatalog', function ($sub) {
+                                $sub->where('status', \App\Models\BudgetCatalog::STATUS_PENDING_APPROVAL);
+                            }),
+                            'approved' => $q->orWhereHas('latestCatalog', function ($sub) {
+                                $sub->where('status', \App\Models\BudgetCatalog::STATUS_APPROVED);
+                            }),
+                            default    => null,
+                        };
+                    }
+                });
             })
             ->when($filters['branch'] ?? null, function ($query, $branch) {
                 $query->whereHas('ticket.branch', function ($q) use ($branch) {

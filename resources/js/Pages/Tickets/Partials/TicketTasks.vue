@@ -59,6 +59,8 @@ const assignedTechnicians = computed(() => {
             status: userFullInfo?.technician?.status || 'N/A',
             rating_avg: userFullInfo?.technician?.rating_avg || 0,
             task_count: taskCount,
+            technician_id: userFullInfo?.technician?.id ?? null,
+            state: userFullInfo?.technician?.state ?? null,
         });
     });
 
@@ -81,6 +83,9 @@ const getTechnicianLabel = (user) => {
     let label = user.name;
     if (user.technician) {
         label += user.technician.is_internal ? ' (Interno)' : ' (Externo)';
+        if (user.technician.state) {
+            label += ` — ${user.technician.state}`;
+        }
     }
     return label;
 };

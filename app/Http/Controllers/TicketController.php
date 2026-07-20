@@ -304,6 +304,77 @@ class TicketController extends Controller
         return back()->with('success', 'Técnicos actualizados correctamente.');
     }
 
+    /**
+     * Return technicians with pending payments from budget concepts marked as payable.
+     */
+    public function pendingTechnicianPayments(Request $request)
+    {
+        // Find budget concepts that are payable and not yet paid
+        $pendingConcepts = \App\Models\BudgetConcept::where('paid_to_technician', true)
+            ->whereNull('payment_date')
+            ->with('budget.ticket')
+            ->get();
+
+        // Group by ticket
+        $ticketMap = [];
+        foreach ($pendingConcepts as $concept) {
+            $budget = $concept->budget;
+            if (!$budget || !$budget->ticket) continue;
+
+            $ticket = $budget->ticket;
+
+            // Filter by seller: if user can't see all tickets, only show their own
+            if (!$request->user()->can('tickets.index-all') && $ticket->seller_id !== $request->user()->id) {
+                continue;
+            }
+
+            $ticketId = $ticket->id;
+
+            if (!isset($ticketMap[$ticketId])) {
+                $ticketMap[$ticketId] = [
+                    'ticket' => $ticket,
+                    'total_pending' => 0,
+                ];
+            }
+            $ticketMap[$ticketId]['total_pending'] += (float) $concept->amount;
+        }
+
+        // Build result: technicians per ticket with pending amounts
+        $result = [];
+
+        foreach ($ticketMap as $data) {
+            $ticket = $data['ticket'];
+            $pendingAmount = $data['total_pending'];
+
+            // Collect all tech IDs: from JSON fields + task assignments
+            $techIds = array_unique(array_merge(
+                array_map('intval', $ticket->technicians ?? []),
+                array_map('intval', $ticket->assistant_technicians ?? []),
+            ));
+
+            if (empty($techIds)) continue;
+
+            $users = User::whereIn('id', $techIds)
+                ->with('technician')
+                ->get();
+
+            foreach ($users as $user) {
+                $result[] = [
+                    'user_id'        => $user->id,
+                    'name'           => $user->name,
+                    'state'          => $user->technician->state ?? null,
+                    'is_internal'    => $user->technician->is_internal ?? null,
+                    'ticket_id'      => $ticket->id,
+                    'ticket_folio'   => $ticket->folio,
+                    'ticket_name'    => $ticket->name,
+                    'pending_amount' => $pendingAmount,
+                ];
+            }
+        }
+
+        return response()->json($result);
+    }
+
     public function edit(Ticket $ticket)
     {
         return Inertia::render('Tickets/Edit', [
