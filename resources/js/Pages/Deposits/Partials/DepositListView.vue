@@ -98,7 +98,7 @@ function updateFilter(key, value) {
         />
       </el-select>
       <el-select
-        :model-value="filters.status ?? 'pending'"
+        :model-value="filters.status ?? ''"
         placeholder="Estado"
         class="w-40"
         @change="updateFilter('status', $event)"
@@ -176,7 +176,7 @@ function updateFilter(key, value) {
           {{ row.approved_by?.name ?? '—' }}
         </template>
       </el-table-column>
-      <el-table-column label="Acciones" width="170" fixed="right">
+      <el-table-column label="Acciones" width="200" fixed="right">
         <template #default="{ row }">
           <div class="flex gap-1">
             <el-button

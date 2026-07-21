@@ -35,7 +35,7 @@ function submit() {
   <el-dialog
     v-model="dialogVisible"
     title="Marcar depósito como realizado"
-    width="480px"
+    width="95%"
     destroy-on-close
     :close-on-click-modal="false"
     class="complete-deposit-dialog"
@@ -90,7 +90,24 @@ function submit() {
 @media (max-width: 640px) {
   .complete-deposit-dialog :deep(.el-dialog) {
     width: 90% !important;
-    max-width: 480px;
+    max-width: 90vw;
+    margin: 0 auto;
+  }
+
+  .complete-deposit-dialog :deep(.el-dialog__body) {
+    padding: 1rem;
+    overflow-x: hidden;
+    word-break: break-word;
+  }
+
+  .complete-deposit-dialog :deep(.el-upload-dragger) {
+    width: 100%;
+    max-width: 100%;
+    padding: 1rem;
+  }
+
+  .complete-deposit-dialog :deep(.el-upload__text) {
+    font-size: 0.75rem;
   }
 }
 </style>

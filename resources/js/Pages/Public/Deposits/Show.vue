@@ -125,7 +125,7 @@ function onCompleted() {
         class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 mb-6"
       >
         <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Información bancaria</h2>
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 gap-3">
           <div>
             <span class="text-xs text-gray-400">Banco</span>
             <p class="font-medium text-gray-800 dark:text-white">{{ deposit.bank_account?.bank_name ?? 'N/A' }}</p>

@@ -19,8 +19,8 @@ class CostService
                 });
             })
             ->when(true, function ($query) use ($filters) {
-                // Normalize: accept string or array, default to ['without', 'pending']
-                $catalogValues = $filters['catalog'] ?? ['without', 'pending'];
+                // Normalize: accept string or array, default to ['pending']
+                $catalogValues = $filters['catalog'] ?? ['pending'];
                 $catalogValues = (array) $catalogValues;
                 $catalogValues = array_filter($catalogValues);
 

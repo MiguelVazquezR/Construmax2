@@ -62,7 +62,13 @@ class PublicDepositController extends Controller
         ])
             ->whereDate('scheduled_date', $date)
             ->get()
-            ->groupBy('shift');
+            ->groupBy('shift')
+            ->map(function ($group) {
+                return $group->map(function ($deposit) {
+                    $deposit->complete_url = URL::signedRoute('public.deposits.complete', ['deposit' => $deposit->id]);
+                    return $deposit;
+                });
+            });
 
         return Inertia::render('Public/Deposits/Day', [
             'deposits' => $deposits,

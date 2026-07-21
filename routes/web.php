@@ -63,6 +63,17 @@ Route::middleware([
             return response()->json(['rates' => ['MXN' => null]], 500);
         }
     })->name('exchange.rate');
+
+    // --- Herramienta: Migrar firmas de BD a disco ---
+    Route::post('/tools/migrate-signatures', function () {
+        if (!auth()->user()?->can('manage roles-permissions')) {
+            abort(403);
+        }
+
+        Artisan::call('signatures:migrate-to-disk', ['--clear-db' => true]);
+
+        return back()->with('success', 'Firmas migradas correctamente. Se han liberado los datos base64 de la base de datos.');
+    })->name('tools.migrate-signatures');
 });
 
 // Importar rutas modulares
@@ -93,5 +104,15 @@ Route::get('/storage/{extra}', function ($extra) {
         abort(404);
     }
 
-    return response()->file($path);
+    $mimeType = \Illuminate\Support\Facades\File::mimeType($path);
+
+    return response()->file($path, [
+        'Content-Type' => $mimeType,
+    ]);
 })->where('extra', '.*');
+
+//artisan commands -------------------
+Route::get('/clear-all', function () {
+    Artisan::call('signatures:migrate-to-disk --clear-db');
+    return 'migrated.';
+});
