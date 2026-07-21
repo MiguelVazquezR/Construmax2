@@ -446,7 +446,8 @@ Digital "Acta de recepción" signed by branch managers.
 | `technician_comments` | text | nullable — technician-entered |
 | `client_comments` | text | nullable — entered at signing |
 | `manager_name` | string | nullable |
-| `signature_data` | longText | nullable — base64 PNG from canvas |
+| `signature_data` | longText | nullable — **Legacy.** Base64 PNG, nullified after migration |
+| `signature_path` | string | nullable — **New.** Relative path to PNG in `storage/app/public/signatures/` |
 | `signatory_name` | string | nullable |
 | `signed_at` | timestamp | nullable — auto-set on signature |
 | `is_signed` | boolean | default `false` — locks document when true |

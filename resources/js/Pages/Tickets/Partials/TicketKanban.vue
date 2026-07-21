@@ -225,6 +225,31 @@ const getTechDisplayName = (user) => {
                             </div>
                             <div v-else class="mb-3"></div>
 
+                            <!-- Catalog indicator -->
+                            <div class="flex items-center gap-1.5 mb-2">
+                                <el-tag
+                                    v-if="ticket.budget?.latest_catalog"
+                                    size="small"
+                                    :type="ticket.budget.latest_catalog.status === 'approved' ? 'success' : 'warning'"
+                                    effect="plain"
+                                    class="!text-[10px] !h-5 !px-1"
+                                >
+                                    v{{ ticket.budget.latest_catalog.version }}
+                                    <span class="ml-0.5 opacity-70">
+                                        — {{ ticket.budget.latest_catalog.status === 'approved' ? 'Aprobado' : 'Pendiente' }}
+                                    </span>
+                                </el-tag>
+                                <el-tag
+                                    v-else
+                                    size="small"
+                                    type="info"
+                                    effect="plain"
+                                    class="!text-[10px] !h-5 !px-1 !bg-gray-100 !text-gray-500 !border-gray-300 dark:!bg-gray-800 dark:!text-gray-400 dark:!border-gray-700"
+                                >
+                                    Sin catálogo
+                                </el-tag>
+                            </div>
+
                             <!-- Acta indicator -->
                             <div v-if="ticket.work_acceptance_report" class="flex items-center gap-1.5 mb-2">
                                 <el-tooltip

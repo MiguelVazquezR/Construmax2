@@ -42,16 +42,14 @@ class DepositController extends Controller
             $query->where('technician_id', $request->technician_id);
         }
 
-        // Status filter: default to pending only when NOT explicitly set
+        // Status filter: only apply when explicitly set to a non-empty value
         if ($request->has('status')) {
             if ($request->status !== '' && $request->status !== null) {
                 $query->filter(['status' => $request->status]);
             }
             // If status param is present but empty/null → show all, no status filter
-        } else {
-            // No status param at all → default to pending
-            $query->filter(['status' => 'pending']);
         }
+        // If no status param at all → show all, no default filter
 
         // Shift filter: only apply when explicitly set to a non-empty value
         if ($request->has('shift')) {
@@ -85,7 +83,7 @@ class DepositController extends Controller
             'defaultShift'   => $this->depositService->defaultShift(),
             'filters'        => [
                 'technician_id' => $request->input('technician_id', ''),
-                'status'        => $request->input('status', 'pending'),
+                'status'        => $request->input('status', ''),
                 'shift'         => $request->input('shift', ''),
             ],
         ]);
