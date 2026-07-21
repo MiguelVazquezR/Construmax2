@@ -17,6 +17,8 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
     ->group(function () {
         Route::post('/', [WorkAcceptanceReportController::class, 'store'])->name('store');
         Route::get('/{report}', [WorkAcceptanceReportController::class, 'show'])->name('show');
+        Route::put('/{report}', [WorkAcceptanceReportController::class, 'update'])->name('update');
         Route::post('/{report}/sign', [WorkAcceptanceReportController::class, 'storeSignature'])->name('sign');
+        Route::delete('/{report}/signature', [WorkAcceptanceReportController::class, 'deleteSignature'])->name('delete-signature');
         Route::post('/{report}/generate-link', [WorkAcceptanceReportController::class, 'generatePublicLink'])->name('generate-link');
     });

@@ -100,6 +100,57 @@ class WorkAcceptanceReportController extends Controller
     }
 
     /**
+     * Update editable fields of the report (internal, for staff).
+     * Allows editing all technician-entered fields.
+     */
+    public function update(Request $request, WorkAcceptanceReport $report): RedirectResponse
+    {
+        $validated = $request->validate([
+            'work_description'    => ['nullable', 'string', 'max:5000'],
+            'on_site_start'       => ['nullable', 'date'],
+            'on_site_end'         => ['nullable', 'date', 'after_or_equal:on_site_start'],
+            'technician_comments' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        // Convert UTC ISO dates from browser to app timezone before storing
+        foreach (['on_site_start', 'on_site_end'] as $field) {
+            if (!empty($validated[$field])) {
+                $validated[$field] = Carbon::parse($validated[$field])
+                    ->setTimezone(config('app.timezone'))
+                    ->format('Y-m-d H:i:s');
+            }
+        }
+
+        $report->update($validated);
+
+        return back()->with('success', 'Acta de recepción actualizada correctamente.');
+    }
+
+    /**
+     * Delete the signature from a report so it can be re-signed.
+     * Unlocks the report and removes signature data.
+     */
+    public function deleteSignature(Request $request, WorkAcceptanceReport $report): RedirectResponse
+    {
+        // Delete the signature file from disk if it exists
+        if ($report->signature_path) {
+            \Illuminate\Support\Facades\Storage::disk('public')->delete($report->signature_path);
+        }
+
+        $report->update([
+            'is_signed'       => false,
+            'signed_at'       => null,
+            'signature_data'  => null,
+            'signature_path'  => null,
+            'signatory_name'  => null,
+            'manager_name'    => null,
+            'client_comments' => null,
+        ]);
+
+        return back()->with('success', 'Firma eliminada correctamente. El acta puede volver a firmarse.');
+    }
+
+    /**
      * Update editable fields of the report (public, via signed URL).
      * Allows technicians to fill in work description, timestamps, and comments.
      */

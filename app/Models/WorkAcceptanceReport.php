@@ -23,11 +23,14 @@ class WorkAcceptanceReport extends Model
         'client_comments',
         'manager_name',
         'signature_data',
+        'signature_path',
         'signatory_name',
         'signed_at',
         'is_signed',
         'created_by',
     ];
+
+    protected $appends = ['signature_url'];
 
     protected $casts = [
         'report_date'   => 'date',
@@ -74,5 +77,21 @@ class WorkAcceptanceReport extends Model
     public function lock(): bool
     {
         return $this->update(['is_signed' => true, 'signed_at' => now()]);
+    }
+
+    // --- Accessors ---
+
+    /**
+     * Get a publicly accessible URL for the signature image.
+     * Falls back to the base64 signature_data if no file exists yet.
+     */
+    public function getSignatureUrlAttribute(): ?string
+    {
+        if ($this->signature_path) {
+            return asset('storage/' . $this->signature_path);
+        }
+
+        // Legacy fallback — signatures still stored as base64 in DB
+        return $this->signature_data;
     }
 }

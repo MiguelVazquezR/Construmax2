@@ -1,13 +1,18 @@
 <script setup>
 import { ref, computed } from 'vue';
-import { Head, useForm } from '@inertiajs/vue3';
-import { ElMessage } from 'element-plus';
+import { Head, useForm, router } from '@inertiajs/vue3';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { Edit, Delete } from '@element-plus/icons-vue';
+import { usePermissions } from '@/Composables/usePermissions';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import SignaturePad from '@/Components/Signature/SignaturePad.vue';
 import PdfInstructionsDialog from '@/Components/PdfInstructionsDialog.vue';
 
+const { can } = usePermissions();
+
 const showPdfInstructions = ref(false);
 const showSignModal = ref(false);
+const showEditModal = ref(false);
 
 const props = defineProps({
     report: {
@@ -61,6 +66,12 @@ const handlePrint = () => {
     window.print();
 };
 
+// --- Responsive signature pad width ---
+const signaturePadWidth = computed(() => {
+    if (typeof window === 'undefined') return 500;
+    return Math.min(500, window.innerWidth - 80);
+});
+
 // --- Signature form ---
 const signForm = useForm({
     signature_data: '',
@@ -99,6 +110,50 @@ function submitSignature() {
         },
     });
 }
+
+// --- Edit form (internal only) ---
+const editForm = useForm({
+    work_description: '',
+    on_site_start: '',
+    on_site_end: '',
+    technician_comments: '',
+});
+
+function openEditModal() {
+    editForm.work_description = props.report.work_description || '';
+    editForm.on_site_start = props.report.on_site_start || '';
+    editForm.on_site_end = props.report.on_site_end || '';
+    editForm.technician_comments = props.report.technician_comments || '';
+    showEditModal.value = true;
+}
+
+function submitEdit() {
+    editForm.put(route('work-acceptance-reports.update', props.report.id), {
+        preserveState: false,
+        onSuccess: () => {
+            showEditModal.value = false;
+            ElMessage.success('Acta de recepción actualizada correctamente.');
+        },
+        onError: () => {
+            ElMessage.error('Error al actualizar el acta de recepción.');
+        },
+    });
+}
+
+// --- Delete signature ---
+function confirmDeleteSignature() {
+    ElMessageBox.confirm(
+        '¿Eliminar la firma de esta acta de recepción? El acta quedará pendiente de firma nuevamente.',
+        'Confirmar',
+        { confirmButtonText: 'Eliminar firma', cancelButtonText: 'Cancelar', type: 'warning' }
+    ).then(() => {
+        router.delete(route('work-acceptance-reports.delete-signature', props.report.id), {
+            preserveState: false,
+            onSuccess: () => ElMessage.success('Firma eliminada correctamente.'),
+            onError: () => ElMessage.error('Error al eliminar la firma.'),
+        });
+    }).catch(() => {});
+}
 </script>
 
 <template>
@@ -109,6 +164,20 @@ function submitSignature() {
         <div class="h-1 bg-[#f26c17] print:h-0.5 max-w-4xl mx-auto mb-3 rounded-t"></div>
 
         <div class="print:hidden flex justify-end max-w-4xl mx-auto mb-3 gap-2">
+            <button
+                v-if="!isPublic && can('tickets.edit')"
+                @click="openEditModal"
+                class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded shadow transition-colors text-sm flex items-center gap-1"
+            >
+                <el-icon :size="16"><Edit /></el-icon> Editar acta
+            </button>
+            <button
+                v-if="report.is_signed && !isPublic && can('tickets.edit')"
+                @click="confirmDeleteSignature"
+                class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded shadow transition-colors text-sm flex items-center gap-1"
+            >
+                <el-icon :size="16"><Delete /></el-icon> Eliminar firma
+            </button>
             <button
                 @click="showPdfInstructions = true"
                 class="bg-[#f26c17] hover:bg-[#d95d0f] text-white font-bold py-2 px-4 rounded shadow transition-colors text-sm"
@@ -256,8 +325,8 @@ function submitSignature() {
                         :class="{ 'cursor-pointer hover:bg-orange-50 print:cursor-default': !report.is_signed && submitUrl }"
                         @click="openSignModal"
                     >
-                        <div v-if="report.signature_data" class="mb-2 border border-gray-200 rounded">
-                            <img :src="report.signature_data" class="w-full h-auto max-h-[80px] object-contain" alt="Manager signature" />
+                        <div v-if="report.signature_url" class="mb-2 border border-gray-200 rounded">
+                            <img :src="report.signature_url" class="w-full h-auto max-h-[80px] object-contain" alt="Manager signature" />
                         </div>
                         <div v-else class="mb-2 border border-dashed border-gray-300 rounded h-[55px] flex items-center justify-center text-gray-400 text-[9px]">
                             {{ report.is_signed ? 'Firma no disponible' : 'Clic para firmar' }}
@@ -295,9 +364,9 @@ function submitSignature() {
         <el-dialog
             v-model="showSignModal"
             title="Firmar acta de recepción"
-            width="580px"
+            width="95%"
             :close-on-click-modal="false"
-            class="print:hidden"
+            class="print:hidden sign-modal"
         >
             <div class="space-y-4">
                 <div>
@@ -306,7 +375,7 @@ function submitSignature() {
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Firma digital <span class="text-red-500">*</span></label>
-                    <SignaturePad v-model="signForm.signature_data" :width="500" :height="160" />
+                    <SignaturePad v-model="signForm.signature_data" :width="signaturePadWidth" :height="160" />
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Comentarios del cliente</label>
@@ -326,6 +395,54 @@ function submitSignature() {
             </template>
         </el-dialog>
 
+        <!-- Edit Modal (internal only) -->
+        <el-dialog
+            v-model="showEditModal"
+            title="Editar acta de recepción"
+            width="600px"
+            :close-on-click-modal="false"
+            class="print:hidden"
+        >
+            <el-alert
+                type="info"
+                :closable="false"
+                show-icon
+                class="mb-4"
+            >
+                <template #title>
+                    Los datos del cliente, sucursal, tipo de servicio y técnicos se toman directamente del ticket.
+                </template>
+                Para modificarlos, edita el ticket y los cambios se reflejarán automáticamente en el acta de recepción.
+            </el-alert>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Descripción de trabajos realizados</label>
+                    <el-input v-model="editForm.work_description" type="textarea" :rows="4" placeholder="Describe los trabajos realizados..." maxlength="5000" show-word-limit />
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Inicio en sitio</label>
+                        <el-date-picker v-model="editForm.on_site_start" type="datetime" placeholder="Seleccionar fecha y hora" class="w-full" format="DD/MM/YYYY HH:mm" value-format="YYYY-MM-DDTHH:mm:ss" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Fin en sitio</label>
+                        <el-date-picker v-model="editForm.on_site_end" type="datetime" placeholder="Seleccionar fecha y hora" class="w-full" format="DD/MM/YYYY HH:mm" value-format="YYYY-MM-DDTHH:mm:ss" />
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Comentarios del técnico</label>
+                    <el-input v-model="editForm.technician_comments" type="textarea" :rows="3" placeholder="Comentarios del técnico..." maxlength="2000" show-word-limit />
+                </div>
+            </div>
+            <template #footer>
+                <el-button @click="showEditModal = false">Cancelar</el-button>
+                <el-button type="primary" :loading="editForm.processing" @click="submitEdit">
+                    Guardar cambios
+                </el-button>
+            </template>
+        </el-dialog>
+
         <!-- PDF instructions dialog -->
         <PdfInstructionsDialog
             v-model="showPdfInstructions"
@@ -335,6 +452,26 @@ function submitSignature() {
 </template>
 
 <style>
+@media (max-width: 640px) {
+    .sign-modal {
+        --el-dialog-width: 95% !important;
+    }
+    .sign-modal .signature-canvas-container {
+        max-width: 100%;
+        overflow: hidden;
+    }
+    .sign-modal .signature-canvas-container canvas {
+        max-width: 100%;
+        height: auto !important;
+    }
+}
+
+@media (min-width: 641px) {
+    .sign-modal {
+        --el-dialog-width: 580px !important;
+    }
+}
+
 @media print {
     * {
         -webkit-print-color-adjust: exact !important;

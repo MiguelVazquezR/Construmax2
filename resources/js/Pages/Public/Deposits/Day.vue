@@ -1,6 +1,8 @@
 <script setup>
 import { Head } from '@inertiajs/vue3'
 import { computed, ref } from 'vue'
+import CompleteDepositModal from './Partials/CompleteDepositModal.vue'
+import DepositCard from './Partials/DepositCard.vue'
 
 const props = defineProps({
   deposits: Object,   // { matutino: [...], vespertino: [...] }
@@ -19,6 +21,21 @@ function toggleExpand(id) {
 
 function isExpanded(id) {
   return !!expandedIds.value[id]
+}
+
+// Track which deposit is showing the complete modal
+const completingDeposit = ref(null)
+const showCompleteModal = ref(false)
+
+function openCompleteModal(deposit) {
+  completingDeposit.value = deposit
+  showCompleteModal.value = true
+}
+
+function onCompleted() {
+  showCompleteModal.value = false
+  completingDeposit.value = null
+  window.location.reload()
 }
 
 function parseDate(dateString) {
@@ -76,144 +93,68 @@ function bankQrUrl(account) {
       </div>
 
       <!-- Matutino -->
-      <div v-if="matutinoDeposits.length" class="mb-8">
+      <template v-if="matutinoDeposits.length">
         <h2 class="text-lg font-bold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
           <span class="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
           Matutino ({{ matutinoDeposits.length }})
         </h2>
-        <div class="space-y-4">
-          <div
+        <div class="space-y-4 mb-8">
+          <DepositCard
             v-for="d in matutinoDeposits"
             :key="d.id"
-            class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5"
-          >
-            <!-- Pending: only show notice -->
-            <div v-if="d.status === 'pending'" class="bg-orange-50 dark:bg-orange-900/30 rounded-lg p-4 text-sm text-orange-700 dark:text-orange-300">
-              <p class="font-bold mb-1">{{ d.technician?.user?.name ?? 'N/A' }}</p>
-              <p>Este depósito aún no ha sido autorizado. La información no se puede mostrar hasta que sea aprobado.</p>
-            </div>
-
-            <!-- Approved or completed: show all info -->
-            <template v-if="d.status !== 'pending'">
-              <div class="flex justify-between items-start mb-3">
-                <div>
-                  <p class="font-bold text-gray-800 dark:text-white">{{ d.technician?.user?.name ?? 'N/A' }}</p>
-                  <p class="text-sm text-gray-500">{{ d.deposit_type?.name ?? 'N/A' }} — {{ d.ticket?.folio ?? 'N/A' }}</p>
-                </div>
-                <div class="text-right">
-                  <p class="font-mono font-bold text-gray-800 dark:text-white">${{ formatAmount(d.amount) }}</p>
-                  <el-tag :type="statusTagType(d.status)" size="small">
-                    {{ statusLabel(d.status) }}
-                  </el-tag>
-                </div>
-              </div>
-
-              <!-- Completed badge -->
-              <div v-if="d.status === 'completed'" class="bg-green-50 dark:bg-green-900/30 rounded-lg p-3 text-xs text-green-700 dark:text-green-300 mt-2">
-                ✓ Completado {{ formatDateTime(d.completed_at) }}
-                <span v-if="d.commission_amount"> — Comisión: ${{ formatAmount(d.commission_amount) }}</span>
-              </div>
-
-              <!-- Expand toggle -->
-              <div class="mt-3 text-right">
-                <el-button
-                  text
-                  size="small"
-                  type="primary"
-                  @click="toggleExpand(d.id)"
-                >
-                  {{ isExpanded(d.id) ? 'Ocultar detalles ↑' : 'Ver detalles →' }}
-                </el-button>
-              </div>
-
-              <!-- Expandable banking details -->
-              <div v-if="isExpanded(d.id)" class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-xs mt-2">
-                <div class="grid grid-cols-2 gap-2">
-                  <div><span class="text-gray-400">Banco:</span> {{ d.bank_account?.bank_name ?? 'N/A' }}</div>
-                  <div><span class="text-gray-400">Cuenta:</span> {{ d.bank_account?.account_number ?? 'N/A' }}</div>
-                  <div><span class="text-gray-400">CLABE:</span> {{ d.bank_account?.clabe ?? 'N/A' }}</div>
-                  <div><span class="text-gray-400">Tarjeta:</span> {{ d.bank_account?.card_number ?? 'N/A' }}</div>
-                  <div v-if="d.approved_by"><span class="text-gray-400">Aprobado por:</span> {{ d.approved_by?.name ?? 'N/A' }}</div>
-                </div>
-                <div v-if="bankQrUrl(d.bank_account)" class="mt-3 flex justify-center">
-                  <img :src="bankQrUrl(d.bank_account)" alt="QR de pago" class="max-w-[160px] rounded-lg border" />
-                </div>
-              </div>
-            </template>
-          </div>
+            :deposit="d"
+            :expanded="isExpanded(d.id)"
+            :bank-qr-url="bankQrUrl(d.bank_account)"
+            :format-amount="formatAmount"
+            :format-date="formatDate"
+            :format-date-time="formatDateTime"
+            :status-label="statusLabel"
+            :status-tag-type="statusTagType"
+            @toggle="toggleExpand(d.id)"
+            @complete="openCompleteModal(d)"
+          />
         </div>
-      </div>
+      </template>
 
       <!-- Vespertino -->
-      <div v-if="vespertinoDeposits.length" class="mb-8">
+      <template v-if="vespertinoDeposits.length">
         <h2 class="text-lg font-bold text-orange-600 dark:text-orange-400 mb-4 flex items-center gap-2">
           <span class="w-2 h-2 rounded-full bg-orange-500 inline-block"></span>
           Vespertino ({{ vespertinoDeposits.length }})
         </h2>
-        <div class="space-y-4">
-          <div
+        <div class="space-y-4 mb-8">
+          <DepositCard
             v-for="d in vespertinoDeposits"
             :key="d.id"
-            class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5"
-          >
-            <!-- Pending: only show notice -->
-            <div v-if="d.status === 'pending'" class="bg-orange-50 dark:bg-orange-900/30 rounded-lg p-4 text-sm text-orange-700 dark:text-orange-300">
-              <p class="font-bold mb-1">{{ d.technician?.user?.name ?? 'N/A' }}</p>
-              <p>Este depósito aún no ha sido autorizado. La información no se puede mostrar hasta que sea aprobado.</p>
-            </div>
-
-            <!-- Approved or completed: show all info -->
-            <template v-if="d.status !== 'pending'">
-              <div class="flex justify-between items-start mb-3">
-                <div>
-                  <p class="font-bold text-gray-800 dark:text-white">{{ d.technician?.user?.name ?? 'N/A' }}</p>
-                  <p class="text-sm text-gray-500">{{ d.deposit_type?.name ?? 'N/A' }} — {{ d.ticket?.folio ?? 'N/A' }}</p>
-                </div>
-                <div class="text-right">
-                  <p class="font-mono font-bold text-gray-800 dark:text-white">${{ formatAmount(d.amount) }}</p>
-                  <el-tag :type="statusTagType(d.status)" size="small">
-                    {{ statusLabel(d.status) }}
-                  </el-tag>
-                </div>
-              </div>
-
-              <div v-if="d.status === 'completed'" class="bg-green-50 dark:bg-green-900/30 rounded-lg p-3 text-xs text-green-700 dark:text-green-300 mt-2">
-                ✓ Completado {{ formatDateTime(d.completed_at) }}
-                <span v-if="d.commission_amount"> — Comisión: ${{ formatAmount(d.commission_amount) }}</span>
-              </div>
-
-              <div class="mt-3 text-right">
-                <el-button
-                  text
-                  size="small"
-                  type="primary"
-                  @click="toggleExpand(d.id)"
-                >
-                  {{ isExpanded(d.id) ? 'Ocultar detalles ↑' : 'Ver detalles →' }}
-                </el-button>
-              </div>
-
-              <div v-if="isExpanded(d.id)" class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-xs mt-2">
-                <div class="grid grid-cols-2 gap-2">
-                  <div><span class="text-gray-400">Banco:</span> {{ d.bank_account?.bank_name ?? 'N/A' }}</div>
-                  <div><span class="text-gray-400">Cuenta:</span> {{ d.bank_account?.account_number ?? 'N/A' }}</div>
-                  <div><span class="text-gray-400">CLABE:</span> {{ d.bank_account?.clabe ?? 'N/A' }}</div>
-                  <div><span class="text-gray-400">Tarjeta:</span> {{ d.bank_account?.card_number ?? 'N/A' }}</div>
-                  <div v-if="d.approved_by"><span class="text-gray-400">Aprobado por:</span> {{ d.approved_by?.name ?? 'N/A' }}</div>
-                </div>
-                <div v-if="bankQrUrl(d.bank_account)" class="mt-3 flex justify-center">
-                  <img :src="bankQrUrl(d.bank_account)" alt="QR de pago" class="max-w-[160px] rounded-lg border" />
-                </div>
-              </div>
-            </template>
-          </div>
+            :deposit="d"
+            :expanded="isExpanded(d.id)"
+            :bank-qr-url="bankQrUrl(d.bank_account)"
+            :format-amount="formatAmount"
+            :format-date="formatDate"
+            :format-date-time="formatDateTime"
+            :status-label="statusLabel"
+            :status-tag-type="statusTagType"
+            @toggle="toggleExpand(d.id)"
+            @complete="openCompleteModal(d)"
+          />
         </div>
-      </div>
+      </template>
 
       <!-- Empty state -->
       <div v-if="!matutinoDeposits.length && !vespertinoDeposits.length" class="text-center py-12 text-gray-400">
         No hay depósitos programados para esta fecha.
       </div>
     </div>
+
+    <!-- Complete modal -->
+    <CompleteDepositModal
+      v-if="completingDeposit"
+      v-model="showCompleteModal"
+      :deposit="completingDeposit"
+      :complete-url="completingDeposit.complete_url"
+      @update:model-value="showCompleteModal = false; completingDeposit = null"
+      @completed="onCompleted"
+    />
   </div>
 </template>
+
