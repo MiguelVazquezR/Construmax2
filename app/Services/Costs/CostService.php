@@ -79,6 +79,7 @@ class CostService
                     'branch_country'   => $budget->ticket->branch->country ?? '—',
                     'branch_region'    => $budget->ticket->branch->region ?? '—',
                     'contact_name'     => $budget->ticket->contact->name ?? '—',
+                    'ticket_important_note' => $budget->ticket->important_note ?? null,
                 ];
             });
     }
@@ -185,6 +186,7 @@ class CostService
                     'name'  => $budget->ticket->seller->name,
                     'email' => $budget->ticket->seller->email,
                 ] : null,
+                'important_note'  => $budget->ticket->important_note ?? null,
                 'technicians'     => $technicians,
                 'technician_ids'  => array_map('intval', $budget->ticket->technicians ?? []),
                 'assistant_technician_ids' => array_map('intval', $budget->ticket->assistant_technicians ?? []),

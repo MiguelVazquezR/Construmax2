@@ -34,16 +34,18 @@ GET    /users/{user}/edit        users.edit
 PUT    /users/{user}             users.update
 DELETE /users/{user}             users.destroy
 PUT    /users/{user}/toggle-status  users.toggle-status
+POST   /users/bulk-delete          users.bulk-destroy
 ```
 
 ### Controller behavior (`UserController`)
 
 | Method | What it does |
 |--------|-------------|
-| `index` | Lists users (excludes super-admin #1), paginated, searchable by name/email, loads employee + roles |
+| `index` | Lists users (excludes super-admin #1 and users with a `Technician` record), paginated, searchable by name/email, loads employee + roles |
 | `store` | Creates User + Employee + syncs Spatie roles in a DB transaction |
 | `update` | Updates User name/email/password (optional), upserts Employee, syncs roles |
-| `destroy` | Deletes the user record |
+| `destroy` | Nullifies/cleans foreign keys in `ticket_tasks` (set null), deletes `calendars`, `calendar_participants`, `technician_payments`, `field_work_schedules` rows, reassigns `budgets.user_id` to admin (#1), then deletes user |
+| `bulkDestroy` | Same FK cleanup as `destroy` but for multiple IDs at once via `POST /users/bulk-delete` with `{ ids: [...] }` payload. Excludes super-admin (#1) |
 | `toggleStatus` | Toggles `users.is_active` — soft enable/disable |
 
 ### User creation form fields
@@ -94,9 +96,11 @@ All permissions use kebab-case: `create service-orders`, `edit invoices`, `delet
 ## Vue pages
 
 ### `Users/Index.vue`
-- Table with columns: name, email, phone, department, position, roles
+- Checkbox column for bulk selection → **"Eliminar (N)"** button appears when rows are selected
+- Table with columns: name, email, roles, department, status (active/inactive)
 - Row click → detail page
 - Toggle active/inactive status with confirmation
+- Only shows users **without** a `Technician` record (technicians are managed separately)
 
 ### `Users/Create.vue` / `Users/Edit.vue`
 - Form: name, email, password, roles (multi-select), department, position, phone
@@ -129,4 +133,4 @@ All permissions use kebab-case: `create service-orders`, `edit invoices`, `delet
 - **Developer-only gating:** Permission CRUD is gated to user ID #1 in the controller, not via Spatie permissions — if user #1 is deleted, no one can manage permissions
 - **Teams disabled:** All roles and permissions are global — no per-team scoping
 - **No role hierarchy:** Spatie roles are flat — no inheritance
-- **No soft deletes on users:** `destroy()` permanently deletes — be careful with FK cascades (employees, technicians cascade)
+- **No soft deletes on users:** `destroy()` permanently deletes — FK cleanup handles related records: nullifies nullable FKs, deletes owned rows (calendars, participants, tech payments, field schedules), reassigns budgets to admin (#1). Cascade handles `employees` and `technicians`.

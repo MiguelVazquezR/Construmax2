@@ -130,6 +130,10 @@ function onCompleted() {
             <span class="text-xs text-gray-400">Banco</span>
             <p class="font-medium text-gray-800 dark:text-white">{{ deposit.bank_account?.bank_name ?? 'N/A' }}</p>
           </div>
+          <div v-if="deposit.bank_account?.card_owner_name">
+            <span class="text-xs text-gray-400">Titular de la tarjeta</span>
+            <p class="text-gray-800 dark:text-white">{{ deposit.bank_account?.card_owner_name }}</p>
+          </div>
           <div>
             <span class="text-xs text-gray-400">Número de cuenta</span>
             <p class="font-mono text-gray-800 dark:text-white">{{ deposit.bank_account?.account_number ?? 'N/A' }}</p>

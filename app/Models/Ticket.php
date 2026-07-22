@@ -53,6 +53,7 @@ class Ticket extends Model implements HasMedia
         'scheduled_end',
         'instructions',
         'important_note',
+        'has_oce',
     ];
 
     protected $casts = [
@@ -60,6 +61,7 @@ class Ticket extends Model implements HasMedia
         'scheduled_end' => 'date',
         'technicians' => 'array',
         'assistant_technicians' => 'array',
+        'has_oce' => 'boolean',
     ];
 
     protected $appends = ['progress', 'folio'];

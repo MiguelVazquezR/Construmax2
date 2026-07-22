@@ -305,6 +305,19 @@ class TicketController extends Controller
     }
 
     /**
+     * Toggle the OC (Orden de Compra Externa) flag on a ticket.
+     */
+    public function toggleOce(Request $request, Ticket $ticket)
+    {
+        $ticket->update(['has_oce' => !$ticket->has_oce]);
+
+        $message = $ticket->has_oce ? 'OC marcada como adjunta.' : 'OC desmarcada.';
+
+        // Return Inertia-compatible response (no JSON — Inertia expects a view/redirect)
+        back()->with('success', $message);
+    }
+
+    /**
      * Return technicians with pending payments from budget concepts marked as payable.
      */
     public function pendingTechnicianPayments(Request $request)

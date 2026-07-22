@@ -184,6 +184,7 @@ function submit() {
     v-model="dialogVisible"
     :title="isEditing ? 'Editar depósito' : 'Nuevo depósito'"
     width="640px"
+    class="deposit-form-dialog"
     destroy-on-close
     @closed="form.reset()"
   >
@@ -230,8 +231,9 @@ function submit() {
         </p>
         <!-- Bank account detail card -->
         <div v-if="selectedBankAccount" class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mt-2 text-xs">
-          <div class="grid grid-cols-2 gap-1">
+          <div class="grid grid-cols-1 gap-1">
             <div><span class="text-gray-500">Banco:</span> <span class="font-medium">{{ selectedBankAccount.bank_name ?? 'N/A' }}</span></div>
+            <div v-if="selectedBankAccount.card_owner_name"><span class="text-gray-500">Titular:</span> <span>{{ selectedBankAccount.card_owner_name }}</span></div>
             <div><span class="text-gray-500">Cuenta:</span> <span class="font-mono">{{ selectedBankAccount.account_number ?? 'N/A' }}</span></div>
             <div><span class="text-gray-500">CLABE:</span> <span class="font-mono">{{ selectedBankAccount.clabe ?? 'N/A' }}</span></div>
             <div><span class="text-gray-500">Tarjeta:</span> <span class="font-mono">{{ selectedBankAccount.card_number ?? 'N/A' }}</span></div>
@@ -330,3 +332,11 @@ function submit() {
     </template>
   </el-dialog>
 </template>
+
+<style scoped>
+@media (max-width: 767px) {
+  .deposit-form-dialog {
+    width: 95% !important;
+  }
+}
+</style>

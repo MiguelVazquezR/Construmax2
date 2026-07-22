@@ -46,7 +46,10 @@
             <div class="flex items-center gap-3">
                 <el-avatar :size="32" :src="technician.profile_photo_url" class="border border-gray-100 shadow-sm dark:border-gray-600">{{ technician.name.charAt(0) }}</el-avatar>
                 <div>
-                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ technician.name }}</span>
+                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                        {{ technician.name }}
+                        <template v-if="technician.technician?.state"> — {{ technician.technician.state }}</template>
+                    </span>
                     <el-tag
                         v-if="technician.technician"
                         size="small"

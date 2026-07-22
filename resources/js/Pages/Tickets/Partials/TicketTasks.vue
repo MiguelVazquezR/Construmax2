@@ -256,7 +256,7 @@ const reorderEvidence = (task) => {
                             <el-avatar :src="tech.profile_photo_url" :size="40">{{ tech.name.charAt(0) }}</el-avatar>
                             <div class="flex-1 min-w-0">
                                 <p class="text-sm font-bold text-gray-800 dark:text-gray-200 truncate flex items-center gap-1">
-                                    {{ tech.name }}
+                                    {{ getTechnicianLabel(tech) }}
                                     <el-tag
                                         v-if="tech.is_internal !== undefined"
                                         size="small"

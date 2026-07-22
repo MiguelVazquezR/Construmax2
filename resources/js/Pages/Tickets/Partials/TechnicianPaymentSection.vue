@@ -112,7 +112,10 @@ const showPaymentProof = (pay) => {
             <div v-for="tech in assignedTechnicians" :key="tech.id" class="flex items-center justify-between p-3 bg-white dark:bg-[#1e1e20] rounded-lg border border-gray-200 dark:border-gray-700 mb-2 last:mb-0">
                 <div class="flex items-center gap-2">
                     <el-avatar :size="28" :src="tech.profile_photo_url">{{ tech.name.charAt(0) }}</el-avatar>
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ tech.name }}</span>
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ tech.name }}
+                        <template v-if="tech.state"> — {{ tech.state }}</template>
+                    </span>
                 </div>
                 <el-button type="warning" size="small" plain :icon="Coin" @click="openDepositModal(tech)">
                     Solicitar depósito
