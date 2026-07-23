@@ -100,6 +100,9 @@ const getTechDisplayName = (user) => {
     let label = user.name;
     if (user.technician) {
         label += user.technician.is_internal ? ' (Interno)' : ' (Externo)';
+        if (user.technician.state) {
+            label += ` — ${user.technician.state}`;
+        }
     }
     return label;
 };
@@ -175,6 +178,22 @@ const deleteTicket = (ticket) => {
         });
     })
     .catch(() => {});
+};
+
+const handleToggleOce = (ticket) => {
+    const previousValue = ticket.has_oc;
+    ticket.has_oc = !ticket.has_oc;
+
+    router.put(route('tickets.toggle-oc', ticket.id), {}, {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            ElMessage.success(ticket.has_oc ? 'OC marcada como adjunta.' : 'OC desmarcada.');
+        },
+        onError: () => {
+            ticket.has_oc = previousValue;
+        },
+    });
 };
 </script>
 
@@ -314,6 +333,18 @@ const deleteTicket = (ticket) => {
                                     @click.stop="handleImportantNote(scope.row)"
                                     title="Agregar nota importante"
                                 />
+                                <el-tooltip
+                                    :content="scope.row.has_oc ? 'OC adjuntada' : 'OC no adjuntada'"
+                                    placement="top"
+                                >
+                                    <el-checkbox
+                                        :model-value="scope.row.has_oc"
+                                        @click.stop
+                                        @change="handleToggleOce(scope.row)"
+                                    >
+                                        OC
+                                    </el-checkbox>
+                                </el-tooltip>
                             </div>
                         </div>
                     </template>

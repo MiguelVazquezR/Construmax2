@@ -207,7 +207,10 @@ const hasExternalTechnicians = computed(() => {
                                 <el-avatar :size="24" :src="tech.user.profile_photo_url">
                                     {{ tech.user.name?.charAt(0) }}
                                 </el-avatar>
-                                <span class="text-gray-700 dark:text-gray-300">{{ tech.user.name }}</span>
+                                <span class="text-gray-700 dark:text-gray-300">
+                                    {{ tech.user.name }}
+                                    <template v-if="tech.user.technician?.state"> — {{ tech.user.technician.state }}</template>
+                                </span>
                             </div>
                             <span class="font-mono font-medium text-green-600">
                                 {{ formatCurrency(tech.total_paid, budget.currency) }}
@@ -220,7 +223,10 @@ const hasExternalTechnicians = computed(() => {
                                 <el-avatar :size="24" :src="user.profile_photo_url">
                                     {{ user.name?.charAt(0) }}
                                 </el-avatar>
-                                <span class="text-gray-700 dark:text-gray-300">{{ user.name }}</span>
+                                <span class="text-gray-700 dark:text-gray-300">
+                                    {{ user.name }}
+                                    <template v-if="user.technician?.state"> — {{ user.technician.state }}</template>
+                                </span>
                             </div>
                             <span class="text-xs text-gray-400 italic">Sin pagos</span>
                         </div>

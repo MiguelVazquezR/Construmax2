@@ -92,7 +92,7 @@ class DepositController extends Controller
     /**
      * Store a new deposit.
      */
-    public function store(StoreDepositRequest $request): RedirectResponse
+    public function store(StoreDepositRequest $request): RedirectResponse|\Illuminate\Http\JsonResponse
     {
         $data = $request->validated();
         $data['created_by'] = $request->user()->id;
@@ -103,8 +103,15 @@ class DepositController extends Controller
         // Dispatch approval notification
         $this->dispatchNotification->depositPendingApproval($deposit);
 
-        return redirect()->route('deposits.index')
-            ->with('success', 'Depósito programado correctamente.');
+        // For AJAX requests (from TechnicianPaymentSection modal), return JSON
+        if ($request->expectsJson() || $request->wantsJson()) {
+            return response()->json([
+                'message' => 'Depósito programado correctamente.',
+                'deposit' => $deposit->load('technician.user', 'depositType'),
+            ]);
+        }
+
+        return back()->with('success', 'Depósito programado correctamente.');
     }
 
     /**
@@ -129,14 +136,21 @@ class DepositController extends Controller
     /**
      * Delete a deposit (only if not completed).
      */
-    public function destroy(Deposit $deposit): RedirectResponse
+    public function destroy(Request $request, Deposit $deposit): RedirectResponse|\Illuminate\Http\JsonResponse
     {
         if ($deposit->status === 'completed') {
+            if ($request->expectsJson() || $request->wantsJson()) {
+                return response()->json(['message' => 'No se puede eliminar un depósito completado.'], 422);
+            }
             return redirect()->route('deposits.index')
                 ->with('error', 'No se puede eliminar un depósito completado.');
         }
 
         $deposit->delete();
+
+        if ($request->expectsJson() || $request->wantsJson()) {
+            return response()->json(['message' => 'Depósito eliminado correctamente.']);
+        }
 
         return redirect()->route('deposits.index')
             ->with('success', 'Depósito eliminado correctamente.');

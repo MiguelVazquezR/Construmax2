@@ -1,6 +1,6 @@
 <script setup>
-import { ref, watch, computed, onMounted } from 'vue';
-import { useForm, Link } from '@inertiajs/vue3';
+import { ref, watch, computed } from 'vue';
+import { Link } from '@inertiajs/vue3';
 import { ElMessage } from 'element-plus';
 import { usePermissions } from '@/Composables/usePermissions';
 import axios from 'axios';
@@ -121,14 +121,27 @@ const ticketLabel = computed(() => {
 });
 
 // --- Submit ---
-function submit() {
-    form.post(route('deposits.store'), {
-        onSuccess: () => {
-            ElMessage.success('Depósito programado correctamente.');
-            visible.value = false;
-            emit('saved');
-        },
-    });
+const submitting = ref(false);
+
+async function submit() {
+    submitting.value = true;
+    try {
+        const { data } = await axios.post(route('deposits.store'), form.data(), {
+            headers: { 'Accept': 'application/json' },
+        });
+        ElMessage.success('Depósito programado correctamente.');
+        visible.value = false;
+        emit('saved', data.deposit);
+    } catch (err) {
+        if (err.response?.data?.errors) {
+            const messages = Object.values(err.response.data.errors).flat();
+            ElMessage.error(messages[0] || 'Error al programar el depósito.');
+        } else {
+            ElMessage.error(err.response?.data?.message || 'Error al programar el depósito.');
+        }
+    } finally {
+        submitting.value = false;
+    }
 }
 </script>
 
@@ -137,6 +150,7 @@ function submit() {
         v-model="visible"
         title="Solicitar depósito"
         width="560px"
+        class="deposit-form-dialog"
         destroy-on-close
     >
         <el-form :model="form" label-position="top">
@@ -191,8 +205,9 @@ function submit() {
                 </p>
                 <!-- Bank account detail card -->
                 <div v-if="selectedBankAccount" class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mt-2 text-xs">
-                    <div class="grid grid-cols-2 gap-1">
+                    <div class="grid grid-cols-1 gap-1">
                         <div><span class="text-gray-500">Banco:</span> <span class="font-medium">{{ selectedBankAccount.bank_name ?? 'N/A' }}</span></div>
+                        <div v-if="selectedBankAccount.card_owner_name"><span class="text-gray-500">Titular:</span> <span>{{ selectedBankAccount.card_owner_name }}</span></div>
                         <div><span class="text-gray-500">Cuenta:</span> <span class="font-mono">{{ selectedBankAccount.account_number ?? 'N/A' }}</span></div>
                         <div><span class="text-gray-500">CLABE:</span> <span class="font-mono">{{ selectedBankAccount.clabe ?? 'N/A' }}</span></div>
                         <div><span class="text-gray-500">Tarjeta:</span> <span class="font-mono">{{ selectedBankAccount.card_number ?? 'N/A' }}</span></div>
@@ -262,7 +277,7 @@ function submit() {
             <el-button @click="visible = false">Cancelar</el-button>
             <el-button
                 type="primary"
-                :loading="form.processing"
+                :loading="submitting"
                 :disabled="!form.technician_bank_account_id || !form.deposit_type_id || !form.amount || !form.scheduled_date"
                 @click="submit"
             >
@@ -271,3 +286,11 @@ function submit() {
         </template>
     </el-dialog>
 </template>
+
+<style scoped>
+@media (max-width: 767px) {
+  .deposit-form-dialog {
+    width: 95% !important;
+  }
+}
+</style>

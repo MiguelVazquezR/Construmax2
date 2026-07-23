@@ -358,6 +358,7 @@ class TechnicianController extends Controller
     {
         $validated = $request->validate([
             'bank_name' => 'nullable|string|max:100',
+            'card_owner_name' => 'nullable|string|max:255',
             'account_number' => 'nullable|string|max:50',
             'card_number' => 'nullable|string|max:50',
             'clabe' => 'nullable|string|max:50',
@@ -370,6 +371,7 @@ class TechnicianController extends Controller
 
         $account = $technician->bankAccounts()->create([
             'bank_name' => $validated['bank_name'] ?? null,
+            'card_owner_name' => $validated['card_owner_name'] ?? null,
             'account_number' => $validated['account_number'] ?? null,
             'card_number' => $validated['card_number'] ?? null,
             'clabe' => $validated['clabe'] ?? null,
@@ -389,6 +391,7 @@ class TechnicianController extends Controller
     {
         $validated = $request->validate([
             'bank_name' => 'nullable|string|max:100',
+            'card_owner_name' => 'nullable|string|max:255',
             'account_number' => 'nullable|string|max:50',
             'card_number' => 'nullable|string|max:50',
             'clabe' => 'nullable|string|max:50',
@@ -398,6 +401,7 @@ class TechnicianController extends Controller
 
         $account->update([
             'bank_name' => $validated['bank_name'] ?? null,
+            'card_owner_name' => $validated['card_owner_name'] ?? null,
             'account_number' => $validated['account_number'] ?? null,
             'card_number' => $validated['card_number'] ?? null,
             'clabe' => $validated['clabe'] ?? null,

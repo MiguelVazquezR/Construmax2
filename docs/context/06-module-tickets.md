@@ -60,6 +60,7 @@ PUT    /tickets/{ticket}/technicians   tickets.update-technicians
 PUT    /tickets/{ticket}/important-note  tickets.update-important-note
 PUT    /tickets/{ticket}/report-number   tickets.update-report-number
 PUT    /tickets/{ticket}/update-field    tickets.update-field
+GET    /tickets/pending-tech-payments    tickets.pending-tech-payments
 ```
 
 ### Tasks (auth)
@@ -166,6 +167,7 @@ The `updateField` endpoint (`PUT /tickets/{ticket}/update-field`) allows updatin
 
 ### `Tickets/Index.vue`
 - Toggle between list view (`TicketList.vue`) and kanban view (`TicketKanban.vue`), persisted in localStorage
+- **"Pagos pendientes"** button opens `PendingTechnicianPaymentsModal.vue` — shows technicians with unpaid budget concepts
 - Status multi-select filter: defaults to all active statuses including `Pendiente de aprobación`; `Finalizado`, `Facturado`, `Pagado`, and `Cancelado` are available in the dropdown but excluded by default
 - Additional filters: folio, customer, region, priority, technician, seller, catalog status, sort
 
@@ -195,6 +197,18 @@ The `updateField` endpoint (`PUT /tickets/{ticket}/update-field`) allows updatin
 ### `TicketTimeline.vue`
 - Vertical timeline + Gantt chart (ApexCharts)
 - Shows all ticket events chronologically
+
+### `PendingTechnicianPaymentsModal.vue`
+- Accessible from the **"Pagos pendientes"** button in `Tickets/Index.vue` (next to view mode toggle)
+- Calls `GET /tickets/pending-tech-payments` → finds budgets with concepts where `paid_to_technician = true` and `payment_date IS NULL`
+- Groups results by technician, showing: name, state, internal/external tag, ticket folio (linkable), and total pending amount
+- Respects permission `tickets.index-all` — non-privileged users only see their own tickets
+
+### `pendingTechnicianPayments` (controller method)
+- Queries `BudgetConcept` where `paid_to_technician = true` AND `payment_date IS NULL`
+- Loads related `budget.ticket`, filters by seller permission
+- Collects technician IDs from `ticket.technicians` and `ticket.assistant_technicians` JSON arrays
+- Returns JSON with `{ user_id, name, state, is_internal, ticket_id, ticket_folio, ticket_name, pending_amount }`
 
 ---
 

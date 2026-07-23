@@ -149,7 +149,21 @@ const openPreview = (file) => {
                     <div class="flex items-center gap-3">
                         <el-avatar :src="tech.user.profile_photo_url" :size="40">{{ tech.user.name.charAt(0) }}</el-avatar>
                         <div>
-                            <p class="font-bold text-gray-800 dark:text-white">{{ tech.user.name }}</p>
+                            <p class="font-bold text-gray-800 dark:text-white">
+                                {{ tech.user.name }}
+                                <el-tag
+                                    v-if="tech.user.technician?.is_internal !== undefined"
+                                    :type="tech.user.technician?.is_internal ? 'success' : 'warning'"
+                                    size="small"
+                                    effect="plain"
+                                    class="ml-1"
+                                >
+                                    {{ tech.user.technician?.is_internal ? 'Interno' : 'Externo' }}
+                                </el-tag>
+                                <span v-if="tech.user.technician?.state" class="text-gray-400 text-xs ml-1">
+                                    — {{ tech.user.technician.state }}
+                                </span>
+                            </p>
                             <p class="text-xs text-gray-500">{{ tech.completed_tasks }} / {{ tech.total_tasks }} tareas completadas</p>
                         </div>
                     </div>
