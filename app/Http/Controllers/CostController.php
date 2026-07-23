@@ -29,6 +29,7 @@ class CostController extends Controller
         return Inertia::render('Costs/Index', [
             'budgets' => $budgets,
             'filters' => $request->only(['search', 'catalog', 'branch']),
+            'canTransfer' => $request->user()->can('costs.transfer'),
         ]);
     }
 
@@ -44,6 +45,7 @@ class CostController extends Controller
             'budget' => $budgetDetails,
             'canCreateCatalog' => $request->user()->can('costs.create'),
             'canApprove' => $request->user()->can('costs.approve'),
+            'canTransfer' => $request->user()->can('costs.transfer'),
         ]);
     }
 
@@ -135,6 +137,27 @@ class CostController extends Controller
             'budget' => $budgetDetails,
             'version' => $version,
         ]);
+    }
+
+    /**
+     * Transfer a catalog to special costs authorization.
+     */
+    public function transferToSpecial(Request $request, Budget $budget, \App\Models\BudgetCatalog $catalog): RedirectResponse
+    {
+        if (!$request->user()->can('costs.transfer')) {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'transfer_notes' => 'required|string|max:2000',
+        ]);
+
+        $catalog->update([
+            'needs_special_authorization' => true,
+            'transfer_notes' => $validated['transfer_notes'],
+        ]);
+
+        return back()->with('success', 'Catálogo transferido a costos especiales para autorización.');
     }
 
     public function printEmpenoFacil(Request $request, Budget $budget): Response

@@ -260,6 +260,28 @@ class PermissionSeeder extends Seeder
                 'category' => 'Costos',
                 'description' => 'Aprobar catálogos de costos'
             ],
+            [
+                'name' => 'costs.transfer',
+                'category' => 'Costos',
+                'description' => 'Transferir catálogos a costos especiales para autorización'
+            ],
+
+            // --- MÓDULO: COSTOS ESPECIALES ---
+            [
+                'name' => 'special-costs.index',
+                'category' => 'Costos especiales',
+                'description' => 'Ver listado y detalles de catálogos en costos especiales'
+            ],
+            [
+                'name' => 'special-costs.approve',
+                'category' => 'Costos especiales',
+                'description' => 'Aprobar catálogos de costos especiales'
+            ],
+            [
+                'name' => 'special-costs.create-version',
+                'category' => 'Costos especiales',
+                'description' => 'Crear nuevas versiones de catálogo en costos especiales'
+            ],
 
             // --- MÓDULO: NOTIFICACIONES ---
             [
