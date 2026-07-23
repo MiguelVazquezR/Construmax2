@@ -39,7 +39,7 @@ class BudgetController extends Controller
                 ->paginate($perPage)
                 ->withQueryString(),
             'filters' => $filters,
-            'users' => User::where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'users' => User::where('is_active', true)->whereDoesntHave('technician')->orderBy('name')->get(['id', 'name']),
             'customers' => Customer::orderBy('name')->get(['id', 'name']),
         ]);
     }
@@ -67,6 +67,7 @@ class BudgetController extends Controller
                     'name' => $technician?->user?->name ?? null,
                     'is_internal' => $technician?->is_internal,
                     'phone' => $technician?->phone,
+                    'state' => $technician?->state,
                 ];
             });
         });
@@ -198,6 +199,7 @@ class BudgetController extends Controller
                     'name' => $technician?->user?->name ?? null,
                     'is_internal' => $technician?->is_internal,
                     'phone' => $technician?->phone,
+                    'state' => $technician?->state,
                 ];
             });
         });

@@ -14,6 +14,7 @@ class TechnicianBankAccount extends Model implements HasMedia
     protected $fillable = [
         'technician_id',
         'bank_name',
+        'card_owner_name',
         'account_number',
         'card_number',
         'clabe',

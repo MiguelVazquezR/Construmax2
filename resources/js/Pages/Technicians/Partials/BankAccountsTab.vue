@@ -39,6 +39,7 @@ const mexicanBanks = [
 
 const form = useForm({
     bank_name: '',
+    card_owner_name: '',
     account_number: '',
     card_number: '',
     clabe: '',
@@ -55,6 +56,7 @@ const openNew = () => {
 
 const openEdit = (account) => {
     form.bank_name = account.bank_name || '';
+    form.card_owner_name = account.card_owner_name || '';
     form.account_number = account.account_number || '';
     form.card_number = account.card_number || '';
     form.clabe = account.clabe || '';
@@ -77,11 +79,18 @@ const submit = () => {
         ? route('technicians.bank-accounts.update', [props.technician.id, editingAccount.value.id])
         : route('technicians.bank-accounts.store', props.technician.id);
 
+    const hasFile = !!form.qr_image;
+
     form.post(url, {
-        forceFormData: !!form.qr_image,
+        forceFormData: hasFile,
+        preserveScroll: true,
         onSuccess: () => {
             ElMessage.success(editingAccount.value ? 'Cuenta actualizada.' : 'Cuenta agregada.');
             cancelForm();
+        },
+        onError: (errors) => {
+            const firstError = Object.values(errors).flat()[0] || 'Error al guardar la cuenta.';
+            ElMessage.error(firstError);
         },
     });
 };
@@ -140,6 +149,9 @@ const handleQrChange = (file) => {
                         <el-option v-for="bank in mexicanBanks" :key="bank" :label="bank" :value="bank" />
                     </el-select>
                 </el-form-item>
+                <el-form-item label="Titular de la tarjeta">
+                    <el-input v-model="form.card_owner_name" placeholder="Nombre del propietario de la tarjeta" />
+                </el-form-item>
                 <el-form-item label="Número de cuenta">
                     <el-input v-model="form.account_number" placeholder="Ej. 1234567890" />
                 </el-form-item>
@@ -193,6 +205,10 @@ const handleQrChange = (file) => {
                         <div v-if="account.bank_name">
                             <p class="text-[10px] text-gray-400 uppercase font-bold">Banco</p>
                             <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ account.bank_name }}</p>
+                        </div>
+                        <div v-if="account.card_owner_name">
+                            <p class="text-[10px] text-gray-400 uppercase font-bold">Titular</p>
+                            <p class="text-sm text-gray-700 dark:text-gray-300">{{ account.card_owner_name }}</p>
                         </div>
                         <div v-if="account.account_number">
                             <p class="text-[10px] text-gray-400 uppercase font-bold">Núm. de cuenta</p>

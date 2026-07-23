@@ -302,6 +302,9 @@ defineExpose({ form });
                                     >
                                         {{ tech.is_internal ? 'Interno' : 'Externo' }}
                                     </el-tag>
+                                    <span v-if="tech.state" class="text-gray-400 text-xs">
+                                        — {{ tech.state }}
+                                    </span>
                                     <span v-if="tech.phone" class="text-gray-400 text-xs">
                                         {{ tech.phone }}
                                     </span>

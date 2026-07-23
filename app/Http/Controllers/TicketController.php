@@ -228,10 +228,13 @@ class TicketController extends Controller
             'budget.responsible',
             'budget.technicianPayments.technician.technician',
             'budget.technicianPayments.media',
+            'budget.technicianPayments.deposit.media',
             'tasks.assignee', 
             'tasks.media', 
             'media',
             'workAcceptanceReport',
+            'deposits.technician.user',
+            'deposits.depositType',
         ]);
         
         $ticket->append('progress', 'folio'); 
@@ -302,6 +305,19 @@ class TicketController extends Controller
         $this->reassignTechnicianData($ticket, $oldTechnicians, $newTechnicians);
 
         return back()->with('success', 'Técnicos actualizados correctamente.');
+    }
+
+    /**
+     * Toggle the OC (Orden de Compra Externa) flag on a ticket.
+     */
+    public function toggleOce(Request $request, Ticket $ticket)
+    {
+        $ticket->update(['has_oc' => !$ticket->has_oc]);
+
+        $message = $ticket->has_oc ? 'OC marcada como adjunta.' : 'OC desmarcada.';
+
+        // Return Inertia-compatible response (no JSON — Inertia expects a view/redirect)
+        back()->with('success', $message);
     }
 
     /**

@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useForm, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { ChatDotSquare, WarningFilled } from '@element-plus/icons-vue';
 import { useCostsHelpers } from '@/Composables/useCostsHelpers';
 import MaterialsTable from '@/Components/Costs/MaterialsTable.vue';
 import LaborTable from '@/Components/Costs/LaborTable.vue';
@@ -289,6 +290,16 @@ function approveCatalog() {
                                 </template>
                             </el-dropdown>
                             <el-tag v-else type="info" size="small" effect="plain">Sin catálogo previo</el-tag>
+                        </div>
+                        <!-- Important note from ticket -->
+                        <div v-if="budget.ticket.important_note" class="mt-3 p-3 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30">
+                            <p class="text-xs font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wide mb-1 flex items-center gap-1">
+                                <el-icon :size="14"><ChatDotSquare /></el-icon>
+                                Notas importantes
+                            </p>
+                            <p class="text-sm text-amber-800 dark:text-amber-200 leading-relaxed">
+                                {{ budget.ticket.important_note }}
+                            </p>
                         </div>
                         <!-- Approve button -->
                         <div v-if="budget.latest_catalog && !budget.latest_catalog.is_approved && canApprove" class="mt-2">

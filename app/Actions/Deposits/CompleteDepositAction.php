@@ -37,10 +37,13 @@ class CompleteDepositAction
             $file    = $data['voucher'];
             $isImage = str_starts_with($file->getMimeType(), 'image/');
 
-            $deposit->addMedia($file)->toMediaCollection('voucher');
-
             if ($isImage) {
-                $this->imageOptimizer->optimize($file);
+                $optimizedPath = $this->imageOptimizer->optimize($file);
+                $deposit->addMedia($optimizedPath)
+                    ->usingFileName($file->getClientOriginalName())
+                    ->toMediaCollection('voucher');
+            } else {
+                $deposit->addMedia($file)->toMediaCollection('voucher');
             }
         }
 

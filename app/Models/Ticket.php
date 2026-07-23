@@ -53,6 +53,7 @@ class Ticket extends Model implements HasMedia
         'scheduled_end',
         'instructions',
         'important_note',
+        'has_oc',
     ];
 
     protected $casts = [
@@ -60,6 +61,7 @@ class Ticket extends Model implements HasMedia
         'scheduled_end' => 'date',
         'technicians' => 'array',
         'assistant_technicians' => 'array',
+        'has_oc' => 'boolean',
     ];
 
     protected $appends = ['progress', 'folio'];
@@ -110,6 +112,11 @@ class Ticket extends Model implements HasMedia
     public function workAcceptanceReport(): HasOne
     {
         return $this->hasOne(WorkAcceptanceReport::class);
+    }
+
+    public function deposits(): HasMany
+    {
+        return $this->hasMany(Deposit::class);
     }
 
     // --- LÓGICA DE NEGOCIO ---

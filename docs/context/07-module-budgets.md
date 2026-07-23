@@ -89,7 +89,7 @@ When an invoice is uploaded → budget status becomes "Facturado" and ticket sta
 
 ### `Budgets/Index.vue`
 - Toggle between `TableList.vue` and `Kanban.vue` views
-- Filters: search, status, perPage, branch, user_id (multi-select for advisors)
+- Filters: search, status, perPage, branch, user_id (multi-select for advisors — only shows active users without a technician record)
 - Default filter: current user only
 
 ### `BudgetForm.vue` (core, ~200 lines)

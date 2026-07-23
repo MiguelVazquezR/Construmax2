@@ -31,6 +31,7 @@ Route::middleware([
     Route::put('/tickets/{ticket}/important-note', [TicketController::class, 'updateImportantNote'])->name('tickets.update-important-note');
     Route::put('/tickets/{ticket}/report-number', [TicketController::class, 'updateReportNumber'])->name('tickets.update-report-number');
     Route::put('/tickets/{ticket}/update-field', [TicketController::class, 'updateField'])->name('tickets.update-field');
+    Route::put('/tickets/{ticket}/toggle-oc', [TicketController::class, 'toggleOce'])->name('tickets.toggle-oc');
 
     // Rutas de Tareas
     Route::post('/tickets/{ticket}/tasks', [TicketTaskController::class, 'store'])->name('tickets.tasks.store');

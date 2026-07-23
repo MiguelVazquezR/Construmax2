@@ -5,6 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { debounce } from 'lodash';
 import { usePermissions } from '@/Composables/usePermissions';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { ChatDotSquare } from '@element-plus/icons-vue';
 
 const { can } = usePermissions();
 
@@ -146,7 +147,12 @@ const approveCatalog = (row, event) => {
             <!-- Tabla de presupuestos para catálogos -->
             <div
                 class="bg-white dark:bg-[#1e1e20] rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
-                <el-alert type="info" :closable="false" show-icon class="m-4">
+                <el-alert type="info" :closable="false" show-icon class="m-4" v-if="catalogFilter.length === 0 || catalogFilter.includes('all')">
+                    <template #title>
+                        Mostrando todos los presupuestos. Usa los filtros "Sin catálogo" o "Pendientes de aprobación" para ver solo los que requieren atención.
+                    </template>
+                </el-alert>
+                <el-alert type="info" :closable="false" show-icon class="m-4" v-else>
                     <template #title>
                         Selecciona un presupuesto para generar o editar su catálogo de conceptos y desglosar sus costos
                         unitarios.
@@ -161,15 +167,27 @@ const approveCatalog = (row, event) => {
                             <div class="flex flex-col">
                                 <span class="font-bold text-gray-800 dark:text-gray-200 text-sm">{{
                                     scope.row.ticket_name }}</span>
-                                <Link
-                                    v-if="can('tickets.index') && scope.row.ticket_id"
-                                    :href="route('tickets.show', scope.row.ticket_id)"
-                                    class="font-mono text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
-                                    @click.stop
-                                >
-                                    Folio Ticket: {{ scope.row.ticket_folio }}
-                                </Link>
-                                <span v-else class="font-mono text-xs text-gray-500">Folio Ticket: {{ scope.row.ticket_folio }}</span>
+                                <div class="flex items-center gap-1.5">
+                                    <Link
+                                        v-if="can('tickets.index') && scope.row.ticket_id"
+                                        :href="route('tickets.show', scope.row.ticket_id)"
+                                        class="font-mono text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
+                                        @click.stop
+                                    >
+                                        Folio Ticket: {{ scope.row.ticket_folio }}
+                                    </Link>
+                                    <span v-else class="font-mono text-xs text-gray-500">Folio Ticket: {{ scope.row.ticket_folio }}</span>
+                                    <el-tooltip
+                                        v-if="scope.row.ticket_important_note"
+                                        :content="scope.row.ticket_important_note"
+                                        placement="top"
+                                        :show-after="300"
+                                    >
+                                        <el-icon :size="14" color="#e6a23c" class="shrink-0">
+                                            <ChatDotSquare />
+                                        </el-icon>
+                                    </el-tooltip>
+                                </div>
                             </div>
                         </template>
                     </el-table-column>
@@ -249,16 +267,18 @@ const approveCatalog = (row, event) => {
 
                     <el-table-column label="Acciones" width="120" align="center" fixed="right">
                         <template #default="scope">
-                            <el-button
-                                v-if="scope.row.has_catalog && scope.row.catalog_status === 'pending_approval' && can('costs.approve')"
-                                type="success" size="small" plain
-                                @click="approveCatalog(scope.row, $event)">
-                                Aprobar
-                            </el-button>
-                            <span v-else-if="scope.row.has_catalog && scope.row.catalog_status === 'approved'"
-                                class="text-xs text-green-600 font-medium">
-                                ✓ Aprobado
-                            </span>
+                            <div class="flex items-center justify-center gap-2">
+                                <el-button
+                                    v-if="scope.row.has_catalog && scope.row.catalog_status === 'pending_approval' && can('costs.approve')"
+                                    type="success" size="small" plain
+                                    @click="approveCatalog(scope.row, $event)">
+                                    Aprobar
+                                </el-button>
+                                <span v-else-if="scope.row.has_catalog && scope.row.catalog_status === 'approved'"
+                                    class="text-xs text-green-600 font-medium">
+                                    ✓ Aprobado
+                                </span>
+                            </div>
                         </template>
                     </el-table-column>
                 </el-table>
