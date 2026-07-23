@@ -23,8 +23,20 @@ class TechnicianController extends Controller
     public function index(Request $request)
     {
         $perPage = $request->input('perPage', 10);
+        $trashed = $request->boolean('trashed');
 
-        $technicians = Technician::with('user')
+        $technicians = Technician::with(['user' => function ($q) use ($trashed) {
+                if ($trashed) {
+                    $q->onlyTrashed();
+                }
+            }])
+            ->whereHas('user', function ($q) use ($trashed) {
+                if ($trashed) {
+                    $q->onlyTrashed();
+                } else {
+                    $q->whereNull('deleted_at');
+                }
+            })
             ->filter($request->only('search', 'specialty', 'state'))
             ->when($request->has('is_internal'), fn ($q) => $q->where('is_internal', $request->boolean('is_internal')))
             ->orderBy('id', 'desc')
@@ -47,7 +59,7 @@ class TechnicianController extends Controller
 
         return Inertia::render('Technicians/Index', [
             'technicians' => $technicians,
-            'filters' => $request->only(['search', 'perPage', 'specialty', 'state']),
+            'filters' => $request->only(['search', 'perPage', 'specialty', 'state', 'trashed']),
             'states' => $states,
             'specialties' => $specialties,
         ]);
@@ -149,7 +161,11 @@ class TechnicianController extends Controller
 
     public function show(Technician $technician)
     {
-        $technician->load(['user', 'media', 'bankAccounts.media']);
+        $technician->load([
+            'user' => fn ($q) => $q->withTrashed(),
+            'media',
+            'bankAccounts.media',
+        ]);
         
         $historyQuery = Ticket::with(['budget.customer', 'tasks'])
             ->where(function($query) use ($technician) {
@@ -284,7 +300,7 @@ class TechnicianController extends Controller
     public function updateStatus(Request $request, Technician $technician)
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:Activo,Inactivo,En revisión,Vetado'
+            'status' => 'required|string|in:Activo,Inactivo,En revisión,Vetado,Eliminado'
         ]);
 
         $technician->update(['status' => $validated['status']]);
@@ -443,7 +459,21 @@ class TechnicianController extends Controller
 
     public function destroy(Technician $technician)
     {
-        $technician->user->delete();
-        return redirect()->route('technicians.index')->with('success', 'Técnico y usuario eliminados.');
+        $technician->update(['status' => 'Eliminado']);
+        $technician->user->delete(); // Soft delete gracias al trait SoftDeletes en User
+
+        return redirect()->route('technicians.index')
+            ->with('success', 'Técnico dado de baja correctamente. Su historial y trazabilidad se conservan.');
+    }
+
+    public function restore($id)
+    {
+        $technician = Technician::where('id', $id)->firstOrFail();
+        $user = User::withTrashed()->findOrFail($technician->user_id);
+        $user->restore();
+        $technician->update(['status' => 'Activo']);
+
+        return redirect()->route('technicians.index')
+            ->with('success', 'Técnico reactivado correctamente.');
     }
 }

@@ -12,6 +12,7 @@ const { can } = usePermissions();
 const props = defineProps({
     budgets: Object,
     filters: Object,
+    canTransfer: Boolean,
 });
 
 const normalizeCatalogFilter = (value) => {
@@ -87,6 +88,10 @@ const getCatalogTotalLabel = (row) => {
     return 'Presupuesto';
 };
 
+const transferDialogVisible = ref(false);
+const transferNotes = ref('');
+const transferRow = ref(null);
+
 const approveCatalog = (row, event) => {
     event.stopPropagation();
 
@@ -110,6 +115,35 @@ const approveCatalog = (row, event) => {
             },
         });
     }).catch(() => {});
+};
+
+const openTransferDialog = (row, event) => {
+    event.stopPropagation();
+    transferRow.value = row;
+    transferNotes.value = '';
+    transferDialogVisible.value = true;
+};
+
+const submitTransfer = () => {
+    if (!transferNotes.value.trim()) {
+        ElMessage.warning('Por favor escribe una nota explicando el motivo de la transferencia.');
+        return;
+    }
+    router.post(
+        route('costs.transfer-to-special', { budget: transferRow.value.id, catalog: transferRow.value.catalog_id }),
+        { transfer_notes: transferNotes.value },
+        {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => {
+                ElMessage.success('Catálogo transferido a costos especiales para autorización.');
+                transferDialogVisible.value = false;
+            },
+            onError: () => {
+                ElMessage.error('Error al transferir el catálogo.');
+            },
+        }
+    );
 };
 </script>
 
@@ -192,7 +226,7 @@ const approveCatalog = (row, event) => {
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Cliente" min-width="180">
+                    <el-table-column label="Cliente" min-width="160">
                         <template #default="scope">
                             <div class="flex items-center gap-2">
                                 <el-icon class="text-gray-400">
@@ -237,7 +271,7 @@ const approveCatalog = (row, event) => {
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Catálogo" width="200" align="center">
+                    <el-table-column label="Catálogo" width="160" align="center">
                         <template #default="scope">
                             <div v-if="scope.row.has_catalog" class="flex flex-col items-center gap-1">
                                 <el-tag :type="getCatalogStatusColor(scope.row.catalog_status)" size="small" effect="light">
@@ -265,14 +299,25 @@ const approveCatalog = (row, event) => {
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Acciones" width="120" align="center" fixed="right">
+                    <el-table-column label="Acciones" width="220" align="center" fixed="right">
                         <template #default="scope">
                             <div class="flex items-center justify-center gap-2">
+                                <span
+                                    v-if="scope.row.has_catalog && scope.row.needs_special_authorization && scope.row.catalog_status === 'pending_approval'"
+                                    class="text-xs text-orange-600 font-medium bg-orange-50 px-2 py-1 rounded border border-orange-200">
+                                    En revisión por Dirección
+                                </span>
                                 <el-button
-                                    v-if="scope.row.has_catalog && scope.row.catalog_status === 'pending_approval' && can('costs.approve')"
+                                    v-else-if="scope.row.has_catalog && scope.row.catalog_status === 'pending_approval' && can('costs.approve')"
                                     type="success" size="small" plain
                                     @click="approveCatalog(scope.row, $event)">
                                     Aprobar
+                                </el-button>
+                                <el-button
+                                    v-if="scope.row.has_catalog && scope.row.catalog_status === 'pending_approval' && !scope.row.needs_special_authorization && canTransfer"
+                                    type="warning" size="small" plain
+                                    @click="openTransferDialog(scope.row, $event)">
+                                    Enviar a aprobación
                                 </el-button>
                                 <span v-else-if="scope.row.has_catalog && scope.row.catalog_status === 'approved'"
                                     class="text-xs text-green-600 font-medium">
@@ -294,6 +339,25 @@ const approveCatalog = (row, event) => {
                         class="!p-0" />
                 </div>
             </div>
+            <!-- Transfer Dialog -->
+            <el-dialog v-model="transferDialogVisible" title="Enviar a costos especiales" width="500px" @click.stop>
+                <el-form label-position="top">
+                    <el-form-item label="Nota de transferencia" required>
+                        <el-input
+                            v-model="transferNotes"
+                            type="textarea"
+                            :rows="4"
+                            placeholder="Explica por qué este catálogo requiere revisión de Dirección..."
+                            maxlength="2000"
+                            show-word-limit
+                        />
+                    </el-form-item>
+                </el-form>
+                <template #footer>
+                    <el-button @click="transferDialogVisible = false">Cancelar</el-button>
+                    <el-button type="primary" @click="submitTransfer">Enviar a costos especiales</el-button>
+                </template>
+            </el-dialog>
         </div>
     </AppLayout>
 </template>

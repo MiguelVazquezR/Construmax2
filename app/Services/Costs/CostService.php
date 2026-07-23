@@ -74,6 +74,7 @@ class CostService
                     'catalog_status_label' => $budget->latestCatalog ? $budget->latestCatalog->statusLabel() : null,
                     'catalog_approved_by' => $budget->latestCatalog?->approver?->name ?? null,
                     'catalog_id'       => $budget->latestCatalog?->id ?? null,
+                    'needs_special_authorization' => $budget->latestCatalog?->needs_special_authorization ?? false,
                     'branch_name'      => $budget->ticket->branch->branch_name ?? '—',
                     'branch_unit'      => $budget->ticket->branch->unit ?? '—',
                     'branch_country'   => $budget->ticket->branch->country ?? '—',

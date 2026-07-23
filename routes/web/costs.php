@@ -10,4 +10,5 @@ Route::middleware(['auth', 'verified'])->prefix('costs')->name('costs.')->group(
     Route::get('/{budget}/print-empeno-facil', [CostController::class, 'printEmpenoFacil'])->name('print-empeno-facil');
     Route::post('/{budget}/catalog', [CostController::class, 'storeCatalog'])->name('store-catalog');
     Route::post('/{budget}/catalog/{catalog}/approve', [CostController::class, 'approveCatalog'])->name('approve-catalog');
+    Route::post('/{budget}/catalog/{catalog}/transfer-to-special', [CostController::class, 'transferToSpecial'])->name('transfer-to-special');
 });
