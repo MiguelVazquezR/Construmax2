@@ -325,44 +325,28 @@ class TicketController extends Controller
      */
     public function pendingTechnicianPayments(Request $request)
     {
-        // Find budget concepts that are payable and not yet paid
-        $pendingConcepts = \App\Models\BudgetConcept::where('paid_to_technician', true)
-            ->whereNull('payment_date')
-            ->with('budget.ticket')
-            ->get();
+        $budgets = \App\Models\Budget::whereHas('concepts', function ($q) {
+            $q->where('paid_to_technician', true);
+        })->with(['concepts', 'technicianPayments', 'ticket'])->get();
 
-        // Group by ticket
-        $ticketMap = [];
-        foreach ($pendingConcepts as $concept) {
-            $budget = $concept->budget;
-            if (!$budget || !$budget->ticket) continue;
+        $result = [];
 
+        foreach ($budgets as $budget) {
             $ticket = $budget->ticket;
+            if (!$ticket) continue;
 
             // Filter by seller: if user can't see all tickets, only show their own
             if (!$request->user()->can('tickets.index-all') && $ticket->seller_id !== $request->user()->id) {
                 continue;
             }
 
-            $ticketId = $ticket->id;
+            $totalPayable = (float) $budget->concepts
+                ->where('paid_to_technician', true)
+                ->sum('amount');
 
-            if (!isset($ticketMap[$ticketId])) {
-                $ticketMap[$ticketId] = [
-                    'ticket' => $ticket,
-                    'total_pending' => 0,
-                ];
-            }
-            $ticketMap[$ticketId]['total_pending'] += (float) $concept->amount;
-        }
+            if ($totalPayable <= 0) continue;
 
-        // Build result: technicians per ticket with pending amounts
-        $result = [];
-
-        foreach ($ticketMap as $data) {
-            $ticket = $data['ticket'];
-            $pendingAmount = $data['total_pending'];
-
-            // Collect all tech IDs: from JSON fields + task assignments
+            // Collect all tech IDs from JSON fields
             $techIds = array_unique(array_merge(
                 array_map('intval', $ticket->technicians ?? []),
                 array_map('intval', $ticket->assistant_technicians ?? []),
@@ -370,11 +354,23 @@ class TicketController extends Controller
 
             if (empty($techIds)) continue;
 
+            // Only external technicians (is_internal = false)
             $users = User::whereIn('id', $techIds)
+                ->whereHas('technician', function ($q) {
+                    $q->where('is_internal', false);
+                })
                 ->with('technician')
                 ->get();
 
             foreach ($users as $user) {
+                $totalPaid = (float) $budget->technicianPayments
+                    ->where('user_id', $user->id)
+                    ->sum('amount');
+
+                $pendingAmount = $totalPayable - $totalPaid;
+
+                if ($pendingAmount <= 0) continue;
+
                 $result[] = [
                     'user_id'        => $user->id,
                     'name'           => $user->name,

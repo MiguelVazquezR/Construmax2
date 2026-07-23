@@ -1,6 +1,6 @@
 <script setup>
 import { ref, watch, computed } from 'vue';
-import { Link } from '@inertiajs/vue3';
+import { Link, useForm } from '@inertiajs/vue3';
 import { ElMessage } from 'element-plus';
 import { usePermissions } from '@/Composables/usePermissions';
 import axios from 'axios';

@@ -10,7 +10,7 @@
 | Layer | File | Purpose |
 |-------|------|---------|
 | Controller | `CostController.php` | List, show, catalog CRUD, approval, print views |
-| Service | `CostService.php` | Budget listing for costing, catalog details |
+| Service | `CostService.php` | Budget listing for costing; catalog details including technicians, task evidence, ticket media, survey images, concepts |
 | Model | `BudgetCatalog.php` | Versioned catalog header |
 | Model | `BudgetCatalogItem.php` | Line items (materials + labor) |
 | Vue pages | `Costs/Index.vue` | Catalog listing |
@@ -71,7 +71,7 @@ POST /costs/{budget}/catalog/{catalog}/approve      costs.approve-catalog
 - Filters in costs index default to `Pendientes de aprobación`; other options: `Aprobados`, `Todos`, `Sin catálogo`
 
 ### Empeño Fácil mode
-- Activated when the customer ID is 2 (hardcoded)
+- Activated when the customer ID is 2 (hardcoded **on the frontend** — `Costs/Show.vue` checks `customer.id === 2`)
 - Auto-calculates:
   - **Non-installation labor:** 12% of materials subtotal
   - **Labor utility:** 18% of labor subtotal
@@ -131,9 +131,26 @@ POST /costs/{budget}/catalog/{catalog}/approve      costs.approve-catalog
 
 ---
 
+## Service details
+
+### `CostService.getBudgetCatalogDetails()`
+Returns a comprehensive array including:
+- Basic budget info: `id`, `currency`, `exchange_rate`, `description`, `subtotal`
+- Ticket data: `folio`, `name`, `report_number`, `service_type`, `scheduled_start`, `scheduled_end`, `instructions`, `important_note`
+- Nested relationships: `customer`, `contact`, `branch`, `seller`
+- **Technicians:** Resolves user IDs from `ticket.technicians` and `ticket.assistant_technicians` arrays, loads `User` with `technician` relation, returns `id`, `name`, `email`, `profile_photo_url`, `phone`, `level`, `status`, `rating_avg`
+- **Task evidence:** Collects all media across all ticket tasks, sorted by `created_at` desc
+- **Ticket media:** All media uploaded directly to the ticket
+- **Concepts:** Budget concepts with `concept` and `amount`
+- **Survey images:** From the budget's `survey_images` media collection
+- **Catalogs:** All historical catalogs with items, plus `latestCatalog` singled out
+- **Catalog items:** `id`, `type`, `description`, `unit`, `technician`, `hours`, `rate`, `quantity`, `unit_price`, `total`
+
+---
+
 ## Known limitations / cautions
 
-- **Empeño Fácil is hardcoded to customer ID 2:** If the customer ID changes or different customers need this format, the logic needs refactoring
+- **Empeño Fácil is hardcoded to customer ID 2 (frontend):** `Costs/Show.vue` checks `customer.id === 2`. If the customer ID changes or different customers need this format, the logic needs refactoring
 - **No item-level permissions:** All catalog editing is gated by a single `canCreateCatalog` prop
 - **IVA calculation is client-side only:** The 16% IVA is hardcoded in JS — if the rate changes, multiple files need updates
 - **Catalog versioning is append-only:** There's no way to delete a catalog version or revert to a previous one from the UI
