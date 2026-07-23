@@ -81,9 +81,8 @@ function updateFilter(key, value) {
     <!-- Filters -->
     <div class="flex flex-wrap gap-3 mb-4">
       <el-select
-        :model-value="filters.technician_id ?? ''"
+        :model-value="filters.technician_id ? Number(filters.technician_id) : ''"
         filterable
-        :filter-method="(val) => { /* local filtering handled by el-select */ }"
         :loading="techniciansLoading"
         placeholder="Buscar por nombre de técnico"
         class="w-60"

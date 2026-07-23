@@ -9,14 +9,14 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('tickets', function (Blueprint $table) {
-            $table->boolean('has_oce')->default(false)->after('important_note');
+            $table->boolean('has_oc')->default(false)->after('important_note');
         });
     }
 
     public function down(): void
     {
         Schema::table('tickets', function (Blueprint $table) {
-            $table->dropColumn('has_oce');
+            $table->dropColumn('has_oc');
         });
     }
 };

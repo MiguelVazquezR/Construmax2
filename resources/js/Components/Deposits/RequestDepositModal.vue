@@ -1,6 +1,6 @@
 <script setup>
-import { ref, watch, computed, onMounted } from 'vue';
-import { useForm, Link } from '@inertiajs/vue3';
+import { ref, watch, computed } from 'vue';
+import { Link } from '@inertiajs/vue3';
 import { ElMessage } from 'element-plus';
 import { usePermissions } from '@/Composables/usePermissions';
 import axios from 'axios';
@@ -121,14 +121,27 @@ const ticketLabel = computed(() => {
 });
 
 // --- Submit ---
-function submit() {
-    form.post(route('deposits.store'), {
-        onSuccess: () => {
-            ElMessage.success('Depósito programado correctamente.');
-            visible.value = false;
-            emit('saved');
-        },
-    });
+const submitting = ref(false);
+
+async function submit() {
+    submitting.value = true;
+    try {
+        const { data } = await axios.post(route('deposits.store'), form.data(), {
+            headers: { 'Accept': 'application/json' },
+        });
+        ElMessage.success('Depósito programado correctamente.');
+        visible.value = false;
+        emit('saved', data.deposit);
+    } catch (err) {
+        if (err.response?.data?.errors) {
+            const messages = Object.values(err.response.data.errors).flat();
+            ElMessage.error(messages[0] || 'Error al programar el depósito.');
+        } else {
+            ElMessage.error(err.response?.data?.message || 'Error al programar el depósito.');
+        }
+    } finally {
+        submitting.value = false;
+    }
 }
 </script>
 
@@ -264,7 +277,7 @@ function submit() {
             <el-button @click="visible = false">Cancelar</el-button>
             <el-button
                 type="primary"
-                :loading="form.processing"
+                :loading="submitting"
                 :disabled="!form.technician_bank_account_id || !form.deposit_type_id || !form.amount || !form.scheduled_date"
                 @click="submit"
             >

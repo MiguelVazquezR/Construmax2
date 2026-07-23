@@ -228,10 +228,13 @@ class TicketController extends Controller
             'budget.responsible',
             'budget.technicianPayments.technician.technician',
             'budget.technicianPayments.media',
+            'budget.technicianPayments.deposit.media',
             'tasks.assignee', 
             'tasks.media', 
             'media',
             'workAcceptanceReport',
+            'deposits.technician.user',
+            'deposits.depositType',
         ]);
         
         $ticket->append('progress', 'folio'); 
@@ -309,9 +312,9 @@ class TicketController extends Controller
      */
     public function toggleOce(Request $request, Ticket $ticket)
     {
-        $ticket->update(['has_oce' => !$ticket->has_oce]);
+        $ticket->update(['has_oc' => !$ticket->has_oc]);
 
-        $message = $ticket->has_oce ? 'OC marcada como adjunta.' : 'OC desmarcada.';
+        $message = $ticket->has_oc ? 'OC marcada como adjunta.' : 'OC desmarcada.';
 
         // Return Inertia-compatible response (no JSON — Inertia expects a view/redirect)
         back()->with('success', $message);

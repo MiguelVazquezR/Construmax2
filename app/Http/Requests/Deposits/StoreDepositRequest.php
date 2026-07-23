@@ -8,7 +8,7 @@ class StoreDepositRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->can('deposits.create');
+        return true;
     }
 
     public function rules(): array

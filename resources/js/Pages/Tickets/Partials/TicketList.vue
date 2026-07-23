@@ -181,17 +181,17 @@ const deleteTicket = (ticket) => {
 };
 
 const handleToggleOce = (ticket) => {
-    const previousValue = ticket.has_oce;
-    ticket.has_oce = !ticket.has_oce;
+    const previousValue = ticket.has_oc;
+    ticket.has_oc = !ticket.has_oc;
 
     router.put(route('tickets.toggle-oc', ticket.id), {}, {
         preserveScroll: true,
         preserveState: true,
         onSuccess: () => {
-            ElMessage.success(ticket.has_oce ? 'OC marcada como adjunta.' : 'OC desmarcada.');
+            ElMessage.success(ticket.has_oc ? 'OC marcada como adjunta.' : 'OC desmarcada.');
         },
         onError: () => {
-            ticket.has_oce = previousValue;
+            ticket.has_oc = previousValue;
         },
     });
 };
@@ -334,11 +334,11 @@ const handleToggleOce = (ticket) => {
                                     title="Agregar nota importante"
                                 />
                                 <el-tooltip
-                                    :content="scope.row.has_oce ? 'OC adjuntada' : 'OC no adjuntada'"
+                                    :content="scope.row.has_oc ? 'OC adjuntada' : 'OC no adjuntada'"
                                     placement="top"
                                 >
                                     <el-checkbox
-                                        :model-value="scope.row.has_oce"
+                                        :model-value="scope.row.has_oc"
                                         @click.stop
                                         @change="handleToggleOce(scope.row)"
                                     >
