@@ -27,12 +27,15 @@ class BudgetCatalog extends Model
         'total',
         'non_installation_labor',
         'labor_utility',
+        'needs_special_authorization',
+        'transfer_notes',
         'status',
         'approved_by',
         'approved_at',
     ];
 
     protected $casts = [
+        'needs_special_authorization' => 'boolean',
         'approved_at' => 'datetime',
     ];
 

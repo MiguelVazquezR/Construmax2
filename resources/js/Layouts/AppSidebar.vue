@@ -38,6 +38,10 @@ const activeMenu = computed(() => {
 
         // Tutoriales
         if (route().current('tutorials.*')) return 'tutorials.index';
+
+    // Costos especiales
+    if (route().current('special-costs.*')) return 'special-costs.index';
+
     if (route().current('costs.*')) return 'costs.index';
 
     // Tickets
@@ -130,6 +134,14 @@ const activeMenu = computed(() => {
                         <template #title><span>Presupuestos</span></template>
                     </el-menu-item>
                 </Link>
+
+                   <!-- Costos especiales -->
+               <Link v-if="can('special-costs.index')" :href="route('special-costs.index')">
+                   <el-menu-item class="!bg-dark" index="special-costs.index">
+                       <el-icon><ZoomIn/></el-icon>
+                       <template #title><span>Costos especiales</span></template>
+                   </el-menu-item>
+               </Link>
 
                    <!-- Costos -->
                <Link v-if="can('costs.index')" :href="route('costs.index')">

@@ -9,7 +9,7 @@ import MaterialsTable from '@/Components/Costs/MaterialsTable.vue';
 import LaborTable from '@/Components/Costs/LaborTable.vue';
 import EmpenoFacilTotals from '@/Components/Costs/EmpenoFacilTotals.vue';
 
-const props = defineProps({ budget: Object, canCreateCatalog: Boolean, canApprove: Boolean });
+const props = defineProps({ budget: Object, canCreateCatalog: Boolean, canApprove: Boolean, canTransfer: Boolean });
 const { formatCurrency, copyToClipboard } = useCostsHelpers();
 
 const currentVersion = ref(null);
@@ -153,6 +153,37 @@ function submitCatalog() {
         Promise.resolve().then(doSubmit);
     }
 }
+
+// --- Transfer to special costs ---
+const transferDialogVisible = ref(false);
+const transferNotes = ref('');
+
+const openTransferDialog = () => {
+    transferNotes.value = '';
+    transferDialogVisible.value = true;
+};
+
+const submitTransfer = () => {
+    if (!transferNotes.value.trim()) {
+        ElMessage.warning('Por favor escribe una nota explicando el motivo de la transferencia.');
+        return;
+    }
+    router.post(
+        route('costs.transfer-to-special', { budget: props.budget.id, catalog: props.budget.latest_catalog?.id }),
+        { transfer_notes: transferNotes.value },
+        {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => {
+                ElMessage.success('Catálogo transferido a costos especiales para autorización.');
+                transferDialogVisible.value = false;
+            },
+            onError: () => {
+                ElMessage.error('Error al transferir el catálogo.');
+            },
+        }
+    );
+};
 
 function viewCatalogVersion(versionId) {
     const cat = props.budget.catalogs.find(c => c.id === versionId);
@@ -301,11 +332,21 @@ function approveCatalog() {
                                 {{ budget.ticket.important_note }}
                             </p>
                         </div>
-                        <!-- Approve button -->
-                        <div v-if="budget.latest_catalog && !budget.latest_catalog.is_approved && canApprove" class="mt-2">
-                            <el-button type="success" size="small" icon="Check" @click="approveCatalog">
-                                Aprobar catálogo
-                            </el-button>
+                        <!-- Approve & Transfer buttons -->
+                        <div v-if="budget.latest_catalog && !budget.latest_catalog.is_approved" class="mt-2 flex items-center gap-2">
+                            <span
+                                v-if="budget.latest_catalog.needs_special_authorization"
+                                class="text-sm text-orange-600 font-medium bg-orange-50 px-3 py-1 rounded border border-orange-200">
+                                En revisión por Dirección
+                            </span>
+                            <template v-else>
+                                <el-button v-if="canApprove" type="success" size="small" icon="Check" @click="approveCatalog">
+                                    Aprobar catálogo
+                                </el-button>
+                                <el-button v-if="canTransfer" type="warning" size="small" plain @click="openTransferDialog">
+                                    Enviar a costos especiales
+                                </el-button>
+                            </template>
                         </div>
                         <div class="flex items-center gap-2 text-sm text-gray-500 mt-1">
                             <span class="text-gray-400">No. Reporte:</span>
@@ -602,6 +643,25 @@ function approveCatalog() {
                 </div>
             </div>
 
+            <!-- Transfer Dialog -->
+            <el-dialog v-model="transferDialogVisible" title="Enviar a costos especiales" width="500px" @click.stop>
+                <el-form label-position="top">
+                    <el-form-item label="Nota de transferencia" required>
+                        <el-input
+                            v-model="transferNotes"
+                            type="textarea"
+                            :rows="4"
+                            placeholder="Explica por qué este catálogo requiere revisión de Dirección..."
+                            maxlength="2000"
+                            show-word-limit
+                        />
+                    </el-form-item>
+                </el-form>
+                <template #footer>
+                    <el-button @click="transferDialogVisible = false">Cancelar</el-button>
+                    <el-button type="primary" @click="submitTransfer">Enviar a costos especiales</el-button>
+                </template>
+            </el-dialog>
         </div>
     </AppLayout>
 </template>

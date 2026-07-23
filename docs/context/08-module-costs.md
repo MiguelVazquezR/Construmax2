@@ -158,3 +158,100 @@ Returns a comprehensive array including:
 - **No rejection flow:** If a catalog needs changes, users must create a new version — the previous version remains in history but is superseded
 - **Approval is all-or-nothing:** There is no partial approval or per-item approval — the entire catalog is approved at once
 - **`status` field must be present in serialized catalog data:** Views like `Budgets/Show.vue` and `TicketInfo.vue` read `latest_catalog.status` directly — ensure the BudgetCatalog model's `status` column is included in API responses
+
+---
+
+## Special costs authorization (sub-module)
+
+> **Business purpose:** Some catalogs require special review from Dirección (Management) before approval. These catalogs are transferred out of normal "Costos" into "Costos especiales", where only authorized users can approve them or create new versions.
+
+### New fields on `budget_catalogs`
+
+| Column | Type | Default | Purpose |
+|--------|------|---------|---------|
+| `needs_special_authorization` | boolean | `false` | Flag marking the catalog for special authorization |
+| `transfer_notes` | text | nullable | Notes provided at transfer time explaining why Dirección review is needed |
+
+### New permissions
+
+| Permission | Category | Purpose |
+|-----------|---------|---------|
+| `costs.transfer` | Costos | Transfer catalogs from Costs → Costos especiales |
+| `special-costs.index` | Costos especiales | View the special costs module (menu, list, detail) |
+| `special-costs.approve` | Costos especiales | Approve catalogs in the special costs module |
+| `special-costs.create-version` | Costos especiales | Create new catalog versions from the special costs module |
+
+### New routes
+
+| Method | URI | Name |
+|--------|-----|------|
+| POST | `/costs/{budget}/catalog/{catalog}/transfer-to-special` | `costs.transfer-to-special` |
+| GET | `/special-costs` | `special-costs.index` |
+| GET | `/special-costs/{catalog}` | `special-costs.show` |
+| POST | `/special-costs/{catalog}/version` | `special-costs.store-catalog` |
+| POST | `/special-costs/{catalog}/approve` | `special-costs.approve-catalog` |
+
+### New key files
+
+| Layer | File | Purpose |
+|-------|------|---------|
+| Service | `SpecialCosts/SpecialCostService.php` | List pending special catalogs, load catalog details |
+| Controller | `SpecialCostController.php` | index, show, storeCatalog, approveCatalog |
+| Vue pages | `SpecialCosts/Index.vue` | Special catalog list (only pending) |
+| Vue pages | `SpecialCosts/Show.vue` | Special catalog detail with transfer notes + approval |
+| Routes | `routes/web/special-costs.php` | 4 routes |
+
+### Transfer flow
+
+1. User with `costs.transfer` clicks "Enviar a aprobación" in Costs/Index or Costs/Show
+2. Modal requires transfer notes (mandatory, max 2000 chars)
+3. On submit: `BudgetCatalog.needs_special_authorization = true`, `transfer_notes` saved
+4. **Ticket status does NOT change** — stays in its current status (normally "Pendiente de aprobación")
+5. Costs/Index and Costs/Show show an "En revisión por Dirección" badge instead of Approve/Transfer buttons when the catalog was transferred
+
+### Special costs list (`SpecialCosts/Index.vue`)
+
+- Shows only catalogs with `needs_special_authorization = true AND status = pending_approval`
+- Once approved, catalogs disappear from this list
+- Columns: folio, project, customer, branch, version, status, total, transfer date
+- Filters: search, branch
+- **Approve button** in Actions column for users with `special-costs.approve` (confirmation dialog)
+
+### Special costs detail (`SpecialCosts/Show.vue`)
+
+- Mirrors `Costs/Show.vue` structure with customer info, branch, technicians, concepts, catalog editor
+- **Transfer notes banner** in orange, prominently displayed in the header
+- **Approve button** for users with `special-costs.approve`
+- **Version dropdown** to view historical versions
+- Catalog editor enabled only when `canCreateCatalog` and catalog is not yet approved
+- Editing items and clicking "Guardar nueva versión" creates a new `BudgetCatalog` (version N+1)
+
+### Versioning behavior in special costs
+
+- Creating a new version from special costs:
+  - New `BudgetCatalog` created with `version = MAX(version) + 1`
+  - New catalog inherits `needs_special_authorization = true` and `transfer_notes` from the previous one
+  - Previous catalog's `needs_special_authorization` is cleared (`false`) — only the latest version appears in the list
+  - Redirect to the new catalog's detail view automatically (not `back()`)
+
+### Approval behavior in special costs
+
+- Same as regular Costs approval:
+  - `BudgetCatalog.approve()` called → `status = approved`
+  - Ticket status → `Catálogo` (only if it was `Pendiente de aprobación`)
+  - `CatalogApproved` notification dispatched to the seller
+- Redirects to `special-costs.index` after approval (catalog disappears from list)
+- Approved catalogs are immutable — no further editing
+
+### Costs/Show.vue changes for special costs
+
+- When `budget.latest_catalog.needs_special_authorization` is true:
+  - "En revisión por Dirección" badge replaces Approve/Transfer buttons
+  - Transfer button hidden
+
+### Costs/Index.vue changes for special costs
+
+- `CostService.getBudgetsForCosting()` includes `needs_special_authorization` in response
+- When a row has `needs_special_authorization = true` and `catalog_status = pending_approval`:
+  - "En revisión por Dirección" badge replaces Approve button
+  - "Enviar a aprobación" button hidden

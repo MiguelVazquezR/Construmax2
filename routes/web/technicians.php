@@ -22,6 +22,9 @@ Route::middleware([
     Route::delete('technicians/{technician}/bank-accounts/{account}', [TechnicianController::class, 'destroyBankAccount'])->name('technicians.bank-accounts.destroy');
     Route::put('technicians/{technician}/bank-accounts/{account}/favorite', [TechnicianController::class, 'setFavoriteBankAccount'])->name('technicians.bank-accounts.favorite');
 
+    // Soft delete & restore
+    Route::patch('technicians/{id}/restore', [TechnicianController::class, 'restore'])->name('technicians.restore');
+
     Route::resource('technicians', TechnicianController::class);
     
 });
