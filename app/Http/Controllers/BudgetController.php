@@ -167,7 +167,11 @@ class BudgetController extends Controller
             'ticket.tasks.assignee.technician',
             'technicianPayments.media',
             'technicianPayments.technician',
+            'technicianPayments.deposit.media',
             'latestCatalog',
+            'ticket.deposits.technician.user',
+            'ticket.deposits.depositType',
+            'ticket.deposits.media',
         ]);
 
         $budget->append(['total_cost', 'total_paid', 'balance_due', 'total_catalog_cost']);
