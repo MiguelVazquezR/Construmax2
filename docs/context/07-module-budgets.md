@@ -15,7 +15,7 @@
 | Model | `BudgetPayment.php` | Client payment records |
 | Model | `TechnicianPayment.php` | Technician payment records |
 | Vue pages | `Budgets/` | Index (table + kanban), Create, Edit, Show |
-| Vue partials | `Budgets/Partials/` | 11 sub-components |
+| Vue partials | `Budgets/Partials/` | 12 sub-components (`BudgetClientCard`, `BudgetConceptsTable`, `BudgetDetailHeader`, `BudgetFilesSection`, `BudgetFinanceCard`, `BudgetForm`, `BudgetScopeCard`, `BudgetTechniciansSection`, `BudgetTicketCard`, `BulkFileUploadModal`, `Kanban`, `TableList`) |
 | Routes | `routes/web/budgets.php` | 14 routes |
 
 ---
@@ -45,10 +45,12 @@ DELETE /budgets/files/{media}                        budgets.files.destroy
 
 ### Core
 - `ticket_id`: 1:1 with tickets
-- `status`: Borrador → Enviado al cliente → Aprobado → Rechazado → Facturado
+- `status`: Borrador → Enviado al cliente → Aprobado → Rechazado → Facturado (**Note:** `status` on the Budget model is legacy — the real pipeline status lives on the Ticket model. Budget's `$fillable` includes it, but `store()` and `update()` never set it directly.)
 - `currency`: MXN or USD
 - `exchange_rate`: decimal(10,4), used for MXN-equivalent calculations
 - `user_id`: Responsible seller
+- `invoice_date`: date, nullable
+- `invoice_number`: string, nullable
 
 ### Computed attributes
 | Attribute | Formula |
@@ -65,21 +67,24 @@ DELETE /budgets/files/{media}                        budgets.files.destroy
 | Method | What it does |
 |--------|-------------|
 | `index` | List with search, status, user/branch filters; default filtered to current user |
-| `store` | Creates budget + concepts, handles survey images; supports `quick_create` for JSON response from ticket flow |
+| `store` | Creates budget + concepts, handles `survey_images` and `support_files` uploads; supports `quick_create` for JSON response from ticket flow; auto-sets ticket status to `Catálogo` |
 | `show` | Loads with all relations and media for detail tabs |
-| `update` | Updates budget + concepts + images |
+| `update` | Updates budget + concepts + images (deletes and recreates concepts); handles `survey_images` and `support_files` uploads |
 | `storePayment` | Records client payment with proof; auto-marks ticket as "Pagado" when fully paid |
-| `destroyPayment` | Deletes payment, reverts ticket status if needed |
+| `destroyPayment` | Deletes payment; if total paid drops below total cost and ticket was `Pagado`, reverts ticket to `Facturado` |
 | `storeTechnicianPayment` | Records payment to technician (proof mandatory) |
 | `destroyTechnicianPayment` | Deletes technician payment |
-| `storeFile` / `destroyFile` | Additional document management |
-| `bulkUploadFiles` | Upload files to multiple budgets at once |
+| `updateStatus` | **Legacy/deprecated.** Updates the ticket's status. No dedicated route — only callable via `Route::resource`. Comment states: "El estatus ahora lo gestiona el ticket." |
+| `storeFile` / `destroyFile` | Additional document management (`budget_files` collection) |
+| `bulkUploadFiles` | Upload files to multiple budgets at once (`budget_files` collection) |
 
 ---
 
 ## Budget → Ticket status sync
 
-When a budget payment brings the balance to zero → ticket is auto-marked as "Pagado". When a payment is deleted and balance becomes positive again → ticket status reverts.
+When a budget payment brings the balance to zero → ticket is auto-marked as "Pagado". When a payment is deleted and balance becomes positive again → ticket status reverts to "Facturado".
+
+When a budget is created → ticket status is set to "Catálogo" (indicating it needs a cost catalog).
 
 When an invoice is uploaded → budget status becomes "Facturado" and ticket status becomes "Facturado".
 
@@ -135,3 +140,6 @@ Cotización → Presupuesto enviado → Trabajo en proceso → Facturación → 
 - **Technician payments via JSON:** Since technicians are JSON arrays on tickets (not FK relationships), the `BudgetTechniciansSection` must parse these arrays to find external technicians. If technician data structure changes, this breaks.
 - **Payment proof is not always mandatory:** Client payments accept optional proof; technician payments require it.
 - **`total_cost` fallback logic:** Uses catalog total if it exists, otherwise sum of concepts. If both exist and diverge, the catalog version takes precedence.
+- **`Budget.status` is legacy:** The `status` field exists in `$fillable` and the table, but `store()` and `update()` never populate it. The real status pipeline is driven entirely by `Ticket.status`. Do not rely on `Budget.status` for business logic.
+- **`updateStatus()` has no dedicated route:** The method exists in `BudgetController` but is only reachable via the generic `Route::resource` PUT/PATCH. The method comment itself acknowledges status is now managed by the ticket. Consider this deprecated.
+- **`store()` success message bug:** The flash message says `'Presupuesto actualizado correctamente.'` (updated) instead of `'creado'` (created). Budget is created correctly, but the user sees a misleading message.

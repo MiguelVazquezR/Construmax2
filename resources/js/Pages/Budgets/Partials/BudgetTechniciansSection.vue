@@ -2,8 +2,9 @@
 import { ref, computed } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Avatar, Coin } from '@element-plus/icons-vue';
+import { Avatar, Coin, Timer, ZoomIn, Delete, Money } from '@element-plus/icons-vue';
 import RequestDepositModal from '@/Components/Deposits/RequestDepositModal.vue';
+import axios from 'axios';
 
 const props = defineProps({
     budget: Object,
@@ -38,6 +39,13 @@ const openDepositModal = (tech) => {
     showDepositModal.value = true;
 };
 
+const handleDepositSaved = async () => {
+    ElMessage.success('Depósito programado correctamente.');
+    showDepositModal.value = false;
+    router.reload({ only: ['budget'], preserveScroll: true, preserveState: true });
+};
+
+// --- HELPERS ---
 const formatCurrency = (value) => {
     return new Intl.NumberFormat('es-MX', {
         style: 'currency',
@@ -52,6 +60,48 @@ const formatDate = (dateString) => {
     });
 };
 
+const formatDateTime = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleString('es-ES', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: true,
+    });
+};
+
+const getStatusType = (status) => {
+    const map = {
+        pending: 'warning',
+        approved: 'success',
+        completed: 'success',
+        cancelled: 'danger',
+    };
+    return map[status] || 'info';
+};
+
+const getStatusLabel = (status) => {
+    const map = {
+        pending: 'Pendiente',
+        approved: 'Aprobado',
+        completed: 'Completado',
+        cancelled: 'Cancelado',
+    };
+    return map[status] || status;
+};
+
+const depositHasVoucher = (deposit) => {
+    return deposit.media && deposit.media.length > 0;
+};
+
+// --- MONTOS ---
+const totalTechnicianAmount = computed(() => {
+    if (!props.budget.concepts) return 0;
+    return props.budget.concepts
+        .filter(c => c.paid_to_technician)
+        .reduce((sum, c) => sum + parseFloat(c.amount), 0);
+});
+
+// --- TÉCNICOS DATA ---
 const techniciansData = computed(() => {
     const techs = {};
 
@@ -102,23 +152,28 @@ const techniciansData = computed(() => {
         });
     }
 
-    return Object.values(techs).map(tech => ({
-        ...tech,
-        amount_to_pay: totalTechnicianAmount.value,
-        payment_progress: totalTechnicianAmount.value > 0
-            ? Math.min(Math.round((tech.total_paid / totalTechnicianAmount.value) * 100), 100)
-            : 0,
-    }));
+    // 3. Asignar depósitos (no completados) a cada técnico
+    const allDeposits = (props.budget.ticket?.deposits || []).filter(d => d.status !== 'completed');
+
+    return Object.values(techs).map(tech => {
+        const technicianId = tech.user.technician?.id;
+
+        const techDeposits = technicianId
+            ? allDeposits.filter(d => d.technician_id === technicianId)
+            : [];
+
+        return {
+            ...tech,
+            deposits: techDeposits,
+            amount_to_pay: totalTechnicianAmount.value,
+            payment_progress: totalTechnicianAmount.value > 0
+                ? Math.min(Math.round((tech.total_paid / totalTechnicianAmount.value) * 100), 100)
+                : 0,
+        };
+    });
 });
 
-// Monto total de conceptos marcados como pago a técnico
-const totalTechnicianAmount = computed(() => {
-    if (!props.budget.concepts) return 0;
-    return props.budget.concepts
-        .filter(c => c.paid_to_technician)
-        .reduce((sum, c) => sum + parseFloat(c.amount), 0);
-});
-
+// --- ACTIONS ---
 const deleteTechPayment = (paymentId) => {
     ElMessageBox.confirm('¿Eliminar este registro de pago a técnico?', 'Confirmar', {
         type: 'warning',
@@ -127,6 +182,53 @@ const deleteTechPayment = (paymentId) => {
             onSuccess: () => ElMessage.success('Pago eliminado'),
         });
     }).catch(() => {});
+};
+
+const deleteDeposit = async (depositId) => {
+    try {
+        await ElMessageBox.confirm('¿Eliminar este depósito solicitado?', 'Confirmar', {
+            type: 'warning',
+        });
+
+        const { data } = await axios.delete(route('deposits.destroy', depositId), {
+            headers: { 'Accept': 'application/json' },
+        });
+
+        ElMessage.success(data.message || 'Depósito eliminado');
+
+        // Remover localmente sin recargar la página
+        const deposits = props.budget.ticket?.deposits;
+        if (deposits) {
+            const idx = deposits.findIndex(d => d.id === depositId);
+            if (idx !== -1) {
+                deposits.splice(idx, 1);
+            }
+        }
+    } catch (err) {
+        if (err !== 'cancel') {
+            ElMessage.error(err.response?.data?.message || 'Error al eliminar el depósito.');
+        }
+    }
+};
+
+// --- PROOF VIEWER ---
+const proofPreviewVisible = ref(false);
+const proofPreviewUrl = ref('');
+
+const showPaymentProof = (pay) => {
+    if (pay.media && pay.media.length > 0) {
+        proofPreviewUrl.value = pay.media[0].original_url;
+        proofPreviewVisible.value = true;
+    }
+};
+
+const showDepositVoucher = (deposit) => {
+    if (deposit.media && deposit.media.length > 0) {
+        proofPreviewUrl.value = deposit.media[0].original_url;
+        proofPreviewVisible.value = true;
+    } else {
+        ElMessage.info('Este depósito no tiene comprobante.');
+    }
 };
 
 const openPreview = (file) => {
@@ -187,40 +289,81 @@ const openPreview = (file) => {
                     </div>
                 </div>
 
-                <div v-if="tech.payments.length > 0" class="mt-3 bg-gray-50 dark:bg-[#252529] rounded p-3 text-sm">
-                    <p class="text-xs font-bold text-gray-500 mb-2 uppercase">Historial de pagos</p>
-                    <ul class="space-y-2">
-                        <li v-for="pay in tech.payments" :key="pay.id" class="flex justify-between items-center border-b border-gray-200 dark:border-gray-700 last:border-0 pb-1 last:pb-0">
-                            <div class="flex gap-2 items-center">
-                                <span class="font-mono font-bold">{{ formatCurrency(pay.amount) }}</span>
-                                <span class="text-xs text-gray-400">({{ formatDate(pay.payment_date) }})</span>
-                                <el-tag v-if="pay.reference" size="small" type="info" class="scale-90">{{ pay.reference }}</el-tag>
+                <!-- Depósitos solicitados -->
+                <div v-if="tech.deposits.length > 0" class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                    <p class="text-[11px] font-bold text-gray-400 uppercase mb-2 flex items-center gap-1">
+                        <el-icon><Timer /></el-icon> Depósitos solicitados
+                    </p>
+                    <div v-for="dep in tech.deposits" :key="dep.id" class="flex items-center justify-between py-1.5 text-sm border-b border-gray-100 dark:border-gray-800 last:border-0">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2">
+                                <span class="font-bold text-orange-600">{{ formatCurrency(dep.amount) }}</span>
+                                <el-tag :type="getStatusType(dep.status)" size="small" effect="dark">
+                                    {{ getStatusLabel(dep.status) }}
+                                </el-tag>
+                                <span class="text-xs text-gray-400">{{ formatDateTime(dep.created_at) }}</span>
                             </div>
-                            <div class="flex gap-1">
-                                <el-tooltip content="Ver comprobante" placement="top" v-if="pay.media && pay.media.length > 0">
-                                    <el-button circle size="small" icon="Document" @click="openPreview(pay.media[0])" />
-                                </el-tooltip>
-                                <el-button circle size="small" type="danger" plain icon="Delete" @click="deleteTechPayment(pay.id)" />
+                            <div v-if="dep.technician?.user" class="text-xs text-gray-500 mt-0.5">
+                                {{ dep.technician.user.name }}
+                                <template v-if="dep.deposit_type"> — {{ dep.deposit_type.name }}</template>
                             </div>
-                        </li>
-                    </ul>
+                            <p v-if="dep.notes" class="text-xs text-gray-500 mt-0.5 truncate" :title="dep.notes">{{ dep.notes }}</p>
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0">
+                            <el-tooltip v-if="depositHasVoucher(dep)" content="Ver comprobante">
+                                <el-button circle size="small" type="info" plain :icon="ZoomIn" @click="showDepositVoucher(dep)" />
+                            </el-tooltip>
+                            <el-tooltip v-if="dep.status === 'pending'" content="Eliminar depósito">
+                                <el-button circle size="small" type="danger" plain :icon="Delete" @click="deleteDeposit(dep.id)" />
+                            </el-tooltip>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Historial de pagos -->
+                <div v-if="tech.payments.length > 0" class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                    <p class="text-[11px] font-bold text-gray-400 uppercase mb-2">Historial de pagos</p>
+                    <div v-for="pay in tech.payments" :key="pay.id" class="flex items-center justify-between py-1.5 text-sm border-b border-gray-100 dark:border-gray-800 last:border-0">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2">
+                                <span class="font-bold text-green-600">{{ formatCurrency(pay.amount) }}</span>
+                                <span class="text-xs text-gray-400">{{ formatDateTime(pay.created_at) }}</span>
+                                <el-tag v-if="pay.reference" size="small" type="info" class="scale-75">{{ pay.reference }}</el-tag>
+                            </div>
+                            <p v-if="pay.notes" class="text-xs text-gray-500 mt-0.5 truncate" :title="pay.notes">{{ pay.notes }}</p>
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0">
+                            <!-- Comprobante del pago (TechnicianPayment media) -->
+                            <el-tooltip v-if="pay.media?.length" content="Ver comprobante">
+                                <el-button circle size="small" type="info" plain :icon="ZoomIn" @click="showPaymentProof(pay)" />
+                            </el-tooltip>
+                            <!-- Comprobante del depósito asociado (Deposit voucher) -->
+                            <el-tooltip v-if="pay.deposit?.media?.length" content="Ver comprobante de depósito">
+                                <el-button circle size="small" type="warning" plain :icon="Coin" @click="showDepositVoucher(pay.deposit)" />
+                            </el-tooltip>
+                            <el-button circle size="small" type="danger" plain :icon="Delete" @click="deleteTechPayment(pay.id)" />
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <div v-else class="p-8 text-center text-gray-500">
-            <el-icon :size="40" class="mb-2 opacity-50"><User /></el-icon>
+            <el-icon :size="40" class="mb-2 opacity-50"><Money /></el-icon>
             <p>Esta sección es para gestión de pagos de técnicos externos.</p>
             <p class="text-xs mt-1">Si no hay técnicos externos asignados, esta sección estará vacía.</p>
         </div>
     </div>
 
-    <!-- Modal solicitar depósito -->
+    <!-- MODAL SOLICITAR DEPÓSITO -->
     <RequestDepositModal
         v-if="selectedTechForDeposit"
         v-model="showDepositModal"
         :technician="selectedTechForDeposit"
         :ticket="depositTicketInfo"
-        @saved="showDepositModal = false"
+        @saved="handleDepositSaved"
     />
+
+    <!-- VISOR DE COMPROBANTE -->
+    <el-image-viewer v-if="proofPreviewVisible" :url-list="[proofPreviewUrl]" @close="proofPreviewVisible = false" />
 </template>
