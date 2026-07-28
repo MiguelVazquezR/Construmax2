@@ -228,14 +228,6 @@ const pageMinHeight = (pageIdx) => {
                     <p class="text-gray-400">No hay evidencias registradas para este ticket.</p>
                 </div>
             </div>
-
-            <!-- Footer -->
-            <!-- <div class="mt-6 pt-5 border-t border-gray-200 text-center print:mt-4 print:pt-3">
-                <p class="text-xs text-gray-400">
-                    Generado el {{ new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' }) }}
-                </p>
-                <div class="mt-2 h-1 w-16 mx-auto bg-[#f26c17]/60 rounded-full"></div>
-            </div> -->
         </div>
 
         <!-- Reusable PDF instructions dialog -->
