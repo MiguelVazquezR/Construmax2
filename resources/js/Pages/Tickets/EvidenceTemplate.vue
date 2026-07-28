@@ -5,6 +5,19 @@ import PdfInstructionsDialog from '@/Components/PdfInstructionsDialog.vue';
 
 const showPdfInstructions = ref(false);
 
+// Slider index 0-5 maps to: 1, 2, 4, 6, 8, 10 images per page
+const perPageOptions = [1, 2, 4, 6, 8, 10];
+const sliderIndex = ref(2); // default: 4 images per page (index 2)
+
+const imagesPerPage = computed(() => perPageOptions[sliderIndex.value]);
+const sliderMarks = computed(() => {
+    const marks = {};
+    perPageOptions.forEach((val) => {
+        marks[perPageOptions.indexOf(val)] = String(val);
+    });
+    return marks;
+});
+
 const handlePrintModal = () => {
     showPdfInstructions.value = true;
 };
@@ -31,18 +44,75 @@ const getLogoUrl = () => {
     return logo ? logo.original_url : null;
 };
 
-// Tasks with at least one image evidence, in natural order.
-// Within each task, media is already ordered by order_column via the model.
-const tasksWithImages = computed(() => {
+// Flat list of all images across all tasks, enriched with task name
+const flattenedImages = computed(() => {
     if (!props.ticket.tasks) return [];
 
-    return props.ticket.tasks
-        .map(task => ({
-            ...task,
-            images: (task.media || []).filter(m => m.mime_type?.startsWith('image/')),
-        }))
-        .filter(task => task.images.length > 0);
+    const images = [];
+    props.ticket.tasks.forEach(task => {
+        const taskImages = (task.media || []).filter(m => m.mime_type?.startsWith('image/'));
+        taskImages.forEach((img, imgIdx) => {
+            images.push({
+                ...img,
+                taskName: task.name,
+                imgIdx: imgIdx,
+                totalInTask: taskImages.length,
+            });
+        });
+    });
+    return images;
 });
+
+// Group images into pages of N each
+const pages = computed(() => {
+    const chunks = [];
+    const perPage = imagesPerPage.value;
+    for (let i = 0; i < flattenedImages.value.length; i += perPage) {
+        chunks.push(flattenedImages.value.slice(i, i + perPage));
+    }
+    return chunks;
+});
+
+// Grid layout based on images per page
+const gridLayout = computed(() => {
+    const n = imagesPerPage.value;
+    switch (n) {
+        case 1:  return { cols: 1, rows: 1 };
+        case 2:  return { cols: 1, rows: 2 };
+        case 4:  return { cols: 2, rows: 2 };
+        case 6:  return { cols: 2, rows: 3 };
+        case 8:  return { cols: 2, rows: 4 };
+        case 10: return { cols: 2, rows: 5 };
+        default: return { cols: 2, rows: 3 };
+    }
+});
+
+const gridTemplateRows = computed(() => {
+    return `repeat(${gridLayout.value.rows}, minmax(0, 1fr))`;
+});
+
+const gridTemplateCols = computed(() => {
+    return `repeat(${gridLayout.value.cols}, minmax(0, 1fr))`;
+});
+
+// Height of the header block (gray bar + accent line) in print mode, in px
+const HEADER_PRINT_HEIGHT = 120;
+
+const pageHeight = (pageIdx) => {
+    const fullPage = 'calc(297mm - 2cm)';
+    if (pageIdx === 0) {
+        return `calc(297mm - 2cm - ${HEADER_PRINT_HEIGHT}px)`;
+    }
+    return fullPage;
+};
+
+const pageMinHeight = (pageIdx) => {
+    const fullMin = 'calc(100vh - 200px)';
+    if (pageIdx === 0) {
+        return `calc(100vh - 200px - ${HEADER_PRINT_HEIGHT}px)`;
+    }
+    return fullMin;
+};
 </script>
 
 <template>
@@ -50,11 +120,33 @@ const tasksWithImages = computed(() => {
         <Head title="Plantilla de evidencias" />
 
         <!-- Top orange bar -->
-        <div class="h-2 bg-[#f26c17] print:h-1"></div>
+        <div class="h-2 bg-[#f26c17] print:hidden"></div>
 
-        <div class="px-8 py-6 print:px-4 print:py-3">
-            <!-- Print / PDF button (hidden when printing) -->
-            <div class="flex items-center justify-end gap-3 mb-6 print:hidden">
+        <div class="px-8 py-6 print:px-0 print:py-0">
+            <!-- Controls bar (hidden when printing) -->
+            <div class="flex items-center justify-between gap-4 mb-6 print:hidden">
+                <!-- Images per page slider -->
+                <div class="flex items-center gap-4">
+                    <span class="text-sm font-semibold text-gray-600 whitespace-nowrap">Imágenes por hoja</span>
+
+                    <div class="w-56">
+                        <el-slider
+                            v-model="sliderIndex"
+                            :min="0"
+                            :max="5"
+                            :step="1"
+                            :marks="sliderMarks"
+                            :format-tooltip="(idx) => perPageOptions[idx]"
+                            show-stops
+                            size="small"
+                        />
+                    </div>
+
+                    <span class="text-sm text-gray-500 w-6 text-center tabular-nums font-semibold">
+                        {{ imagesPerPage }}
+                    </span>
+                </div>
+
                 <el-button
                     type="primary"
                     color="#f26c17"
@@ -66,7 +158,7 @@ const tasksWithImages = computed(() => {
             </div>
 
             <!-- Header with corporate styling -->
-            <div class="bg-[#7a7a7a] rounded-t-lg px-6 py-5 print:bg-[#7a7a7a] print:px-4 print:py-3">
+            <div class="bg-[#7a7a7a] rounded-t-lg px-6 py-5 print:bg-[#7a7a7a] print:rounded-none print:px-4 print:py-3">
                 <div class="flex items-center gap-5">
                     <div
                         v-if="getLogoUrl()"
@@ -87,59 +179,44 @@ const tasksWithImages = computed(() => {
             </div>
 
             <!-- Thin orange accent line -->
-            <div class="h-1 bg-[#f26c17] print:h-0.5"></div>
+            <div class="h-1 bg-[#f26c17]"></div>
 
-            <!-- Evidence by task -->
-            <div class="mt-6 print:mt-4">
-                <div v-if="tasksWithImages.length > 0">
+            <!-- Evidence pages -->
+            <div class="mt-0">
+                <div v-if="pages.length > 0">
                     <div
-                        v-for="(task, taskIdx) in tasksWithImages"
-                        :key="task.id"
-                        class="mb-8 print:mb-4 break-inside-avoid"
+                        v-for="(page, pageIdx) in pages"
+                        :key="pageIdx"
+                        class="evidence-page print:mb-0"
+                        :class="{ 'page-break': pageIdx < pages.length - 1 }"
+                        :style="{
+                            height: pageHeight(pageIdx),
+                            minHeight: pageMinHeight(pageIdx),
+                        }"
                     >
-                        <!-- Task header -->
-                        <div class="flex items-center gap-3 mb-3 print:mb-1.5">
-                            <span class="flex items-center justify-center w-6 h-6 print:w-5 print:h-5 rounded-full bg-[#f26c17] text-white text-xs print:text-[10px] font-bold shrink-0">
-                                {{ taskIdx + 1 }}
-                            </span>
-                            <h3 class="text-sm print:text-xs font-bold text-[#7a7a7a] uppercase tracking-wide">
-                                {{ task.name }}
-                            </h3>
-                            <span class="text-xs print:text-[10px] text-gray-400">
-                                {{ task.images.length }} {{ task.images.length === 1 ? 'imagen' : 'imágenes' }}
-                            </span>
-                        </div>
-
-                        <!-- Images for this task -->
                         <div
-                            :class="[
-                                'grid gap-4 print:gap-2',
-                                task.images.length === 1
-                                    ? 'grid-cols-1'
-                                    : 'grid-cols-1 sm:grid-cols-3'
-                            ]"
+                            class="grid gap-3 print:gap-2 h-full"
+                            :style="{
+                                gridTemplateColumns: gridTemplateCols,
+                                gridTemplateRows: gridTemplateRows,
+                            }"
                         >
                             <div
-                                v-for="(img, imgIdx) in task.images"
+                                v-for="(img, imgIdx) in page"
                                 :key="img.id"
-                                class="border border-gray-200 rounded-lg overflow-hidden bg-gray-50"
+                                class="border border-gray-200 rounded-lg overflow-hidden bg-gray-50 flex flex-col print:rounded-none print:border-gray-300"
                             >
-                                <div
-                                    :class="[
-                                        'bg-white flex items-center justify-center p-2 print:p-2',
-                                        task.images.length === 1 ? 'min-h-[60vh] print:min-h-[75vh]' : 'h-48 print:h-32'
-                                    ]"
-                                >
+                                <div class="flex-1 bg-white flex items-center justify-center p-3 print:p-2 min-h-0">
                                     <img
                                         :src="img.original_url"
                                         :alt="img.file_name"
                                         class="max-w-full max-h-full object-contain"
                                     />
                                 </div>
-                                <div class="p-2 print:p-1.5 border-t border-gray-200">
-                                    <p class="text-xs print:text-[9px] font-semibold text-[#7a7a7a] truncate">{{ task.name }}</p>
+                                <div class="p-2 print:p-1.5 border-t border-gray-200 shrink-0">
+                                    <p class="text-xs print:text-[9px] font-semibold text-[#7a7a7a] truncate">{{ img.taskName }}</p>
                                     <p class="text-[10px] print:text-[8px] text-gray-400">
-                                        Imagen {{ imgIdx + 1 }} de {{ task.images.length }}
+                                        Imagen {{ img.imgIdx + 1 }} de {{ img.totalInTask }}
                                     </p>
                                 </div>
                             </div>
@@ -147,17 +224,9 @@ const tasksWithImages = computed(() => {
                     </div>
                 </div>
 
-                <div v-else class="text-center py-16">
+                <div v-else class="text-center py-16 print:py-8">
                     <p class="text-gray-400">No hay evidencias registradas para este ticket.</p>
                 </div>
-            </div>
-
-            <!-- Footer -->
-            <div class="mt-10 pt-5 border-t border-gray-200 text-center print:mt-6">
-                <p class="text-xs text-gray-400">
-                    Generado el {{ new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' }) }}
-                </p>
-                <div class="mt-2 h-1 w-16 mx-auto bg-[#f26c17]/60 rounded-full"></div>
             </div>
         </div>
 
@@ -172,6 +241,26 @@ const tasksWithImages = computed(() => {
 <style>
 @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    @page { margin: 1cm; }
+    @page { margin: 1cm; size: A4; }
+
+    .evidence-page {
+        overflow: hidden;
+        break-inside: avoid;
+    }
+
+    .evidence-page.page-break {
+        page-break-after: always;
+    }
+}
+
+/* Screen preview: each page fills the viewport */
+.evidence-page {
+    break-inside: avoid;
+}
+
+@media screen {
+    .evidence-page.page-break {
+        page-break-after: always;
+    }
 }
 </style>
