@@ -9,6 +9,19 @@ const showPdfInstructions = ref(false);
 const perPageOptions = [1, 2, 4, 6, 8, 10];
 const sliderIndex = ref(2); // default: 4 images per page (index 2)
 
+// Track which images should occupy a full page
+const fullPageSet = ref(new Set());
+
+const toggleFullPage = (imgId) => {
+    const newSet = new Set(fullPageSet.value);
+    if (newSet.has(imgId)) {
+        newSet.delete(imgId);
+    } else {
+        newSet.add(imgId);
+    }
+    fullPageSet.value = newSet;
+};
+
 const imagesPerPage = computed(() => perPageOptions[sliderIndex.value]);
 const sliderMarks = computed(() => {
     const marks = {};
@@ -63,14 +76,44 @@ const flattenedImages = computed(() => {
     return images;
 });
 
-// Group images into pages of N each
+// Group images into pages: full-page images get their own page,
+// remaining images are chunked according to the slider
 const pages = computed(() => {
-    const chunks = [];
+    const result = [];
+    const buffer = [];
     const perPage = imagesPerPage.value;
-    for (let i = 0; i < flattenedImages.value.length; i += perPage) {
-        chunks.push(flattenedImages.value.slice(i, i + perPage));
+    const fullIds = fullPageSet.value;
+
+    const flushBuffer = () => {
+        while (buffer.length > 0) {
+            result.push({
+                type: 'grid',
+                images: buffer.splice(0, perPage),
+            });
+        }
+    };
+
+    for (const img of flattenedImages.value) {
+        if (fullIds.has(img.id)) {
+            flushBuffer();
+            result.push({
+                type: 'full',
+                images: [img],
+            });
+        } else {
+            buffer.push(img);
+            if (buffer.length >= perPage) {
+                result.push({
+                    type: 'grid',
+                    images: buffer.splice(0, perPage),
+                });
+            }
+        }
     }
-    return chunks;
+
+    flushBuffer();
+
+    return result;
 });
 
 // Grid layout based on images per page
@@ -94,6 +137,20 @@ const gridTemplateRows = computed(() => {
 const gridTemplateCols = computed(() => {
     return `repeat(${gridLayout.value.cols}, minmax(0, 1fr))`;
 });
+
+// Dynamically determine grid style per page (full-page vs normal grid)
+const pageGridStyle = (page) => {
+    if (page.type === 'full') {
+        return {
+            gridTemplateColumns: '1fr',
+            gridTemplateRows: '1fr',
+        };
+    }
+    return {
+        gridTemplateColumns: gridTemplateCols.value,
+        gridTemplateRows: gridTemplateRows.value,
+    };
+};
 
 // Height of the header block (gray bar + accent line) in print mode, in px
 const HEADER_PRINT_HEIGHT = 120;
@@ -196,22 +253,44 @@ const pageMinHeight = (pageIdx) => {
                     >
                         <div
                             class="grid gap-3 print:gap-2 h-full"
-                            :style="{
-                                gridTemplateColumns: gridTemplateCols,
-                                gridTemplateRows: gridTemplateRows,
-                            }"
+                            :style="pageGridStyle(page)"
                         >
                             <div
-                                v-for="(img, imgIdx) in page"
+                                v-for="img in page.images"
                                 :key="img.id"
-                                class="border border-gray-200 rounded-lg overflow-hidden bg-gray-50 flex flex-col print:rounded-none print:border-gray-300"
+                                class="border border-gray-200 rounded-lg overflow-hidden bg-gray-50 flex flex-col print:rounded-none print:border-gray-300 relative group"
                             >
-                                <div class="flex-1 bg-white flex items-center justify-center p-3 print:p-2 min-h-0">
+                                <div class="flex-1 bg-white flex items-center justify-center p-3 print:p-2 min-h-0 relative">
                                     <img
                                         :src="img.original_url"
                                         :alt="img.file_name"
                                         class="max-w-full max-h-full object-contain"
                                     />
+                                    <!-- Full-page toggle button -->
+                                    <button
+                                        class="absolute top-2 right-2 w-8 h-8 rounded-full shadow-md border flex items-center justify-center transition-all print:hidden focus:outline-none focus:ring-2 focus:ring-[#f26c17]"
+                                        :class="fullPageSet.has(img.id)
+                                            ? 'bg-[#f26c17] border-[#f26c17] text-white opacity-100'
+                                            : 'bg-white/80 hover:bg-white border-gray-200 text-gray-600 opacity-0 group-hover:opacity-100 focus:opacity-100'"
+                                        :title="fullPageSet.has(img.id) ? 'Quitar hoja completa' : 'Hoja completa'"
+                                        @click="toggleFullPage(img.id)"
+                                    >
+                                        <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            class="w-4 h-4"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <polyline points="15 3 21 3 21 9" />
+                                            <polyline points="9 21 3 21 3 15" />
+                                            <line x1="21" y1="3" x2="14" y2="10" />
+                                            <line x1="3" y1="21" x2="10" y2="14" />
+                                        </svg>
+                                    </button>
                                 </div>
                                 <div class="p-2 print:p-1.5 border-t border-gray-200 shrink-0">
                                     <p class="text-xs print:text-[9px] font-semibold text-[#7a7a7a] truncate">{{ img.taskName }}</p>
