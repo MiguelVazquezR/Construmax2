@@ -214,6 +214,16 @@ const pageMinHeight = (pageIdx) => {
                 </el-button>
             </div>
 
+            <!-- Info text about expand feature -->
+            <p class="text-sm text-gray-500 mb-6 print:hidden">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 inline-block align-text-bottom mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="16" x2="12" y2="12" />
+                    <line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
+                Coloca el cursor sobre cualquier imagen y usa el botón <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 inline-block align-text-bottom mx-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg> para expandirla y que abarque toda la hoja. Vuelve a presionarlo para regresarla a su tamaño normal.
+            </p>
+
             <!-- Header with corporate styling -->
             <div class="bg-[#7a7a7a] rounded-t-lg px-6 py-5 print:bg-[#7a7a7a] print:rounded-none print:px-4 print:py-3">
                 <div class="flex items-center gap-5">
