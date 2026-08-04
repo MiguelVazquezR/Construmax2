@@ -85,9 +85,8 @@ class DashboardController extends Controller
 
         if ($user->can('tickets.analytics')) {
             $kpis['ops'] = [
-                'active_tickets' => Ticket::where('status', 'En proceso')->count(),
-                'overdue_tickets' => Ticket::where('status', '!=', 'Completado')
-                    ->where('scheduled_end', '<', $today)->count(),
+                'active_tickets' => Ticket::where('status', 'Proceso de ejecución')->count(),
+                'overdue_tickets' => Ticket::overdue()->count(),
             ];
         }
 

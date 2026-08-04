@@ -44,6 +44,63 @@ class BudgetController extends Controller
         ]);
     }
 
+    /** Devuelve las opciones de presupuestos para la búsqueda remota del modal de carga masiva de archivos. */
+    public function options(Request $request)
+    {
+        $validated = $request->validate([
+            'search' => 'nullable|string|max:255',
+            'customer_id' => 'nullable|integer|exists:customers,id',
+            'limit' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        $search = $validated['search'] ?? null;
+        $limit = $validated['limit'] ?? 50;
+
+        $query = Budget::query()
+            ->with(['ticket.customer:id,name', 'ticket.branch:id,region,country'])
+            ->whereHas('ticket')
+            ->when($validated['customer_id'] ?? null, function ($q, $customerId) {
+                $q->whereHas('ticket', fn ($ticket) => $ticket->where('customer_id', $customerId));
+            })
+            ->when($search, function ($q) use ($search) {
+                $q->where(function ($q) use ($search) {
+                    $q->whereHas('ticket', fn ($ticket) => $ticket->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('ticket.customer', fn ($ticket) => $ticket->where('name', 'like', "%{$search}%"));
+
+                    // Coincide con la parte numérica de un folio (p. ej. "#5-MEX")
+                    $digits = preg_replace('/\D/', '', $search);
+                    if ($digits !== '') {
+                        $q->orWhereHas('ticket', fn ($ticket) => $ticket->where('id', (int) $digits));
+                    }
+                });
+            });
+
+        $total = (clone $query)->count();
+
+        $data = $query
+            ->orderBy('id', 'desc')
+            ->limit($limit)
+            ->get()
+            ->map(fn (Budget $budget) => [
+                'id' => $budget->id,
+                'ticket' => [
+                    'id' => $budget->ticket?->id,
+                    'name' => $budget->ticket?->name,
+                    'folio' => $budget->ticket?->folio,
+                    'customer' => [
+                        'id' => $budget->ticket?->customer?->id,
+                        'name' => $budget->ticket?->customer?->name,
+                    ],
+                ],
+            ])
+            ->values();
+
+        return response()->json([
+            'data' => $data,
+            'total' => $total,
+        ]);
+    }
+
     public function create(Request $request)
     {
         $tickets = Ticket::with(['customer', 'contact', 'branch'])

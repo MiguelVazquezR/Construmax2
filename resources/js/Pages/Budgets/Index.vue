@@ -151,7 +151,7 @@ watch([search, statusFilter, perPage, userFilter, branchFilter], fetchData);
             </el-alert>
             <TableList :budgets="budgets" />
 
-            <BulkFileUploadModal v-model:show="showBulkUploadModal" :budgets="budgets.data" :customers="customers" />
+            <BulkFileUploadModal v-model:show="showBulkUploadModal" :customers="customers" />
 
         </div>
     </AppLayout>

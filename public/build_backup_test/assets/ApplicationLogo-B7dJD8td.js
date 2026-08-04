@@ -1,0 +1,1 @@
+import{_ as o}from"./_plugin-vue_export-helper-DlAUqK2U.js";import{o as t,d as c}from"./app-DekQvf1-.js";const e={},s={src:"/images/logo.webp",alt:"Logo",class:"h-auto w-auto object-contain"};function a(n,r){return t(),c("img",s)}const m=o(e,[["render",a]]);export{m as A};

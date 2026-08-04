@@ -232,4 +232,24 @@ class Ticket extends Model implements HasMedia
               });
         });
     }
+
+    /**
+     * Tickets overdue per the same health criteria used in the tickets
+     * table (TicketList.vue getHealthStatus):
+     *  - Not in a final/cancelled status
+     *  - Has both scheduled_start and scheduled_end
+     *  - Past the end date by a full day (one-day grace period)
+     *  - Not all tasks completed (progress < 100)
+     */
+    public function scopeOverdue(Builder $query): Builder
+    {
+        return $query->whereNotIn('status', ['Finalizado', 'Facturado', 'Pagado', 'Cancelado'])
+            ->whereNotNull('scheduled_start')
+            ->whereNotNull('scheduled_end')
+            ->whereDate('scheduled_end', '<=', now()->subDay()->toDateString())
+            ->where(function ($q) {
+                $q->whereDoesntHave('tasks')
+                  ->orWhereHas('tasks', fn($sub) => $sub->where('status', '!=', 'Completada'));
+            });
+    }
 }

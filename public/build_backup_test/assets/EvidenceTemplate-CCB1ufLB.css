@@ -1,0 +1,1 @@
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:1cm;size:A4}.evidence-page{overflow:hidden;-moz-column-break-inside:avoid;break-inside:avoid}.evidence-page.page-break{page-break-after:always}}.evidence-page{-moz-column-break-inside:avoid;break-inside:avoid}@media screen{.evidence-page.page-break{page-break-after:always}}
