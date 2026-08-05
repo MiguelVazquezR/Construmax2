@@ -449,18 +449,22 @@ class BudgetController extends Controller
         $budgets = Budget::whereIn('id', $validated['budget_ids'])->get();
         $count = 0;
 
-        foreach ($budgets as $budget) {
-            foreach ($request->file('files') as $file) {
-                if (str_starts_with($file->getMimeType(), 'image/')) {
-                    $optimizedPath = $this->imageOptimizer->optimize($file);
-                    $budget->addMedia($optimizedPath)
-                        ->usingFileName($file->getClientOriginalName())
-                        ->toMediaCollection('budget_files');
-                } else {
-                    $budget->addMedia($file)
-                        ->usingFileName($file->getClientOriginalName())
-                        ->toMediaCollection('budget_files');
-                }
+        // Process each file once and attach a fresh copy to every budget.
+        // Spatie deletes the source file after storing it, so each budget
+        // needs its own copy of the (optimized) temp file.
+        foreach ($request->file('files') as $file) {
+            $originalName = $file->getClientOriginalName();
+            $sourcePath = str_starts_with($file->getMimeType(), 'image/')
+                ? $this->imageOptimizer->optimize($file)
+                : $file->getPathname();
+
+            foreach ($budgets as $budget) {
+                $tempCopy = tempnam(sys_get_temp_dir(), 'upl_');
+                copy($sourcePath, $tempCopy);
+
+                $budget->addMedia($tempCopy)
+                    ->usingFileName($originalName)
+                    ->toMediaCollection('budget_files');
                 $count++;
             }
         }
