@@ -10,7 +10,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        DB::statement("ALTER TABLE `technicians` CHANGE `status` `status` ENUM('Activo', 'Inactivo', 'En revisión', 'Vetado', 'Eliminado') DEFAULT 'En revisión' NOT NULL");
+        if (DB::connection()->getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE `technicians` CHANGE `status` `status` ENUM('Activo', 'Inactivo', 'En revisión', 'Vetado', 'Eliminado') DEFAULT 'En revisión' NOT NULL");
+        }
     }
 
     /**
@@ -18,6 +20,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        DB::statement("ALTER TABLE `technicians` CHANGE `status` `status` ENUM('Activo', 'Inactivo', 'En revisión', 'Vetado') DEFAULT 'En revisión' NOT NULL");
+        if (DB::connection()->getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE `technicians` CHANGE `status` `status` ENUM('Activo', 'Inactivo', 'En revisión', 'Vetado') DEFAULT 'En revisión' NOT NULL");
+        }
     }
 };

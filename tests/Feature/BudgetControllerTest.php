@@ -8,6 +8,8 @@ use App\Models\BudgetPayment;
 use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class BudgetControllerTest extends TestCase
@@ -252,6 +254,52 @@ class BudgetControllerTest extends TestCase
         $this->actingAs($this->user)
             ->post(route('budgets.files.store', $budget), [])
             ->assertSessionHasErrors(['files']);
+    }
+
+    // --- bulkUploadFiles ---
+
+    public function test_bulk_upload_files_attaches_non_image_to_every_budget(): void
+    {
+        Storage::fake('public');
+
+        $budgetA = Budget::factory()->create(['user_id' => $this->user->id]);
+        $budgetB = Budget::factory()->create(['user_id' => $this->user->id]);
+
+        $pdf = UploadedFile::fake()->create('document.pdf', 100, 'application/pdf');
+
+        $this->actingAs($this->user)
+            ->post(route('budgets.bulk-upload-files'), [
+                'budget_ids' => [$budgetA->id, $budgetB->id],
+                'files' => [$pdf],
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertCount(1, $budgetA->getMedia('budget_files'));
+        $this->assertCount(1, $budgetB->getMedia('budget_files'));
+        $this->assertSame('document.pdf', $budgetA->getMedia('budget_files')->first()->file_name);
+        $this->assertSame('document.pdf', $budgetB->getMedia('budget_files')->first()->file_name);
+    }
+
+    public function test_bulk_upload_files_attaches_image_to_every_budget(): void
+    {
+        Storage::fake('public');
+
+        $budgetA = Budget::factory()->create(['user_id' => $this->user->id]);
+        $budgetB = Budget::factory()->create(['user_id' => $this->user->id]);
+
+        $image = UploadedFile::fake()->image('photo.jpg');
+
+        $this->actingAs($this->user)
+            ->post(route('budgets.bulk-upload-files'), [
+                'budget_ids' => [$budgetA->id, $budgetB->id],
+                'files' => [$image],
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertCount(1, $budgetA->getMedia('budget_files'));
+        $this->assertCount(1, $budgetB->getMedia('budget_files'));
     }
 
     // --- storeTechnicianPayment ---
