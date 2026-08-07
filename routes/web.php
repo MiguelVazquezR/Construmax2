@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DeployBuildController;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Http;
@@ -74,6 +75,10 @@ Route::middleware([
 
         return back()->with('success', 'Firmas migradas correctamente. Se han liberado los datos base64 de la base de datos.');
     })->name('tools.migrate-signatures');
+
+    // --- Herramienta: Desplegar build de Vite ---
+    Route::get('/tools/deploy-build', [DeployBuildController::class, 'showForm'])->name('tools.deploy-build.form');
+    Route::post('/tools/deploy-build', [DeployBuildController::class, 'deploy'])->name('tools.deploy-build.deploy');
 });
 
 // Importar rutas modulares

@@ -1,11 +1,12 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import { ElMessage } from 'element-plus';
+import axios from 'axios';
+import { debounce } from 'lodash';
 
 const props = defineProps({
     show: Boolean,
-    budgets: Array,
     customers: Array,
 });
 
@@ -22,26 +23,64 @@ const uploadRef = ref(null);
 
 const customerFilter = ref(null);
 
-const validBudgets = computed(() => {
-    if (!props.budgets) return [];
-    return props.budgets.filter(b => b.ticket?.name);
-});
-
-const filteredBudgets = computed(() => {
-    if (!customerFilter.value) return validBudgets.value;
-    return validBudgets.value.filter(b =>
-        b.ticket?.customer?.id === customerFilter.value
-    );
-});
+const options = ref([]);
+const loadedCount = ref(0);
+const total = ref(0);
+const loading = ref(false);
 
 const isFilterActive = computed(() => customerFilter.value !== null);
 
-const totalCount = computed(() => validBudgets.value.length);
+const budgetLabel = (budget) =>
+    `${budget.ticket?.folio || '#' + budget.id} — ${budget.ticket?.name || 'N/A'} (${budget.ticket?.customer?.name || 'N/A'})`;
 
-const selectedCustomerName = computed(() => {
-    if (!customerFilter.value || !props.customers) return '';
-    return props.customers.find(c => c.id === customerFilter.value)?.name || '';
+const fetchOptions = async (search = '', customerId = null) => {
+    loading.value = true;
+    try {
+        const { data } = await axios.get(route('budgets.options'), {
+            params: {
+                search,
+                customer_id: customerId,
+                limit: 50,
+            },
+        });
+
+        loadedCount.value = (data.data || []).length;
+        total.value = data.total || 0;
+
+        // Mantiene visibles los presupuestos ya seleccionados aunque no estén en los resultados actuales
+        const merged = [...(data.data || [])];
+        selectedBudgets.value.forEach((budget) => {
+            if (!merged.some((option) => option.id === budget.id)) {
+                merged.push(budget);
+            }
+        });
+        options.value = merged;
+    } catch {
+        options.value = [];
+        loadedCount.value = 0;
+        total.value = 0;
+    } finally {
+        loading.value = false;
+    }
+};
+
+const remoteMethod = debounce((query) => {
+    fetchOptions(query || '', customerFilter.value);
+}, 300);
+
+watch(customerFilter, (value) => {
+    fetchOptions('', value);
 });
+
+watch(
+    () => props.show,
+    (visible) => {
+        if (visible) {
+            customerFilter.value = null;
+            fetchOptions();
+        }
+    }
+);
 
 const handleFileChange = (file) => {
     form.files.push(file.raw);
@@ -66,7 +105,7 @@ const submit = () => {
         return;
     }
 
-    form.budget_ids = selectedBudgets.value;
+    form.budget_ids = selectedBudgets.value.map((budget) => budget.id);
 
     form.post(route('budgets.bulk-upload-files'), {
         forceFormData: true,
@@ -120,7 +159,7 @@ const close = () => {
                     class="filter-feedback"
                 >
                     <el-tag size="small" type="warning" effect="plain" round>
-                        {{ filteredBudgets.length }} de {{ totalCount }} presupuestos
+                        {{ loadedCount }} de {{ total }} presupuestos
                     </el-tag>
                     <div class="filter-hint">
                         <span class="filter-hint-text">Despliega el selector de abajo para ver los elementos filtrados</span>
@@ -134,16 +173,20 @@ const close = () => {
                     v-model="selectedBudgets"
                     multiple
                     filterable
+                    remote
+                    :remote-method="remoteMethod"
+                    :loading="loading"
                     placeholder="Buscar y seleccionar presupuestos..."
                     class="w-full"
                     collapse-tags
                     collapse-tags-tooltip
+                    value-key="id"
                 >
                     <el-option
-                        v-for="budget in filteredBudgets"
+                        v-for="budget in options"
                         :key="budget.id"
-                        :label="`#${budget.id} — ${budget.ticket?.name || 'N/A'} (${budget.ticket?.customer?.name || 'N/A'})`"
-                        :value="budget.id"
+                        :label="budgetLabel(budget)"
+                        :value="budget"
                     />
                 </el-select>
             </el-form-item>

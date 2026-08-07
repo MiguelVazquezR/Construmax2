@@ -11,6 +11,7 @@ Route::middleware([
     Route::post('/budgets/{budget}/technician-payments', [BudgetController::class, 'storeTechnicianPayment'])->name('budgets.technician-payments.store');
     Route::delete('/technician-payments/{payment}', [BudgetController::class, 'destroyTechnicianPayment'])->name('budgets.technician-payments.destroy');
     // Rutas Resource principales
+    Route::get('/budgets/options', [BudgetController::class, 'options'])->name('budgets.options');
     Route::resource('budgets', BudgetController::class);
 
     // Pagos
