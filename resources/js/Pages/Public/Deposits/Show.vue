@@ -47,6 +47,13 @@ function statusTagType(status) {
   return { pending: 'warning', approved: 'success', completed: 'info' }[status] || 'info'
 }
 
+function recipientLabel(deposit) {
+  if (deposit.is_external) {
+    return deposit.external_beneficiary_name || 'Depósito externo'
+  }
+  return deposit.technician?.user?.name ?? 'N/A'
+}
+
 function onCompleted() {
   showCompleteModal.value = false
   window.location.reload()
@@ -82,10 +89,12 @@ function onCompleted() {
         </div>
       </div>
 
-      <!-- Technician info (only for approved/completed) -->
+      <!-- Technician / Beneficiary info (only for approved/completed) -->
       <div v-if="deposit.status !== 'pending'" class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 mb-6">
-        <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Técnico</h2>
-        <p class="text-lg font-bold text-gray-800 dark:text-white">{{ deposit.technician?.user?.name ?? 'N/A' }}</p>
+        <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+          {{ deposit.is_external ? 'Beneficiario' : 'Técnico' }}
+        </h2>
+        <p class="text-lg font-bold text-gray-800 dark:text-white">{{ recipientLabel(deposit) }}</p>
       </div>
 
       <!-- Deposit details (only for approved/completed) -->
@@ -125,37 +134,71 @@ function onCompleted() {
         class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 mb-6"
       >
         <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Información bancaria</h2>
-        <div class="grid grid-cols-1 gap-3">
-          <div>
-            <span class="text-xs text-gray-400">Banco</span>
-            <p class="font-medium text-gray-800 dark:text-white">{{ deposit.bank_account?.bank_name ?? 'N/A' }}</p>
-          </div>
-          <div v-if="deposit.bank_account?.card_owner_name">
-            <span class="text-xs text-gray-400">Titular de la tarjeta</span>
-            <p class="text-gray-800 dark:text-white">{{ deposit.bank_account?.card_owner_name }}</p>
-          </div>
-          <div>
-            <span class="text-xs text-gray-400">Número de cuenta</span>
-            <p class="font-mono text-gray-800 dark:text-white">{{ deposit.bank_account?.account_number ?? 'N/A' }}</p>
-          </div>
-          <div>
-            <span class="text-xs text-gray-400">CLABE</span>
-            <p class="font-mono text-gray-800 dark:text-white">{{ deposit.bank_account?.clabe ?? 'N/A' }}</p>
-          </div>
-          <div>
-            <span class="text-xs text-gray-400">Número de tarjeta</span>
-            <p class="font-mono text-gray-800 dark:text-white">{{ deposit.bank_account?.card_number ?? 'N/A' }}</p>
-          </div>
-          <div>
-            <span class="text-xs text-gray-400">Número de sucursal</span>
-            <p class="font-mono text-gray-800 dark:text-white">{{ deposit.bank_account?.branch_number ?? 'N/A' }}</p>
-          </div>
-        </div>
 
-        <!-- QR image -->
-        <div v-if="bankQrUrl" class="mt-4 flex justify-center">
-          <img :src="bankQrUrl" alt="QR de pago" class="max-w-[200px] rounded-lg border" />
-        </div>
+        <!-- External deposit bank info -->
+        <template v-if="deposit.is_external">
+          <div class="grid grid-cols-1 gap-3">
+            <div v-if="deposit.external_bank_name">
+              <span class="text-xs text-gray-400">Banco</span>
+              <p class="font-medium text-gray-800 dark:text-white">{{ deposit.external_bank_name }}</p>
+            </div>
+            <div>
+              <span class="text-xs text-gray-400">Titular de la tarjeta</span>
+              <p class="text-gray-800 dark:text-white">{{ deposit.external_beneficiary_name || 'N/A' }}</p>
+            </div>
+            <div v-if="deposit.external_account_number">
+              <span class="text-xs text-gray-400">Número de cuenta</span>
+              <p class="font-mono text-gray-800 dark:text-white">{{ deposit.external_account_number }}</p>
+            </div>
+            <div v-if="deposit.external_clabe">
+              <span class="text-xs text-gray-400">CLABE</span>
+              <p class="font-mono text-gray-800 dark:text-white">{{ deposit.external_clabe }}</p>
+            </div>
+            <div v-if="deposit.external_card_number">
+              <span class="text-xs text-gray-400">Número de tarjeta</span>
+              <p class="font-mono text-gray-800 dark:text-white">{{ deposit.external_card_number }}</p>
+            </div>
+            <div v-if="deposit.external_branch_number">
+              <span class="text-xs text-gray-400">Número de sucursal</span>
+              <p class="font-mono text-gray-800 dark:text-white">{{ deposit.external_branch_number }}</p>
+            </div>
+          </div>
+        </template>
+
+        <!-- Ticket deposit bank info -->
+        <template v-else>
+          <div class="grid grid-cols-1 gap-3">
+            <div>
+              <span class="text-xs text-gray-400">Banco</span>
+              <p class="font-medium text-gray-800 dark:text-white">{{ deposit.bank_account?.bank_name ?? 'N/A' }}</p>
+            </div>
+            <div v-if="deposit.bank_account?.card_owner_name">
+              <span class="text-xs text-gray-400">Titular de la tarjeta</span>
+              <p class="text-gray-800 dark:text-white">{{ deposit.bank_account?.card_owner_name }}</p>
+            </div>
+            <div>
+              <span class="text-xs text-gray-400">Número de cuenta</span>
+              <p class="font-mono text-gray-800 dark:text-white">{{ deposit.bank_account?.account_number ?? 'N/A' }}</p>
+            </div>
+            <div>
+              <span class="text-xs text-gray-400">CLABE</span>
+              <p class="font-mono text-gray-800 dark:text-white">{{ deposit.bank_account?.clabe ?? 'N/A' }}</p>
+            </div>
+            <div>
+              <span class="text-xs text-gray-400">Número de tarjeta</span>
+              <p class="font-mono text-gray-800 dark:text-white">{{ deposit.bank_account?.card_number ?? 'N/A' }}</p>
+            </div>
+            <div>
+              <span class="text-xs text-gray-400">Número de sucursal</span>
+              <p class="font-mono text-gray-800 dark:text-white">{{ deposit.bank_account?.branch_number ?? 'N/A' }}</p>
+            </div>
+          </div>
+
+          <!-- QR image -->
+          <div v-if="bankQrUrl" class="mt-4 flex justify-center">
+            <img :src="bankQrUrl" alt="QR de pago" class="max-w-[200px] rounded-lg border" />
+          </div>
+        </template>
       </div>
 
       <!-- Completed badge -->

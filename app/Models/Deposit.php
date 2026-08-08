@@ -20,6 +20,13 @@ class Deposit extends Model implements HasMedia
         'ticket_id',
         'budget_id',
         'deposit_type_id',
+        'is_external',
+        'external_bank_name',
+        'external_beneficiary_name',
+        'external_account_number',
+        'external_clabe',
+        'external_card_number',
+        'external_branch_number',
         'amount',
         'shift',
         'scheduled_date',
@@ -39,6 +46,7 @@ class Deposit extends Model implements HasMedia
         'scheduled_date' => 'date',
         'amount' => 'decimal:2',
         'commission_amount' => 'decimal:2',
+        'is_external' => 'boolean',
     ];
 
     // --- Relationships ---

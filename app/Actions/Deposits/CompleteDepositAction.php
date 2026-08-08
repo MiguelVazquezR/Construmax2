@@ -14,23 +14,30 @@ class CompleteDepositAction
 
     public function execute(Deposit $deposit, array $data): Deposit
     {
-        // 1. Create the automatic payment to the technician
-        $payment = TechnicianPayment::create([
-            'budget_id'      => $deposit->budget_id,
-            'user_id'        => $deposit->technician->user_id,
-            'amount'         => $deposit->amount,
-            'payment_date'   => now()->toDateString(),
-            'payment_method' => 'Transferencia',
-            'reference'      => "Depósito #{$deposit->id}",
-            'notes'          => 'Generado automáticamente desde el módulo de Depósitos.',
-        ]);
+        // 1. For ticket deposits, create the automatic payment to the technician.
+        //    External deposits have no technician/ticket/budget, so no payment is created.
+        $paymentId = $deposit->technician_payment_id;
+
+        if (! $deposit->is_external && $deposit->technician) {
+            $payment = TechnicianPayment::create([
+                'budget_id'      => $deposit->budget_id,
+                'user_id'        => $deposit->technician->user_id,
+                'amount'         => $deposit->amount,
+                'payment_date'   => now()->toDateString(),
+                'payment_method' => 'Transferencia',
+                'reference'      => "Depósito #{$deposit->id}",
+                'notes'          => 'Generado automáticamente desde el módulo de Depósitos.',
+            ]);
+
+            $paymentId = $payment->id;
+        }
 
         // 2. Save commission and voucher
         $deposit->update([
             'status'                => 'completed',
             'completed_at'          => now(),
             'commission_amount'     => $data['commission_amount'] ?? null,
-            'technician_payment_id' => $payment->id,
+            'technician_payment_id' => $paymentId,
         ]);
 
         if (isset($data['voucher'])) {

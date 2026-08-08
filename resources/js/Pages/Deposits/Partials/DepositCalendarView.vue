@@ -45,6 +45,13 @@ function handleCreateClick(data, event) {
   event.stopPropagation()
   emit('create-with-date', formatDateKey(data.date))
 }
+
+function depositChipLabel(deposit) {
+  if (deposit.is_external) {
+    return deposit.external_beneficiary_name?.split(' ')[0] ?? 'Externo'
+  }
+  return deposit.technician?.user?.name?.split(' ')[0] ?? 'N/A'
+}
 </script>
 
 <template>
@@ -104,7 +111,7 @@ function handleCreateClick(data, event) {
               @click="handleEventClick(deposit)"
             >
               <span class="font-bold">${{ Number(deposit.amount).toFixed(0) }}</span>
-              {{ deposit.technician?.user?.name?.split(' ')[0] ?? 'N/A' }}
+              {{ depositChipLabel(deposit) }}
             </div>
           </div>
         </div>

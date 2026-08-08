@@ -40,6 +40,13 @@ function ticketRoute(ticketId) {
   return route('tickets.show', ticketId)
 }
 
+function depositRecipient(deposit) {
+  if (deposit.is_external) {
+    return deposit.external_beneficiary_name || 'Depósito externo'
+  }
+  return deposit.technician?.user?.name ?? 'N/A'
+}
+
 // --- Technician filter (load all external technicians on mount) ---
 const allTechnicians = ref([])
 const techniciansLoading = ref(false)
@@ -65,6 +72,9 @@ onMounted(() => {
 const getTechLabel = (tech) => {
     let label = tech.user?.name ?? tech.name ?? 'N/A';
     label += tech.is_internal ? ' (Interno)' : ' (Externo)';
+    if (tech.state) {
+        label += ` — ${tech.state}`;
+    }
     return label;
 };
 
@@ -124,10 +134,10 @@ function updateFilter(key, value) {
 
     <!-- Table -->
     <el-table :data="deposits.data" stripe class="w-full">
-      <el-table-column label="Técnico" min-width="160">
+      <el-table-column :label="(deposits.data || []).some(d => d.is_external) ? 'Técnico / Beneficiario' : 'Técnico'" min-width="160">
         <template #default="{ row }">
           <div class="flex items-center gap-2">
-            <span class="font-medium">{{ row.technician?.user?.name ?? 'N/A' }}</span>
+            <span class="font-medium">{{ depositRecipient(row) }}</span>
           </div>
         </template>
       </el-table-column>

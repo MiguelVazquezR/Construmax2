@@ -65,10 +65,17 @@ function openShareForDay(date) {
   showShareDialog.value = true
 }
 
+function depositRecipient(deposit) {
+  if (deposit.is_external) {
+    return deposit.external_beneficiary_name || 'Depósito externo'
+  }
+  return deposit.technician?.user?.name ?? 'N/A'
+}
+
 // --- Approval ---
 function approveDeposit(deposit) {
   ElMessageBox.confirm(
-    `¿Aprobar el depósito para ${deposit.technician?.user?.name} por $${Number(deposit.amount).toFixed(2)}?`,
+    `¿Aprobar el depósito para ${depositRecipient(deposit)} por $${Number(deposit.amount).toFixed(2)}?`,
     'Confirmar aprobación',
     { type: 'info' }
   ).then(() => {
@@ -81,7 +88,7 @@ function approveDeposit(deposit) {
 // --- Delete ---
 function deleteDeposit(deposit) {
   ElMessageBox.confirm(
-    `¿Eliminar el depósito para ${deposit.technician?.user?.name}?`,
+    `¿Eliminar el depósito para ${depositRecipient(deposit)}?`,
     'Confirmar eliminación',
     { type: 'warning' }
   ).then(() => {

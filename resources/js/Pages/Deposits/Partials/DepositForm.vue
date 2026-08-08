@@ -22,6 +22,7 @@ watch(() => props.modelValue, (v) => { dialogVisible.value = v })
 watch(dialogVisible, (v) => emit('update:modelValue', v))
 
 const form = useForm({
+  is_external: props.deposit?.is_external ?? false,
   technician_id: props.deposit?.technician_id ?? null,
   technician_bank_account_id: props.deposit?.technician_bank_account_id ?? null,
   ticket_id: props.deposit?.ticket_id ?? null,
@@ -30,6 +31,12 @@ const form = useForm({
   shift: props.deposit?.shift ?? props.defaultShift,
   scheduled_date: props.deposit?.scheduled_date ?? props.preselectedDate ?? '',
   notes: props.deposit?.notes ?? '',
+  external_bank_name: props.deposit?.external_bank_name ?? '',
+  external_beneficiary_name: props.deposit?.external_beneficiary_name ?? '',
+  external_account_number: props.deposit?.external_account_number ?? '',
+  external_clabe: props.deposit?.external_clabe ?? '',
+  external_card_number: props.deposit?.external_card_number ?? '',
+  external_branch_number: props.deposit?.external_branch_number ?? '',
 })
 
 // --- Deposit types (fetched independently for instant refresh) ---
@@ -82,6 +89,9 @@ const filteredTechnicians = computed(() => {
 const getTechLabel = (tech) => {
     let label = tech.user?.name ?? tech.name ?? 'N/A';
     label += tech.is_internal ? ' (Interno)' : ' (Externo)';
+    if (tech.state) {
+        label += ` — ${tech.state}`;
+    }
     return label;
 };
 
@@ -159,6 +169,28 @@ function onTicketChange(ticketId) {
   ticketPendingAmount.value = ticket?.pending_amount ?? 0
 }
 
+// --- External / ticket toggle ---
+function onOriginChange(value) {
+  // Clear fields that belong to the other origin
+  if (value === true) {
+    form.technician_id = null
+    form.technician_bank_account_id = null
+    form.ticket_id = null
+    selectedTicket.value = null
+    selectedBankAccount.value = null
+    ticketPendingAmount.value = 0
+    bankAccounts.value = []
+    pendingTickets.value = []
+  } else {
+    form.external_bank_name = ''
+    form.external_beneficiary_name = ''
+    form.external_account_number = ''
+    form.external_clabe = ''
+    form.external_card_number = ''
+    form.external_branch_number = ''
+  }
+}
+
 // --- Submission ---
 function submit() {
   if (isEditing.value) {
@@ -189,89 +221,132 @@ function submit() {
     @closed="form.reset()"
   >
     <el-form :model="form" label-position="top">
-      <!-- Technician -->
-      <el-form-item label="Técnico" required>
-        <el-select
-          v-model="form.technician_id"
-          filterable
-          :filter-method="(val) => { technicianSearch = val }"
-          :loading="techniciansLoading"
-          placeholder="Buscar por nombre"
-          class="w-full"
-          @change="onTechnicianChange"
-        >
-          <el-option
-            v-for="tech in filteredTechnicians"
-            :key="tech.id"
-            :label="getTechLabel(tech)"
-            :value="tech.id"
-          />
-        </el-select>
+      <!-- Origin: ticket or external -->
+      <el-form-item label="Origen del depósito" required>
+        <el-radio-group v-model="form.is_external" @change="onOriginChange">
+          <el-radio :value="false">De un ticket</el-radio>
+          <el-radio :value="true">Externo</el-radio>
+        </el-radio-group>
       </el-form-item>
 
-      <!-- Bank account -->
-      <el-form-item label="Cuenta bancaria" required>
-        <el-select
-          v-model="form.technician_bank_account_id"
-          :loading="bankAccountsLoading"
-          :disabled="!form.technician_id || bankAccounts.length === 0"
-          placeholder="Seleccionar cuenta bancaria"
-          class="w-full"
-          @change="onBankAccountChange"
-        >
-          <el-option
-            v-for="acc in bankAccounts"
-            :key="acc.id"
-            :label="`${acc.bank_name ?? 'Banco'} — ...${(acc.account_number ?? acc.card_number ?? '').slice(-4)}${acc.is_favorite ? ' ★' : ''}`"
-            :value="acc.id"
-          />
-        </el-select>
-        <p v-if="form.technician_id && bankAccounts.length === 0 && !bankAccountsLoading" class="text-sm text-gray-400 mt-1">
-          Este técnico no tiene cuentas bancarias registradas.
-        </p>
-        <!-- Bank account detail card -->
-        <div v-if="selectedBankAccount" class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mt-2 text-xs">
-          <div class="grid grid-cols-1 gap-1">
-            <div><span class="text-gray-500">Banco:</span> <span class="font-medium">{{ selectedBankAccount.bank_name ?? 'N/A' }}</span></div>
-            <div v-if="selectedBankAccount.card_owner_name"><span class="text-gray-500">Titular:</span> <span>{{ selectedBankAccount.card_owner_name }}</span></div>
-            <div><span class="text-gray-500">Cuenta:</span> <span class="font-mono">{{ selectedBankAccount.account_number ?? 'N/A' }}</span></div>
-            <div><span class="text-gray-500">CLABE:</span> <span class="font-mono">{{ selectedBankAccount.clabe ?? 'N/A' }}</span></div>
-            <div><span class="text-gray-500">Tarjeta:</span> <span class="font-mono">{{ selectedBankAccount.card_number ?? 'N/A' }}</span></div>
-            <div v-if="selectedBankAccount.branch_number"><span class="text-gray-500">Sucursal:</span> {{ selectedBankAccount.branch_number }}</div>
+      <!-- Ticket deposit fields -->
+      <template v-if="!form.is_external">
+        <!-- Technician -->
+        <el-form-item label="Técnico" required>
+          <el-select
+            v-model="form.technician_id"
+            filterable
+            :filter-method="(val) => { technicianSearch = val }"
+            :loading="techniciansLoading"
+            placeholder="Buscar por nombre"
+            class="w-full"
+            @change="onTechnicianChange"
+          >
+            <el-option
+              v-for="tech in filteredTechnicians"
+              :key="tech.id"
+              :label="getTechLabel(tech)"
+              :value="tech.id"
+            />
+          </el-select>
+        </el-form-item>
+
+        <!-- Bank account -->
+        <el-form-item label="Cuenta bancaria" required>
+          <el-select
+            v-model="form.technician_bank_account_id"
+            :loading="bankAccountsLoading"
+            :disabled="!form.technician_id || bankAccounts.length === 0"
+            placeholder="Seleccionar cuenta bancaria"
+            class="w-full"
+            @change="onBankAccountChange"
+          >
+            <el-option
+              v-for="acc in bankAccounts"
+              :key="acc.id"
+              :label="`${acc.bank_name ?? 'Banco'} — ...${(acc.account_number ?? acc.card_number ?? '').slice(-4)}${acc.is_favorite ? ' ★' : ''}`"
+              :value="acc.id"
+            />
+          </el-select>
+          <p v-if="form.technician_id && bankAccounts.length === 0 && !bankAccountsLoading" class="text-sm text-gray-400 mt-1">
+            Este técnico no tiene cuentas bancarias registradas.
+          </p>
+          <!-- Bank account detail card -->
+          <div v-if="selectedBankAccount" class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mt-2 text-xs">
+            <div class="grid grid-cols-1 gap-1">
+              <div><span class="text-gray-500">Banco:</span> <span class="font-medium">{{ selectedBankAccount.bank_name ?? 'N/A' }}</span></div>
+              <div v-if="selectedBankAccount.card_owner_name"><span class="text-gray-500">Titular:</span> <span>{{ selectedBankAccount.card_owner_name }}</span></div>
+              <div><span class="text-gray-500">Cuenta:</span> <span class="font-mono">{{ selectedBankAccount.account_number ?? 'N/A' }}</span></div>
+              <div><span class="text-gray-500">CLABE:</span> <span class="font-mono">{{ selectedBankAccount.clabe ?? 'N/A' }}</span></div>
+              <div><span class="text-gray-500">Tarjeta:</span> <span class="font-mono">{{ selectedBankAccount.card_number ?? 'N/A' }}</span></div>
+              <div v-if="selectedBankAccount.branch_number"><span class="text-gray-500">Sucursal:</span> {{ selectedBankAccount.branch_number }}</div>
+            </div>
           </div>
-        </div>
-      </el-form-item>
+        </el-form-item>
 
-      <!-- Ticket -->
-      <el-form-item label="Ticket" required>
-        <el-select
-          v-model="form.ticket_id"
-          :loading="ticketsLoading"
-          :disabled="!form.technician_id || pendingTickets.length === 0"
-          placeholder="Seleccionar ticket"
-          class="w-full"
-          @change="onTicketChange"
-        >
-          <el-option
-            v-for="ticket in pendingTickets"
-            :key="ticket.id"
-            :label="`${ticket.folio} — ${ticket.customer_name} (Pendiente: $${Number(ticket.pending_amount).toFixed(2)})`"
-            :value="ticket.id"
-          />
-        </el-select>
-        <p v-if="form.technician_id && pendingTickets.length === 0 && !ticketsLoading" class="text-sm text-gray-400 mt-1">
-          Este técnico no tiene pagos pendientes.
+        <!-- Ticket -->
+        <el-form-item label="Ticket" required>
+          <el-select
+            v-model="form.ticket_id"
+            :loading="ticketsLoading"
+            :disabled="!form.technician_id || pendingTickets.length === 0"
+            placeholder="Seleccionar ticket"
+            class="w-full"
+            @change="onTicketChange"
+          >
+            <el-option
+              v-for="ticket in pendingTickets"
+              :key="ticket.id"
+              :label="`${ticket.folio} — ${ticket.customer_name} (Pendiente: $${Number(ticket.pending_amount).toFixed(2)})`"
+              :value="ticket.id"
+            />
+          </el-select>
+          <p v-if="form.technician_id && pendingTickets.length === 0 && !ticketsLoading" class="text-sm text-gray-400 mt-1">
+            Este técnico no tiene pagos pendientes.
+          </p>
+        </el-form-item>
+
+        <!-- Ticket summary card -->
+        <div v-if="selectedTicket" class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 mb-4 text-sm">
+          <div class="flex justify-between">
+            <span class="font-semibold">{{ selectedTicket.folio }}</span>
+            <span>{{ selectedTicket.customer_name }}</span>
+          </div>
+          <div class="text-gray-500 mt-1">Monto pendiente: ${{ Number(selectedTicket.pending_amount).toFixed(2) }}</div>
+        </div>
+      </template>
+
+      <!-- External deposit fields -->
+      <template v-if="form.is_external">
+        <el-form-item label="Beneficiario" required>
+          <el-input v-model="form.external_beneficiary_name" placeholder="Nombre del beneficiario" class="w-full" />
+        </el-form-item>
+
+        <el-form-item label="Banco">
+          <el-input v-model="form.external_bank_name" placeholder="Nombre del banco (opcional)" class="w-full" />
+        </el-form-item>
+
+        <div class="grid grid-cols-2 gap-4">
+          <el-form-item label="Número de cuenta">
+            <el-input v-model="form.external_account_number" placeholder="Número de cuenta" class="w-full" />
+          </el-form-item>
+
+          <el-form-item label="CLABE">
+            <el-input v-model="form.external_clabe" placeholder="CLABE" class="w-full" />
+          </el-form-item>
+
+          <el-form-item label="Número de tarjeta">
+            <el-input v-model="form.external_card_number" placeholder="Número de tarjeta" class="w-full" />
+          </el-form-item>
+
+          <el-form-item label="Sucursal">
+            <el-input v-model="form.external_branch_number" placeholder="Número de sucursal (opcional)" class="w-full" />
+          </el-form-item>
+        </div>
+        <p class="text-xs text-gray-400 -mt-2 mb-4">
+          Se requiere al menos un número de cuenta, CLABE o tarjeta.
         </p>
-      </el-form-item>
-
-      <!-- Ticket summary card -->
-      <div v-if="selectedTicket" class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 mb-4 text-sm">
-        <div class="flex justify-between">
-          <span class="font-semibold">{{ selectedTicket.folio }}</span>
-          <span>{{ selectedTicket.customer_name }}</span>
-        </div>
-        <div class="text-gray-500 mt-1">Monto pendiente: ${{ Number(selectedTicket.pending_amount).toFixed(2) }}</div>
-      </div>
+      </template>
 
       <!-- Amount -->
       <el-form-item label="Monto" required>
@@ -283,7 +358,7 @@ function submit() {
           class="w-full"
           placeholder="0.00"
         />
-        <p v-if="selectedTicket && Number(form.amount) > ticketPendingAmount" class="text-red-500 text-xs mt-1">
+        <p v-if="!form.is_external && selectedTicket && Number(form.amount) > ticketPendingAmount" class="text-red-500 text-xs mt-1">
           Advertencia: este monto excede el saldo pendiente de ${{ Number(ticketPendingAmount).toFixed(2) }} para este técnico.
         </p>
       </el-form-item>
@@ -325,7 +400,10 @@ function submit() {
         type="primary"
         :loading="form.processing"
         @click="submit"
-        :disabled="!form.technician_id || !form.technician_bank_account_id || !form.ticket_id || !form.deposit_type_id || !form.amount || !form.scheduled_date"
+        :disabled="
+          !form.deposit_type_id || !form.amount || !form.scheduled_date ||
+          (form.is_external ? !form.external_beneficiary_name || (!form.external_account_number && !form.external_clabe && !form.external_card_number) : !form.technician_id || !form.technician_bank_account_id || !form.ticket_id)
+        "
       >
         {{ isEditing ? 'Guardar cambios' : 'Programar depósito' }}
       </el-button>

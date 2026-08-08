@@ -21,15 +21,25 @@ class DepositPendingApproval extends Notification
 
     public function toArray(object $notifiable): array
     {
+        if ($this->deposit->is_external) {
+            $recipient = $this->deposit->external_beneficiary_name ?: 'Depósito externo';
+            $title     = 'Nuevo depósito externo pendiente de aprobación';
+            $message   = "Depósito externo para {$recipient} por $" . number_format($this->deposit->amount, 2);
+        } else {
+            $recipient = $this->deposit->technician?->user?->name ?: 'N/A';
+            $title     = 'Nuevo depósito pendiente de aprobación';
+            $message   = "Depósito para {$recipient} por $" . number_format($this->deposit->amount, 2);
+        }
+
         return [
             'deposit_id'   => $this->deposit->id,
-            'technician'   => $this->deposit->technician->user->name,
+            'technician'   => $recipient,
             'amount'       => number_format($this->deposit->amount, 2),
             'type'         => 'deposit.pending-approval',
             'route'        => 'deposits.index',
             'route_params' => [],
-            'title'        => 'Nuevo depósito pendiente de aprobación',
-            'message'      => "Depósito para {$this->deposit->technician->user->name} por $" . number_format($this->deposit->amount, 2),
+            'title'        => $title,
+            'message'      => $message,
         ];
     }
 }

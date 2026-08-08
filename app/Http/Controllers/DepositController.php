@@ -96,7 +96,13 @@ class DepositController extends Controller
     {
         $data = $request->validated();
         $data['created_by'] = $request->user()->id;
-        $data['budget_id'] = \App\Models\Ticket::find($data['ticket_id'])->budget->id;
+
+        // Resolve budget only for ticket deposits; external deposits have no ticket/budget
+        if (! empty($data['is_external']) || empty($data['ticket_id'])) {
+            $data['budget_id'] = null;
+        } else {
+            $data['budget_id'] = \App\Models\Ticket::find($data['ticket_id'])->budget->id;
+        }
 
         $deposit = Deposit::create($data);
 
@@ -125,7 +131,13 @@ class DepositController extends Controller
         }
 
         $data = $request->validated();
-        $data['budget_id'] = \App\Models\Ticket::find($data['ticket_id'])->budget->id;
+
+        // Resolve budget only for ticket deposits; external deposits have no ticket/budget
+        if (! empty($data['is_external']) || empty($data['ticket_id'])) {
+            $data['budget_id'] = null;
+        } else {
+            $data['budget_id'] = \App\Models\Ticket::find($data['ticket_id'])->budget->id;
+        }
 
         $deposit->update($data);
 
