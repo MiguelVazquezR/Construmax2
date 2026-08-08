@@ -1,4 +1,5 @@
 <script setup>
+import { ref, reactive, computed } from 'vue';
 import { 
     User, 
     MapLocation, 
@@ -6,11 +7,14 @@ import {
     UploadFilled,
     Tools,
     Plus,
-    Camera
+    Camera,
+    Setting
 } from '@element-plus/icons-vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import axios from 'axios';
 import BankAccountsTab from './BankAccountsTab.vue';
 
-defineProps({
+const props = defineProps({
     form: {
         type: Object,
         required: true
@@ -26,33 +30,113 @@ defineProps({
     technician: {
         type: Object,
         default: null
+    },
+    availableSpecialties: {
+        type: Array,
+        default: () => []
     }
 });
 
 defineEmits(['photo-change', 'tax-file-change', 'tax-file-remove']);
 
-const commonSpecialties = [
-    'Electricidad baja tensión',
-    'Electricidad alta tensión',
-    'Plomería / Fontanería',
-    'Aire acondicionado (HVAC)',
-    'Tablaroca y acabados',
-    'Pintura general',
-    'Impermeabilización',
-    'Albañilería',
-    'Herrería y soldadura',
-    'Vidrio y aluminio',
-    'Redes y voz/datos',
-    'Cerrajería',
-    'Limpieza industrial',
-    'Carpintería',
-    'Pisos y azulejos',
-    'Jardinería',
-    'Fumigación y plagas',
-    'Instalación de cámaras (CCTV)',
-    'Domótica',
-    'Mantenimiento de elevadores'
-];
+// --- SPECIALTY MANAGEMENT ---
+const showSpecialtyModal = ref(false);
+const editingSpecialty = ref(null);
+const savingSpecialty = ref(false);
+const loadingSpecialties = ref(false);
+const specialtyForm = reactive({
+    name: '',
+});
+const specialtyFormRef = ref(null);
+
+const specialtyRules = reactive({
+    name: [{ required: true, message: 'El nombre es requerido', trigger: 'blur' }],
+});
+
+// Plain strings shown as options in the select (instant reactivity, no page reload)
+const localSpecialties = ref([...props.availableSpecialties]);
+
+// Objects {id, name} shown in the management modal list
+const specialtyItems = ref([]);
+
+const sortedSpecialties = computed(() => {
+    return [...localSpecialties.value].sort((a, b) => String(a).localeCompare(String(b)));
+});
+
+const openSpecialtyModal = async (specialty = null) => {
+    editingSpecialty.value = specialty;
+    specialtyForm.name = specialty ? specialty.name : '';
+    if (specialtyFormRef.value) specialtyFormRef.value.clearValidate();
+    showSpecialtyModal.value = true;
+
+    // Fetch the full catalog (with ids) from the database so the list is fresh
+    loadingSpecialties.value = true;
+    try {
+        const { data } = await axios.get(route('technician-specialties.index'));
+        specialtyItems.value = Array.isArray(data) ? data : (data?.specialties || []);
+    } catch (err) {
+        ElMessage.error(err.response?.data?.message || 'Error al cargar las especialidades.');
+    } finally {
+        loadingSpecialties.value = false;
+    }
+};
+
+const saveSpecialty = async () => {
+    if (!specialtyFormRef.value) return;
+    try {
+        await specialtyFormRef.value.validate();
+    } catch {
+        return;
+    }
+
+    savingSpecialty.value = true;
+
+    try {
+        if (editingSpecialty.value) {
+            const { data } = await axios.put(route('technician-specialties.update', { technicianSpecialty: editingSpecialty.value.id }), { name: specialtyForm.name });
+            const updated = data.specialty;
+            // Update the select options instantly
+            const idx = localSpecialties.value.findIndex(s => String(s) === String(editingSpecialty.value.name));
+            if (idx !== -1) localSpecialties.value[idx] = updated.name;
+            // Update the modal list
+            const itemIdx = specialtyItems.value.findIndex(s => s.id === updated.id);
+            if (itemIdx !== -1) specialtyItems.value[itemIdx] = updated;
+            // Keep the selected values in sync if the edited specialty was selected
+            const formIdx = props.form.specialties.findIndex(s => String(s) === String(editingSpecialty.value.name));
+            if (formIdx !== -1) props.form.specialties[formIdx] = updated.name;
+            ElMessage.success('Especialidad actualizada.');
+        } else {
+            const { data } = await axios.post(route('technician-specialties.store'), { name: specialtyForm.name });
+            localSpecialties.value = [...localSpecialties.value, data.specialty.name];
+            specialtyItems.value = [...specialtyItems.value, { ...data.specialty, is_active: true }];
+            ElMessage.success('Especialidad creada.');
+        }
+        showSpecialtyModal.value = false;
+    } catch (err) {
+        ElMessage.error(err.response?.data?.message || 'Error al guardar la especialidad.');
+    } finally {
+        savingSpecialty.value = false;
+    }
+};
+
+const deleteSpecialty = (specialty) => {
+    ElMessageBox.confirm(
+        `¿Estás seguro de eliminar "${specialty.name}"?`,
+        'Eliminar especialidad',
+        { confirmButtonText: 'Eliminar', cancelButtonText: 'Cancelar', type: 'warning' }
+    ).then(async () => {
+        try {
+            await axios.delete(route('technician-specialties.destroy', { technicianSpecialty: specialty.id }));
+            // Remove from the select options instantly
+            localSpecialties.value = localSpecialties.value.filter(s => String(s) !== String(specialty.name));
+            // Remove from the modal list
+            specialtyItems.value = specialtyItems.value.filter(s => s.id !== specialty.id);
+            ElMessage.success('Especialidad eliminada.');
+        } catch (err) {
+            ElMessage.error(err.response?.data?.message || 'Error al eliminar la especialidad.');
+        }
+    }).catch(() => {});
+};
 
 const mexicoStates = [
     'Aguascalientes', 'Baja California', 'Baja California Sur', 'Campeche', 'Chiapas', 'Chihuahua',
@@ -185,7 +269,24 @@ const mexicoStates = [
 
                     <el-divider class="md:col-span-2" />
 
-                    <el-form-item label="Especialidades y habilidades" prop="specialties" class="md:col-span-2">
+                    <el-form-item prop="specialties" class="md:col-span-2">
+                        <template #label>
+                            <div class="flex items-center gap-2">
+                                <span>Especialidades y habilidades</span>
+                                <el-tooltip content="Gestionar catálogo de especialidades" placement="top">
+                                    <el-button
+                                        size="small"
+                                        circle
+                                        plain
+                                        type="primary"
+                                        class="!w-6 !h-6"
+                                        @click="openSpecialtyModal()"
+                                    >
+                                        <el-icon><Setting /></el-icon>
+                                    </el-button>
+                                </el-tooltip>
+                            </div>
+                        </template>
                         <el-select
                             v-model="form.specialties"
                             multiple
@@ -197,7 +298,7 @@ const mexicoStates = [
                         >
                             <template #prefix><el-icon><Tools /></el-icon></template>
                             <el-option
-                                v-for="item in commonSpecialties"
+                                v-for="item in sortedSpecialties"
                                 :key="item"
                                 :label="item"
                                 :value="item"
@@ -292,6 +393,66 @@ const mexicoStates = [
             </div>
 
         </div>
+
+        <!-- Modal: Gestión de especialidades y habilidades -->
+        <el-dialog
+            v-model="showSpecialtyModal"
+            :title="editingSpecialty ? 'Editar especialidad' : 'Nueva especialidad'"
+            width="500px"
+            destroy-on-close
+        >
+            <el-form
+                ref="specialtyFormRef"
+                :model="specialtyForm"
+                :rules="specialtyRules"
+                label-position="top"
+                @submit.prevent="saveSpecialty"
+            >
+                <el-form-item label="Nombre" prop="name">
+                    <el-input v-model="specialtyForm.name" placeholder="Ej. Instalación de paneles solares" />
+                </el-form-item>
+            </el-form>
+
+            <!-- Existing specialties list -->
+            <div class="mt-6 border-t border-gray-100 dark:border-gray-700 pt-4">
+                <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Especialidades existentes</h4>
+                <div v-loading="loadingSpecialties" class="space-y-2 max-h-60 overflow-y-auto min-h-[60px]">
+                    <div
+                        v-for="item in specialtyItems"
+                        :key="item.id"
+                        class="flex items-center justify-between p-2 rounded-lg border border-gray-100 dark:border-gray-700"
+                    >
+                        <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ item.name }}</span>
+                        <div class="flex items-center gap-1">
+                            <el-button
+                                size="small"
+                                type="primary"
+                                plain
+                                @click="openSpecialtyModal(item)"
+                            >
+                                Editar
+                            </el-button>
+                            <el-button
+                                size="small"
+                                type="danger"
+                                plain
+                                @click="deleteSpecialty(item)"
+                            >
+                                Eliminar
+                            </el-button>
+                        </div>
+                    </div>
+                    <el-empty v-if="!loadingSpecialties && specialtyItems.length === 0" description="Sin especialidades aún" :image-size="40" />
+                </div>
+            </div>
+
+            <template #footer>
+                <el-button @click="showSpecialtyModal = false">Cancelar</el-button>
+                <el-button type="primary" color="#f26c17" @click="saveSpecialty" :loading="savingSpecialty">
+                    {{ editingSpecialty ? 'Actualizar' : 'Crear' }}
+                </el-button>
+            </template>
+        </el-dialog>
     </div>
 </template>
 

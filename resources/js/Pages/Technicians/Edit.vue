@@ -8,6 +8,10 @@ import TechnicianForm from './Partials/TechnicianForm.vue'; // Nuevo componente
 
 const props = defineProps({
     technician: Object,
+    availableSpecialties: {
+        type: Array,
+        default: () => []
+    }
 });
 
 const formRef = ref();
@@ -155,6 +159,7 @@ const submit = () => {
                     :photo-preview="photoPreview"
                     :is-edit="true"
                     :technician="technician"
+                    :available-specialties="availableSpecialties"
                     @photo-change="handlePhotoChange"
                     @tax-file-change="handleTaxFileChange"
                     @tax-file-remove="handleTaxFileRemove"

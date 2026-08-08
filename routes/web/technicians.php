@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\TechnicianController;
+use App\Http\Controllers\TechnicianSpecialtyController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware([
@@ -10,6 +11,12 @@ Route::middleware([
 ])->group(function () {
     // Rutas específicas para acciones AJAX/Parciales
     Route::post('technicians/quick', [TechnicianController::class, 'quickStore'])->name('technicians.quick-store');
+
+    // Technician specialties catalog (AJAX)
+    Route::get('technician-specialties', [TechnicianSpecialtyController::class, 'index'])->name('technician-specialties.index');
+    Route::post('technician-specialties', [TechnicianSpecialtyController::class, 'store'])->name('technician-specialties.store');
+    Route::put('technician-specialties/{technicianSpecialty}', [TechnicianSpecialtyController::class, 'update'])->name('technician-specialties.update');
+    Route::delete('technician-specialties/{technicianSpecialty}', [TechnicianSpecialtyController::class, 'destroy'])->name('technician-specialties.destroy');
     
     // Rutas específicas para acciones AJAX/Parciales
     Route::put('technicians/{technician}/rating', [TechnicianController::class, 'updateRating'])->name('technicians.update-rating');

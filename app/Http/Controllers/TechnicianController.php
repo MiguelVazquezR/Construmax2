@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Technician;
 use App\Models\TechnicianBankAccount;
+use App\Models\TechnicianSpecialty;
 use App\Models\User;
 use App\Models\Ticket;
 use App\Models\TechnicianPayment;
@@ -55,7 +56,7 @@ class TechnicianController extends Controller
             ->orderBy('state')
             ->pluck('state');
 
-        $specialties = Technician::SPECIALTIES;
+        $specialties = TechnicianSpecialty::active()->orderBy('name')->pluck('name');
 
         return Inertia::render('Technicians/Index', [
             'technicians' => $technicians,
@@ -69,7 +70,7 @@ class TechnicianController extends Controller
     {
         // Pasamos las especialidades también al formulario de creación si lo necesitas
         return Inertia::render('Technicians/Create', [
-            'availableSpecialties' => Technician::SPECIALTIES
+            'availableSpecialties' => TechnicianSpecialty::active()->orderBy('name')->pluck('name')
         ]);
     }
 
@@ -206,7 +207,7 @@ class TechnicianController extends Controller
     {
         return Inertia::render('Technicians/Edit', [
             'technician' => $technician->load(['user', 'bankAccounts.media']),
-            'availableSpecialties' => Technician::SPECIALTIES
+            'availableSpecialties' => TechnicianSpecialty::active()->orderBy('name')->pluck('name')
         ]);
     }
 
