@@ -15,7 +15,18 @@ class CostService
                     $q->where('name', 'like', '%' . $search . '%')
                         ->orWhereHas('customer', function ($q) use ($search) {
                             $q->where('name', 'like', '%' . $search . '%');
+                        })
+                        // Search by folio location codes (folio format: #{id}-{region}-{country})
+                        ->orWhereHas('branch', function ($q) use ($search) {
+                            $q->where('region', 'like', '%' . $search . '%')
+                                ->orWhere('country', 'like', '%' . $search . '%');
                         });
+
+                    // Search by folio number (the id portion of the folio)
+                    $folioDigits = preg_replace('/\D/', '', $search);
+                    if ($folioDigits !== '') {
+                        $q->orWhere('id', 'like', '%' . $folioDigits . '%');
+                    }
                 });
             })
             ->when(true, function ($query) use ($filters) {

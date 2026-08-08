@@ -125,6 +125,139 @@ class BudgetControllerTest extends TestCase
             ->assertJsonStructure(['budget', 'message']);
     }
 
+    public function test_store_moves_ticket_to_catalogo_by_default(): void
+    {
+        $ticket = Ticket::factory()->create(['status' => 'Levantamiento']);
+
+        $data = [
+            'ticket_id' => $ticket->id,
+            'description' => 'Full budget',
+            'currency' => 'MXN',
+            'exchange_rate' => 1.0000,
+            'user_id' => $this->user->id,
+            'concepts' => [
+                ['concept' => 'Material', 'amount' => 1000],
+            ],
+        ];
+
+        $this->actingAs($this->user)
+            ->post(route('budgets.store'), $data)
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket->id,
+            'status' => 'Catálogo',
+        ]);
+    }
+
+    public function test_store_with_send_to_costs_false_keeps_ticket_status(): void
+    {
+        $ticket = Ticket::factory()->create(['status' => 'Levantamiento']);
+
+        $data = [
+            'ticket_id' => $ticket->id,
+            'description' => 'Survey budget',
+            'currency' => 'MXN',
+            'exchange_rate' => 1.0000,
+            'user_id' => $this->user->id,
+            'concepts' => [
+                ['concept' => 'Levantamiento', 'amount' => 500],
+            ],
+            'send_to_costs' => false,
+        ];
+
+        $this->actingAs($this->user)
+            ->post(route('budgets.store'), $data)
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket->id,
+            'status' => 'Levantamiento',
+        ]);
+    }
+
+    public function test_store_with_send_to_costs_true_moves_ticket_to_catalogo(): void
+    {
+        $ticket = Ticket::factory()->create(['status' => 'Levantamiento']);
+
+        $data = [
+            'ticket_id' => $ticket->id,
+            'description' => 'Complete budget',
+            'currency' => 'MXN',
+            'exchange_rate' => 1.0000,
+            'user_id' => $this->user->id,
+            'concepts' => [
+                ['concept' => 'Material', 'amount' => 1000],
+            ],
+            'send_to_costs' => true,
+        ];
+
+        $this->actingAs($this->user)
+            ->post(route('budgets.store'), $data)
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket->id,
+            'status' => 'Catálogo',
+        ]);
+    }
+
+    public function test_update_with_send_to_costs_false_keeps_ticket_status(): void
+    {
+        $budget = Budget::factory()->create(['user_id' => $this->user->id]);
+        $ticket = $budget->ticket;
+        $ticket->update(['status' => 'Proceso de ejecución']);
+
+        $data = [
+            'ticket_id' => $budget->ticket_id,
+            'description' => 'Updated survey budget',
+            'currency' => 'MXN',
+            'exchange_rate' => 1.0000,
+            'user_id' => $this->user->id,
+            'concepts' => [
+                ['concept' => 'Levantamiento', 'amount' => 600],
+            ],
+            'send_to_costs' => false,
+        ];
+
+        $this->actingAs($this->user)
+            ->put(route('budgets.update', $budget), $data)
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket->id,
+            'status' => 'Proceso de ejecución',
+        ]);
+    }
+
+    public function test_update_with_send_to_costs_true_moves_ticket_to_catalogo(): void
+    {
+        $budget = Budget::factory()->create(['user_id' => $this->user->id]);
+        $ticket = $budget->ticket;
+        $ticket->update(['status' => 'Levantamiento']);
+
+        $data = [
+            'ticket_id' => $budget->ticket_id,
+            'description' => 'Completed budget',
+            'currency' => 'MXN',
+            'exchange_rate' => 1.0000,
+            'user_id' => $this->user->id,
+            'concepts' => [
+                ['concept' => 'Material', 'amount' => 2000],
+            ],
+            'send_to_costs' => true,
+        ];
+
+        $this->actingAs($this->user)
+            ->put(route('budgets.update', $budget), $data)
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket->id,
+            'status' => 'Catálogo',
+        ]);
+    }
+
     // --- show ---
 
     public function test_show_displays_budget(): void
@@ -155,6 +288,35 @@ class BudgetControllerTest extends TestCase
     }
 
     // --- update ---
+
+    public function test_update_without_send_to_costs_keeps_ticket_status(): void
+    {
+        // Backward compatibility: updating without the flag must not revert
+        // a ticket that has already advanced past 'Catálogo'.
+        $budget = Budget::factory()->create(['user_id' => $this->user->id]);
+        $ticket = $budget->ticket;
+        $ticket->update(['status' => 'Proceso de ejecución']);
+
+        $data = [
+            'ticket_id' => $budget->ticket_id,
+            'description' => 'Updated description',
+            'currency' => 'MXN',
+            'exchange_rate' => 1.0000,
+            'user_id' => $this->user->id,
+            'concepts' => [
+                ['concept' => 'New concept', 'amount' => 2000],
+            ],
+        ];
+
+        $this->actingAs($this->user)
+            ->put(route('budgets.update', $budget), $data)
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket->id,
+            'status' => 'Proceso de ejecución',
+        ]);
+    }
 
     public function test_update_modifies_budget(): void
     {

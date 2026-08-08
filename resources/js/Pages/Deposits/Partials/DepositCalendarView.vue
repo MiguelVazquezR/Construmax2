@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
+import { Document, Plus } from '@element-plus/icons-vue'
 
 const props = defineProps({
   events: Object,    // { '2026-07-14': [...deposits], ... }
@@ -51,6 +51,10 @@ function depositChipLabel(deposit) {
     return deposit.external_beneficiary_name?.split(' ')[0] ?? 'Externo'
   }
   return deposit.technician?.user?.name?.split(' ')[0] ?? 'N/A'
+}
+
+function openVoucher(url) {
+  window.open(url, '_blank', 'noopener')
 }
 </script>
 
@@ -112,6 +116,22 @@ function depositChipLabel(deposit) {
             >
               <span class="font-bold">${{ Number(deposit.amount).toFixed(0) }}</span>
               {{ depositChipLabel(deposit) }}
+              <span
+                v-if="deposit.commission_amount != null"
+                class="ml-auto font-semibold"
+                title="Comisión registrada"
+              >
+                ~${{ Number(deposit.commission_amount).toFixed(0) }}
+              </span>
+              <el-icon
+                v-if="deposit.voucher_url"
+                :size="12"
+                class="cursor-pointer"
+                title="Ver comprobante"
+                @click.stop="openVoucher(deposit.voucher_url)"
+              >
+                <Document />
+              </el-icon>
             </div>
           </div>
         </div>

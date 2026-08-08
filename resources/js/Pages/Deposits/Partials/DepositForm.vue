@@ -2,7 +2,9 @@
 import { ref, watch, computed, onMounted } from 'vue'
 import { useForm } from '@inertiajs/vue3'
 import { ElMessage } from 'element-plus'
+import { Refresh, UploadFilled } from '@element-plus/icons-vue'
 import axios from 'axios'
+import { usePermissions } from '@/Composables/usePermissions'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -15,7 +17,13 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'saved'])
 
+const { can: canPermission } = usePermissions()
+
 const isEditing = computed(() => !!props.deposit)
+
+// --- Voucher (optional): if provided on creation, deposit is registered as completed immediately ---
+const voucherFile = ref(null)
+const hasVoucher = computed(() => !!voucherFile.value)
 
 const dialogVisible = ref(props.modelValue)
 watch(() => props.modelValue, (v) => { dialogVisible.value = v })
@@ -201,12 +209,20 @@ function submit() {
       },
     })
   } else {
-    form.post(route('deposits.store'), {
-      onSuccess: () => {
-        ElMessage.success('Depósito programado correctamente.')
-        emit('saved')
-      },
-    })
+    form
+      .transform((data) => ({
+        ...data,
+        ...(voucherFile.value ? { voucher: voucherFile.value } : {}),
+      }))
+      .post(route('deposits.store'), {
+        forceFormData: true,
+        onSuccess: () => {
+          ElMessage.success(hasVoucher.value
+            ? 'Depósito registrado y marcado como realizado.'
+            : 'Depósito programado correctamente.')
+          emit('saved')
+        },
+      })
   }
 }
 </script>
@@ -218,7 +234,7 @@ function submit() {
     width="640px"
     class="deposit-form-dialog"
     destroy-on-close
-    @closed="form.reset()"
+    @closed="form.reset(); voucherFile = null"
   >
     <el-form :model="form" label-position="top">
       <!-- Origin: ticket or external -->
@@ -253,24 +269,48 @@ function submit() {
 
         <!-- Bank account -->
         <el-form-item label="Cuenta bancaria" required>
-          <el-select
-            v-model="form.technician_bank_account_id"
-            :loading="bankAccountsLoading"
-            :disabled="!form.technician_id || bankAccounts.length === 0"
-            placeholder="Seleccionar cuenta bancaria"
-            class="w-full"
-            @change="onBankAccountChange"
-          >
-            <el-option
-              v-for="acc in bankAccounts"
-              :key="acc.id"
-              :label="`${acc.bank_name ?? 'Banco'} — ...${(acc.account_number ?? acc.card_number ?? '').slice(-4)}${acc.is_favorite ? ' ★' : ''}`"
-              :value="acc.id"
+          <div class="flex gap-2 w-full">
+            <el-select
+              v-model="form.technician_bank_account_id"
+              :loading="bankAccountsLoading"
+              :disabled="!form.technician_id || bankAccounts.length === 0"
+              placeholder="Seleccionar cuenta bancaria"
+              class="flex-1"
+              @change="onBankAccountChange"
+            >
+              <el-option
+                v-for="acc in bankAccounts"
+                :key="acc.id"
+                :label="`${acc.bank_name ?? 'Banco'} — ...${(acc.account_number ?? acc.card_number ?? '').slice(-4)}${acc.is_favorite ? ' ★' : ''}`"
+                :value="acc.id"
+              />
+            </el-select>
+            <el-button
+              :icon="Refresh"
+              :loading="bankAccountsLoading"
+              :disabled="!form.technician_id"
+              title="Actualizar cuentas bancarias"
+              aria-label="Actualizar cuentas bancarias"
+              @click="loadBankAccounts(form.technician_id)"
             />
-          </el-select>
-          <p v-if="form.technician_id && bankAccounts.length === 0 && !bankAccountsLoading" class="text-sm text-gray-400 mt-1">
-            Este técnico no tiene cuentas bancarias registradas.
-          </p>
+          </div>
+          <div v-if="form.technician_id && bankAccounts.length === 0 && !bankAccountsLoading" class="text-sm text-gray-500 mt-1 space-y-1">
+            <p>
+              Este técnico no tiene cuentas bancarias registradas.
+              <a
+                v-if="canPermission('technicians.edit')"
+                :href="route('technicians.show', form.technician_id)"
+                target="_blank"
+                rel="noopener"
+                class="text-primary hover:underline"
+              >
+                Haz clic aquí para registrar sus cuentas
+              </a>.
+            </p>
+            <p>
+              La vista de registro de cuentas se abrirá en una nueva pestaña para que no pierdas los datos del depósito que estás registrando. Una vez que la hayas registrado, regresa a esta pestaña y presiona el botón de actualizar para que la nueva cuenta aparezca en la lista.
+            </p>
+          </div>
           <!-- Bank account detail card -->
           <div v-if="selectedBankAccount" class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mt-2 text-xs">
             <div class="grid grid-cols-1 gap-1">
@@ -392,6 +432,41 @@ function submit() {
       <el-form-item label="Notas">
         <el-input v-model="form.notes" type="textarea" :rows="3" placeholder="Notas opcionales" />
       </el-form-item>
+
+      <el-alert
+          type="warning"
+          :closable="false"
+          show-icon
+        >
+          <template #title>
+            Si adjuntas un comprobante, el depósito se registrará como realizado automáticamente y el pago se asociará al técnico, sin pasar por el proceso de aprobación.
+          </template>
+        </el-alert>
+        
+      <!-- Voucher (optional) — only on creation -->
+      <template v-if="!isEditing">
+        <el-form-item label="Comprobante de depósito (opcional)">
+          <el-upload
+            :auto-upload="false"
+            :limit="1"
+            accept=".jpg,.jpeg,.png,.pdf"
+            drag
+            :on-change="(file) => voucherFile = file.raw"
+            :on-remove="() => voucherFile = null"
+            :on-exceed="() => ElMessage.warning('Solo se puede adjuntar un comprobante.')"
+          >
+            <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+            <div class="el-upload__text">
+              Arrastra un archivo aquí o <em>haz clic para subir</em>
+            </div>
+            <template #tip>
+              <div class="el-upload__tip">
+                JPG, PNG o PDF. Máx. 10 MB.
+              </div>
+            </template>
+          </el-upload>
+        </el-form-item>
+      </template>
     </el-form>
 
     <template #footer>
@@ -405,7 +480,7 @@ function submit() {
           (form.is_external ? !form.external_beneficiary_name || (!form.external_account_number && !form.external_clabe && !form.external_card_number) : !form.technician_id || !form.technician_bank_account_id || !form.ticket_id)
         "
       >
-        {{ isEditing ? 'Guardar cambios' : 'Programar depósito' }}
+        {{ isEditing ? 'Guardar cambios' : (hasVoucher ? 'Registrar depósito realizado' : 'Programar depósito') }}
       </el-button>
     </template>
   </el-dialog>

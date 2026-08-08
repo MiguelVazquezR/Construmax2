@@ -1,10 +1,13 @@
 <script setup>
+import { computed } from 'vue';
 import { useForm, router, Link } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 const props = defineProps({
     ticket: Object,
 });
+
+const isEmpenoFacil = computed(() => props.ticket?.customer?.id === 2);
 
 const formatDate = (date) => {
     if(!date) return 'No definida';
@@ -24,7 +27,8 @@ const openEvidenceTemplate = () => {
 };
 
 const openCostsPrint = () => {
-    const url = route('costs.print', props.ticket.budget.id);
+    const routeName = isEmpenoFacil.value ? 'costs.print-empeno-facil' : 'costs.print';
+    const url = route(routeName, props.ticket.budget.id);
     window.open(url, '_blank');
 };
 

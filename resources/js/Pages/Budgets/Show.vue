@@ -1,5 +1,5 @@
 ﻿<script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { usePermissions } from '@/Composables/usePermissions';
@@ -18,6 +18,8 @@ const { can } = usePermissions();
 const props = defineProps({
     budget: Object,
 });
+
+const isEmpenoFacil = computed(() => props.budget?.ticket?.customer?.id === 2);
 
 const activeTab = ref('scope');
 
@@ -127,7 +129,7 @@ const getTicketStatusColor = (status) => {
                                                         Ver detalle de costos
                                                     </el-button>
                                                 </Link>
-                                                <Link :href="route('costs.print', budget.id)" target="_blank">
+                                                <Link :href="route(isEmpenoFacil ? 'costs.print-empeno-facil' : 'costs.print', budget.id)" target="_blank">
                                                     <el-button type="success" plain size="default" :icon="Printer">
                                                         Imprimir plantilla
                                                     </el-button>

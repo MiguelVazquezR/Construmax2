@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Actions\Deposits\ApproveDepositAction;
+use App\Actions\Deposits\CompleteDepositAction;
 use App\Actions\Notifications\DispatchNotificationAction;
 use App\Http\Requests\Deposits\StoreDepositRequest;
 use App\Http\Requests\Deposits\UpdateDepositRequest;
@@ -23,6 +24,7 @@ class DepositController extends Controller
         private readonly DepositService $depositService,
         private readonly DispatchNotificationAction $dispatchNotification,
         private readonly ApproveDepositAction $approveDepositAction,
+        private readonly CompleteDepositAction $completeDepositAction,
     ) {}
 
     /**
@@ -36,6 +38,7 @@ class DepositController extends Controller
             'ticket',
             'depositType',
             'approvedBy',
+            'media',
         ])->latest();
 
         if ($request->filled('technician_id')) {
@@ -62,15 +65,21 @@ class DepositController extends Controller
         $deposits = $query->paginate(20)->withQueryString();
 
         // Calendar events: group by scheduled_date
-        $calendarEvents = Deposit::with('technician.user', 'depositType')
+        $calendarEvents = Deposit::with('technician.user', 'depositType', 'media')
             ->get()
             ->groupBy(fn (Deposit $d) => $d->scheduled_date->format('Y-m-d'))
             ->map(fn ($items) => $items->values())
             ->toArray();
 
+        // Total historical commissions across all registered commissions
+        $totalCommissions = (float) Deposit::query()
+            ->whereNotNull('commission_amount')
+            ->sum('commission_amount');
+
         return Inertia::render('Deposits/Index', [
-            'deposits'       => $deposits,
-            'calendarEvents' => $calendarEvents,
+            'deposits'         => $deposits,
+            'calendarEvents'   => $calendarEvents,
+            'totalCommissions' => $totalCommissions,
             'depositTypes'   => DepositType::active()->orderBy('name')->get(),
             'can'            => [
                 'approve'      => $request->user()->can('deposits.approve'),
@@ -104,20 +113,34 @@ class DepositController extends Controller
             $data['budget_id'] = \App\Models\Ticket::find($data['ticket_id'])->budget->id;
         }
 
+        // Voucher is not a fillable deposit attribute — handle it after creation
+        $voucher = $data['voucher'] ?? null;
+        unset($data['voucher']);
+
         $deposit = Deposit::create($data);
 
-        // Dispatch approval notification
-        $this->dispatchNotification->depositPendingApproval($deposit);
+        // If a voucher is provided, register the deposit as completed immediately
+        // (skipping the approval process) and create the technician payment.
+        if ($voucher) {
+            $this->completeDepositAction->execute($deposit, ['voucher' => $voucher]);
+        } else {
+            // Dispatch approval notification
+            $this->dispatchNotification->depositPendingApproval($deposit);
+        }
 
         // For AJAX requests (from TechnicianPaymentSection modal), return JSON
         if ($request->expectsJson() || $request->wantsJson()) {
             return response()->json([
-                'message' => 'Depósito programado correctamente.',
+                'message' => $voucher
+                    ? 'Depósito registrado y marcado como realizado.'
+                    : 'Depósito programado correctamente.',
                 'deposit' => $deposit->load('technician.user', 'depositType'),
             ]);
         }
 
-        return back()->with('success', 'Depósito programado correctamente.');
+        return back()->with('success', $voucher
+            ? 'Depósito registrado y marcado como realizado.'
+            : 'Depósito programado correctamente.');
     }
 
     /**

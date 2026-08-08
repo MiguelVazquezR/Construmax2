@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { router, Link } from '@inertiajs/vue3'
-import { Edit, Delete, Check, Share } from '@element-plus/icons-vue'
+import { Document, Edit, Delete, Check, Share } from '@element-plus/icons-vue'
 import axios from 'axios'
 
 const props = defineProps({
@@ -161,6 +161,29 @@ function updateFilter(key, value) {
       <el-table-column label="Monto" width="140" align="right">
         <template #default="{ row }">
           <span class="font-mono">${{ formatAmount(row.amount) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="Comisión" width="120" align="right">
+        <template #default="{ row }">
+          <span v-if="row.commission_amount != null" class="font-mono text-emerald-600 dark:text-emerald-400">
+            ${{ formatAmount(row.commission_amount) }}
+          </span>
+          <span v-else class="text-gray-400">—</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="Comprobante" width="130">
+        <template #default="{ row }">
+          <a
+            v-if="row.voucher_url"
+            :href="row.voucher_url"
+            target="_blank"
+            rel="noopener"
+            class="text-primary hover:underline inline-flex items-center gap-1"
+          >
+            <el-icon><Document /></el-icon>
+            Ver comprobante
+          </a>
+          <span v-else class="text-gray-400">—</span>
         </template>
       </el-table-column>
       <el-table-column label="Turno" width="100">

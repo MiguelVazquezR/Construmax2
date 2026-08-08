@@ -154,6 +154,7 @@ class BudgetController extends Controller
             'survey_images.*' => 'image|max:10240',
             'support_files' => 'nullable|array',
             'support_files.*' => 'file|max:10240',
+            'send_to_costs' => 'nullable|boolean',
         ]);
 
         $budget = null;
@@ -170,10 +171,12 @@ class BudgetController extends Controller
             $budget->concepts()->createMany($validated['concepts']);
         });
 
-        // When a budget is created, move the ticket to 'Catálogo' status
-        // to indicate it needs a cost catalog
+        // Move the ticket to 'Catálogo' status only when the user explicitly
+        // sends the budget to the costs area (send_to_costs = true, default).
+        // Initial budgets (e.g. survey/levantamiento costs) are kept as drafts
+        // and must NOT reach the costs area until they are complete.
         $budget?->load('ticket');
-        if ($budget->ticket && $budget->ticket->status !== 'Catálogo') {
+        if ($request->boolean('send_to_costs', true) && $budget->ticket && $budget->ticket->status !== 'Catálogo') {
             $budget->ticket->update(['status' => 'Catálogo']);
         }
 
@@ -290,6 +293,7 @@ class BudgetController extends Controller
             'survey_images.*' => 'image|max:10240',
             'support_files' => 'nullable|array',
             'support_files.*' => 'file|max:10240',
+            'send_to_costs' => 'nullable|boolean',
         ]);
 
         DB::transaction(function () use ($validated, $budget) {
@@ -304,6 +308,13 @@ class BudgetController extends Controller
             $budget->concepts()->delete();
             $budget->concepts()->createMany($validated['concepts']);
         });
+
+        // Only move the ticket to 'Catálogo' when the user explicitly sends
+        // the budget to the costs area. This prevents edits from reverting a
+        // ticket that has already advanced to a later stage.
+        if ($request->boolean('send_to_costs') && $budget->ticket && $budget->ticket->status !== 'Catálogo') {
+            $budget->ticket->update(['status' => 'Catálogo']);
+        }
 
         if ($request->hasFile('survey_images')) {
             foreach ($request->file('survey_images') as $image) {

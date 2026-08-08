@@ -23,6 +23,7 @@ class StoreDepositRequest extends FormRequest
             'shift'                    => ['required', 'string', 'in:matutino,vespertino'],
             'scheduled_date'           => ['required', 'date'],
             'notes'                    => ['nullable', 'string', 'max:1000'],
+            'voucher'                  => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:10240'],
         ];
 
         if ($isExternal) {

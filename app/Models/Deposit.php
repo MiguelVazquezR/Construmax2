@@ -40,6 +40,11 @@ class Deposit extends Model implements HasMedia
         'notes',
     ];
 
+    protected $appends = [
+        'voucher_url',
+        'voucher_name',
+    ];
+
     protected $casts = [
         'approved_at' => 'datetime',
         'completed_at' => 'datetime',
@@ -89,6 +94,18 @@ class Deposit extends Model implements HasMedia
     public function technicianPayment(): BelongsTo
     {
         return $this->belongsTo(TechnicianPayment::class);
+    }
+
+    // --- Accessors ---
+
+    public function getVoucherUrlAttribute(): ?string
+    {
+        return $this->getFirstMediaUrl('voucher') ?: null;
+    }
+
+    public function getVoucherNameAttribute(): ?string
+    {
+        return $this->getFirstMedia('voucher')?->file_name;
     }
 
     // --- Media ---

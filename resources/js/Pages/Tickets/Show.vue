@@ -60,7 +60,7 @@ async function handleStatusChange(newStatus) {
     if (newStatus === 'Catálogo' && !hasBudget.value) {
         try {
             await ElMessageBox.confirm(
-                'Para mover este ticket a Cotización (Catálogo) es necesario tener un presupuesto registrado. ¿Deseas crear uno ahora?',
+                'Para mover este ticket a Cotización (Catálogo) es necesario registrar el presupuesto y enviarlo al área de costos. ¿Deseas crear el presupuesto ahora?',
                 'Presupuesto requerido',
                 {
                     confirmButtonText: 'Crear presupuesto',
@@ -68,20 +68,10 @@ async function handleStatusChange(newStatus) {
                     type: 'warning',
                 }
             );
-            // Change status first, then redirect to budget creation
-            router.put(route('tickets.update-status', props.ticket.id), {
-                status: newStatus
-            }, {
-                preserveScroll: true,
-                preserveState: true,
-                onSuccess: () => {
-                    router.visit(route('budgets.create', { ticket_id: props.ticket.id }));
-                },
-                onError: () => {
-                    currentStatus.value = props.ticket.status;
-                    ElMessage.error('Error al actualizar el estatus.');
-                }
-            });
+            // Redirect to budget creation. The status is NOT changed here — the
+            // ticket only moves to 'Catálogo' when the budget form is submitted
+            // with "Guardar y pasar a costos".
+            router.visit(route('budgets.create', { ticket_id: props.ticket.id }));
             return;
         } catch {
             // User cancelled — revert to previous status

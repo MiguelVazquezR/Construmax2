@@ -40,6 +40,7 @@ const form = useForm({
         : [{ concept: '', amount: 0, paid_to_technician: false, payment_date: null }],
     survey_images: [],
     support_files: [],
+    send_to_costs: false,
 });
 
 // Si es edit y el cliente del ticket actual usa USD, cargar TC al montar
@@ -140,7 +141,9 @@ const rules = reactive({
     exchange_rate: [{ required: true, message: 'Requerido', trigger: 'blur' }],
 });
 
-const submit = () => {
+const submit = (sendToCosts = false) => {
+    form.send_to_costs = sendToCosts;
+
     if (!formRef.value) return;
 
     formRef.value.validate((valid) => {
@@ -162,7 +165,9 @@ const submit = () => {
                     .post(route('budgets.update', props.budget.id), {
                         forceFormData: hasFiles || false,
                         onSuccess: () => {
-                            ElMessage.success('Presupuesto actualizado correctamente');
+                            ElMessage.success(sendToCosts
+                                ? 'Presupuesto guardado y enviado al área de costos'
+                                : 'Presupuesto actualizado correctamente');
                             emit('submitted');
                         },
                     });
@@ -170,7 +175,9 @@ const submit = () => {
                 form.post(route('budgets.store'), {
                     forceFormData: hasFiles || false,
                     onSuccess: () => {
-                        ElMessage.success('Presupuesto registrado correctamente');
+                        ElMessage.success(sendToCosts
+                            ? 'Presupuesto guardado y enviado al área de costos'
+                            : 'Presupuesto registrado correctamente');
                         emit('submitted');
                     },
                 });
@@ -573,23 +580,30 @@ defineExpose({ form });
                     </div>
 
                     <div class="mt-8 pt-4 border-t border-gray-100 dark:border-gray-700">
-                        <!-- Info message: only for new budgets -->
                         <el-alert
-                            v-if="!isEdit"
                             class="mb-4"
-                            title="Al guardar, el ticket pasará a estado Catálogo para que el área de costos genere el catálogo correspondiente."
+                            :title="isEdit
+                                ? 'Guardar cambios solo actualiza el presupuesto sin notificar al área de costos.'
+                                : 'Puedes guardar el presupuesto como borrador o enviarlo al área de costos.'"
                             type="info"
                             :closable="false"
                             show-icon
                         />
                         <el-button
                             type="primary"
-                            native-type="submit"
-                            class="w-full !font-bold !h-12 !text-lg"
                             color="#f26c17"
+                            class="w-full !font-bold !h-12 !text-lg"
                             :loading="form.processing"
+                            @click="submit(true)"
                         >
-                            {{ isEdit ? 'Actualizar presupuesto' : 'Guardar presupuesto' }}
+                            {{ isEdit ? 'Guardar y pasar a costos' : 'Guardar y pasar a costos' }}
+                        </el-button>
+                        <el-button
+                            class="w-full !font-bold !h-11 !text-base mt-3"
+                            :loading="form.processing"
+                            @click="submit(false)"
+                        >
+                            {{ isEdit ? 'Solo guardar cambios' : 'Solo guardar presupuesto' }}
                         </el-button>
                         <div class="text-center mt-3">
                             <Link :href="route('budgets.index')" class="text-sm text-gray-500 hover:text-primary">

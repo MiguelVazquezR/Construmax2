@@ -17,7 +17,12 @@ const props = defineProps({
   can: Object,
   defaultShift: String,
   filters: Object,
+  totalCommissions: Number,
 })
+
+function formatAmount(amount) {
+  return Number(amount || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
 
 const activeTab = ref('list')
 
@@ -119,6 +124,13 @@ function statusLabel(status) {
           Depósitos
         </h2>
         <div class="flex gap-2">
+          <div class="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 rounded-lg px-4 py-2">
+            <el-icon class="text-emerald-600 dark:text-emerald-400"><Money /></el-icon>
+            <div class="leading-tight">
+              <p class="text-xs text-emerald-600 dark:text-emerald-400">Comisiones históricas</p>
+              <p class="font-bold text-emerald-700 dark:text-emerald-300 font-mono">${{ formatAmount(props.totalCommissions) }}</p>
+            </div>
+          </div>
           <el-button v-if="can.manageTypes" @click="showTypesManager = true">
             Gestionar tipos de depósito
           </el-button>
