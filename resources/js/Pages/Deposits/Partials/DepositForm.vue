@@ -60,6 +60,10 @@ async function loadDepositTypes() {
 onMounted(() => {
   loadDepositTypes()
   loadAllTechnicians()
+  if (form.technician_id) {
+    loadBankAccounts(form.technician_id)
+    loadPendingTickets(form.technician_id)
+  }
 })
 
 // Expose a refresh method for parent
@@ -118,10 +122,21 @@ async function loadBankAccounts(technicianId) {
   try {
     const { data } = await axios.get(route('deposits.technician-bank-accounts', technicianId))
     bankAccounts.value = data
-    const fav = data.find(a => a.is_favorite)
-    if (fav && !form.technician_bank_account_id) {
-      form.technician_bank_account_id = fav.id
-      selectedBankAccount.value = fav
+    const current = data.find(a => a.id === form.technician_bank_account_id)
+    if (current) {
+      selectedBankAccount.value = current
+    } else if (form.technician_bank_account_id) {
+      // Previously selected account no longer exists in the fetched list
+      form.technician_bank_account_id = null
+      selectedBankAccount.value = null
+    } else {
+      const fav = data.find(a => a.is_favorite)
+      if (fav) {
+        form.technician_bank_account_id = fav.id
+        selectedBankAccount.value = fav
+      } else {
+        selectedBankAccount.value = null
+      }
     }
   } catch {
     bankAccounts.value = []
@@ -433,7 +448,7 @@ function submit() {
         <el-input v-model="form.notes" type="textarea" :rows="3" placeholder="Notas opcionales" />
       </el-form-item>
 
-      <el-alert
+      <el-alert v-if="!isEditing"
           type="warning"
           :closable="false"
           show-icon

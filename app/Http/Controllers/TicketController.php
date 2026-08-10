@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\ServiceType;
 use App\Models\TaskTemplate;
 use App\Services\Media\ImageOptimizerService;
+use App\Services\Tickets\TicketDuplicateService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\URL;
@@ -17,6 +18,7 @@ class TicketController extends Controller
 {
     public function __construct(
         private readonly ImageOptimizerService $imageOptimizer,
+        private readonly TicketDuplicateService $ticketDuplicateService,
     ) {}
     public function index(Request $request)
     {
@@ -152,6 +154,26 @@ class TicketController extends Controller
         ]);
     }
 
+    /**
+     * Check a candidate ticket against the customer's most recent tickets
+     * and rank potential duplicates using fuzzy similarity.
+     */
+    public function checkDuplicates(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'customer_id' => 'required|integer|exists:customers,id',
+            'name' => 'nullable|string|max:255',
+            'report_number' => 'nullable|string|max:255',
+            'service_type' => 'nullable|string|max:255',
+            'branch_id' => 'nullable|integer|exists:customer_branches,id',
+            'ignore_id' => 'nullable|integer|exists:tickets,id',
+        ]);
+
+        $result = $this->ticketDuplicateService->check($validated);
+
+        return response()->json($result);
+    }
+
     public function create()
     {
         return Inertia::render('Tickets/Create', [
@@ -236,6 +258,12 @@ class TicketController extends Controller
             'deposits.technician.user',
             'deposits.depositType',
         ]);
+
+        // Inject signed complete URLs so the technician payment section can
+        // mark approved deposits as completed directly from the ticket page.
+        $ticket->deposits->each(function ($deposit) {
+            $deposit->complete_url = URL::signedRoute('public.deposits.complete', ['deposit' => $deposit->id]);
+        });
         
         $ticket->append('progress', 'folio'); 
 

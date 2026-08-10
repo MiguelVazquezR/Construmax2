@@ -16,6 +16,7 @@ const props = defineProps({
 });
 
 const formRef = ref();
+const ticketFormRef = ref();
 
 const localUsers = ref([...props.users]);
 const showQuickTechModal = ref(false);
@@ -67,45 +68,56 @@ const handleTechCreated = (newUser) => {
     }
 };
 
-const submit = () => {
+const submit = async () => {
     if (!formRef.value) return;
     
-    formRef.value.validate((valid) => {
-        if (valid) {
-            const hasFiles = form.uploaded_files && form.uploaded_files.length > 0;
+    try {
+        await formRef.value.validate();
+    } catch {
+        ElMessage.error('Por favor revisa los campos marcados');
+        return;
+    }
 
-            form.transform((data) => ({
-                customer_id: data.customer_id,
-                customer_contact_id: data.customer_contact_id,
-                customer_branch_id: data.customer_branch_id,
-                seller_id: data.seller_id,
-                name: data.name,
-                service_type: data.service_type,
-                report_number: data.report_number,
-                duration: data.duration,
-                user_id: data.user_id,
-                technicians: data.technicians,
-                assistant_technicians: data.assistant_technicians,
-                priority: data.priority,
-                status: data.status,
-                scheduled_start: data.scheduled_start,
-                scheduled_end: data.scheduled_end,
-                instructions: data.instructions,
-                task_template_id: data.task_template_id,
-            }));
-
-            form.put(route('tickets.update', props.ticket.id), {
-                onSuccess: () => {
-                    if (hasFiles) {
-                        uploadTicketFiles(props.ticket.id);
-                    } else {
-                        ElMessage.success('Ticket actualizado correctamente');
-                    }
-                },
-            });
-        } else {
-            ElMessage.error('Por favor revisa los campos marcados');
+    // The duplicate check is debounced — flush it so the submit gate
+    // always evaluates against the freshest results.
+    if (ticketFormRef.value) {
+        await ticketFormRef.value.flushCheck();
+        if (ticketFormRef.value.hasPendingConfirm) {
+            ElMessage.warning('Confirma que el ticket no es un duplicado para continuar.');
+            return;
         }
+    }
+
+    const hasFiles = form.uploaded_files && form.uploaded_files.length > 0;
+
+    form.transform((data) => ({
+        customer_id: data.customer_id,
+        customer_contact_id: data.customer_contact_id,
+        customer_branch_id: data.customer_branch_id,
+        seller_id: data.seller_id,
+        name: data.name,
+        service_type: data.service_type,
+        report_number: data.report_number,
+        duration: data.duration,
+        user_id: data.user_id,
+        technicians: data.technicians,
+        assistant_technicians: data.assistant_technicians,
+        priority: data.priority,
+        status: data.status,
+        scheduled_start: data.scheduled_start,
+        scheduled_end: data.scheduled_end,
+        instructions: data.instructions,
+        task_template_id: data.task_template_id,
+    }));
+
+    form.put(route('tickets.update', props.ticket.id), {
+        onSuccess: () => {
+            if (hasFiles) {
+                uploadTicketFiles(props.ticket.id);
+            } else {
+                ElMessage.success('Ticket actualizado correctamente');
+            }
+        },
     });
 };
 
@@ -149,12 +161,14 @@ const uploadTicketFiles = (ticketId) => {
                 @submit.prevent="submit"
             >
                 <TicketForm 
+                    ref="ticketFormRef"
                     :form="form" 
                     :users="localUsers" 
                     :customers="customers"
                     :templates="templates"
                     :service-types="serviceTypes"
                     :is-edit="true" 
+                    :ticket-id="ticket.id"
                     @open-quick-tech="showQuickTechModal = true"
                 />
 

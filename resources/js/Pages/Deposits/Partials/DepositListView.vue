@@ -1,8 +1,9 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { router, Link } from '@inertiajs/vue3'
-import { Document, Edit, Delete, Check, Share } from '@element-plus/icons-vue'
+import { Document, Edit, Delete, Check, CircleCheck, Share } from '@element-plus/icons-vue'
 import axios from 'axios'
+import CompleteDepositModal from '@/Pages/Public/Deposits/Partials/CompleteDepositModal.vue'
 
 const props = defineProps({
   deposits: Object,
@@ -45,6 +46,21 @@ function depositRecipient(deposit) {
     return deposit.external_beneficiary_name || 'Depósito externo'
   }
   return deposit.technician?.user?.name ?? 'N/A'
+}
+
+// --- Complete deposit modal ---
+const completingDeposit = ref(null)
+const showCompleteModal = ref(false)
+
+function openCompleteModal(deposit) {
+  completingDeposit.value = deposit
+  showCompleteModal.value = true
+}
+
+function onCompleted() {
+  showCompleteModal.value = false
+  completingDeposit.value = null
+  router.reload()
 }
 
 // --- Technician filter (load all external technicians on mount) ---
@@ -208,7 +224,7 @@ function updateFilter(key, value) {
           {{ row.approved_by?.name ?? '—' }}
         </template>
       </el-table-column>
-      <el-table-column label="Acciones" width="200" fixed="right">
+      <el-table-column label="Acciones" width="290" fixed="right">
         <template #default="{ row }">
           <div class="flex gap-1">
             <el-button
@@ -219,6 +235,15 @@ function updateFilter(key, value) {
               @click="$emit('approve', row)"
             >
               Aprobar
+            </el-button>
+            <el-button
+              v-if="row.status === 'approved' && can.approve"
+              type="primary"
+              size="small"
+              :icon="CircleCheck"
+              @click="openCompleteModal(row)"
+            >
+              Realizado
             </el-button>
             <el-button
               v-if="row.status !== 'completed' && can.edit"
@@ -255,5 +280,15 @@ function updateFilter(key, value) {
         @current-change="(page) => router.get(route('deposits.index'), { ...filters, page }, { preserveState: true })"
       />
     </div>
+
+    <!-- Complete deposit modal -->
+    <CompleteDepositModal
+      v-if="completingDeposit"
+      v-model="showCompleteModal"
+      :deposit="completingDeposit"
+      :complete-url="route('deposits.complete', completingDeposit.id)"
+      @update:model-value="showCompleteModal = false; completingDeposit = null"
+      @completed="onCompleted"
+    />
   </div>
 </template>

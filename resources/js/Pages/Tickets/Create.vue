@@ -15,6 +15,7 @@ const props = defineProps({
 });
 
 const formRef = ref();
+const ticketFormRef = ref();
 const localUsers = ref([...props.users]);
 const showQuickTechModal = ref(false);
 
@@ -63,19 +64,30 @@ const rules = reactive({
     priority: [{ required: true, message: 'Requerido', trigger: 'change' }],
 });
 
-const submit = () => {
+const submit = async () => {
     if (!formRef.value) return;
     
-    formRef.value.validate((valid) => {
-        if (valid) {
-            const hasFiles = form.uploaded_files && form.uploaded_files.length > 0;
-            form.post(route('tickets.store'), {
-                forceFormData: hasFiles,
-                onSuccess: () => ElMessage.success('Ticket creado correctamente')
-            });
-        } else {
-            ElMessage.error('Por favor completa los campos obligatorios');
+    try {
+        await formRef.value.validate();
+    } catch {
+        ElMessage.error('Por favor completa los campos obligatorios');
+        return;
+    }
+
+    // The duplicate check is debounced — flush it so the submit gate
+    // always evaluates against the freshest results.
+    if (ticketFormRef.value) {
+        await ticketFormRef.value.flushCheck();
+        if (ticketFormRef.value.hasPendingConfirm) {
+            ElMessage.warning('Confirma que el ticket no es un duplicado para continuar.');
+            return;
         }
+    }
+
+    const hasFiles = form.uploaded_files && form.uploaded_files.length > 0;
+    form.post(route('tickets.store'), {
+        forceFormData: hasFiles,
+        onSuccess: () => ElMessage.success('Ticket creado correctamente')
     });
 };
 </script>
@@ -104,6 +116,7 @@ const submit = () => {
                 @submit.prevent="submit"
             >
                 <TicketForm 
+                    ref="ticketFormRef"
                     :form="form" 
                     :users="localUsers" 
                     :customers="customers"

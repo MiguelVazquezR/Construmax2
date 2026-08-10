@@ -30,6 +30,7 @@ Route::middleware([
         Route::put('/{deposit}', [DepositController::class, 'update'])->name('update');
         Route::delete('/{deposit}', [DepositController::class, 'destroy'])->name('destroy');
         Route::post('/{deposit}/approve', [DepositController::class, 'approve'])->name('approve');
+        Route::post('/{deposit}/complete', [DepositController::class, 'complete'])->name('complete');
 
         // Public link generation (permanent, signed)
         Route::get('/{deposit}/public-link', [DepositController::class, 'depositLink'])->name('public-link');

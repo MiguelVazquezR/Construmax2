@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Actions\Deposits\ApproveDepositAction;
 use App\Actions\Deposits\CompleteDepositAction;
 use App\Actions\Notifications\DispatchNotificationAction;
+use App\Http\Requests\Deposits\CompleteDepositRequest;
 use App\Http\Requests\Deposits\StoreDepositRequest;
 use App\Http\Requests\Deposits\UpdateDepositRequest;
 use App\Models\Deposit;
@@ -209,6 +210,27 @@ class DepositController extends Controller
 
         return redirect()->route('deposits.index')
             ->with('success', 'Depósito aprobado correctamente.');
+    }
+
+    /**
+     * Mark an approved deposit as completed (internal authenticated route).
+     */
+    public function complete(CompleteDepositRequest $request, Deposit $deposit): RedirectResponse|\Illuminate\Http\JsonResponse
+    {
+        if ($deposit->status === 'completed') {
+            return redirect()->route('deposits.index')
+                ->with('error', 'Este depósito ya fue marcado como realizado.');
+        }
+
+        if ($deposit->status !== 'approved') {
+            return redirect()->route('deposits.index')
+                ->with('error', 'Solo los depósitos aprobados pueden marcarse como realizados.');
+        }
+
+        $this->completeDepositAction->execute($deposit, $request->validated());
+
+        return redirect()->route('deposits.index')
+            ->with('success', 'Depósito marcado como realizado. El pago se registró automáticamente.');
     }
 
     /**

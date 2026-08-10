@@ -13,6 +13,7 @@ use App\Models\TechnicianPayment;
 use App\Services\Media\ImageOptimizerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL;
 use Inertia\Inertia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
@@ -233,6 +234,12 @@ class BudgetController extends Controller
             'ticket.deposits.depositType',
             'ticket.deposits.media',
         ]);
+
+        // Inject signed complete URLs so the technicians section can mark
+        // approved deposits as completed directly from the budget page.
+        $budget->ticket?->deposits?->each(function ($deposit) {
+            $deposit->complete_url = URL::signedRoute('public.deposits.complete', ['deposit' => $deposit->id]);
+        });
 
         $budget->append(['total_cost', 'total_paid', 'balance_due', 'total_catalog_cost']);
 

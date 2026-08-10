@@ -8,7 +8,15 @@ class CompleteDepositRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true; // Public route — no auth required
+        $user = $this->user();
+
+        // Public signed route — no auth required
+        if (! $user) {
+            return true;
+        }
+
+        // Internal authenticated route — requires the approve permission
+        return $user->can('deposits.approve');
     }
 
     public function rules(): array

@@ -1,11 +1,12 @@
 <script setup>
-import { computed, ref, reactive } from 'vue';
+import { computed, ref, reactive, watch, onMounted } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { OfficeBuilding, Document, UserFilled, Setting } from '@element-plus/icons-vue';
+import { OfficeBuilding, Document, UserFilled, Setting, Ticket } from '@element-plus/icons-vue';
 import TaskTemplateModal from './TaskTemplateModal.vue';
 import QuickBranchModal from './QuickBranchModal.vue';
 import axios from 'axios';
+import { debounce } from 'lodash';
 
 const props = defineProps({
     form: {
@@ -31,6 +32,10 @@ const props = defineProps({
     serviceTypes: {
         type: Array,
         default: () => []
+    },
+    ticketId: {
+        type: [Number, String],
+        default: null
     }
 });
 
@@ -38,6 +43,123 @@ defineEmits(['open-quick-tech']);
 
 const showTaskTemplateModal = ref(false);
 const showQuickBranchModal = ref(false);
+
+// --- DUPLICATE DETECTION STATE ---
+const duplicateTickets = ref([]);
+const strongDuplicates = ref([]);
+const duplicateLoading = ref(false);
+const confirmNotDuplicate = ref(false);
+
+const hasPendingConfirm = computed(
+    () => strongDuplicates.value.length > 0 && !confirmNotDuplicate.value
+);
+
+const hasQuery = computed(() => !!props.form.name || !!props.form.report_number);
+
+const runDuplicateCheck = async () => {
+    if (!props.form.customer_id) {
+        duplicateTickets.value = [];
+        strongDuplicates.value = [];
+        confirmNotDuplicate.value = false;
+        return;
+    }
+
+    duplicateLoading.value = true;
+    try {
+        const { data } = await axios.get(route('tickets.duplicate-check'), {
+            params: {
+                customer_id: props.form.customer_id,
+                name: props.form.name || '',
+                report_number: props.form.report_number || '',
+                service_type: props.form.service_type || '',
+                branch_id: props.form.customer_branch_id || '',
+                ignore_id: props.ticketId || '',
+            }
+        });
+        duplicateTickets.value = data.tickets || [];
+        strongDuplicates.value = data.strong_duplicates || [];
+    } catch (err) {
+        // Silent fail — the duplicate helper must never block the form.
+        duplicateTickets.value = [];
+        strongDuplicates.value = [];
+    } finally {
+        duplicateLoading.value = false;
+    }
+};
+
+const fetchDuplicateCheck = debounce(runDuplicateCheck, 400);
+
+// Cancel any pending debounced call and run the check immediately,
+// so the submit gate always sees fresh results before sending.
+const flushCheck = () => {
+    fetchDuplicateCheck.cancel();
+    return runDuplicateCheck();
+};
+
+watch(() => props.form.customer_id, () => {
+    strongDuplicates.value = [];
+    confirmNotDuplicate.value = false;
+    fetchDuplicateCheck();
+});
+
+watch(() => props.form.name, () => {
+    if (hasQuery.value) fetchDuplicateCheck();
+});
+
+watch(() => props.form.report_number, () => {
+    if (hasQuery.value) fetchDuplicateCheck();
+});
+
+watch(() => props.form.service_type, () => {
+    if (hasQuery.value) fetchDuplicateCheck();
+});
+
+watch(() => props.form.customer_branch_id, () => {
+    if (hasQuery.value) fetchDuplicateCheck();
+});
+
+onMounted(() => {
+    // In edit mode the customer is already selected — load its tickets.
+    if (props.form.customer_id) {
+        fetchDuplicateCheck();
+    }
+});
+
+defineExpose({
+    confirmNotDuplicate,
+    hasPendingConfirm,
+    flushCheck,
+});
+
+const getStatusColor = (status) => {
+    const map = {
+        'Borrador': 'info',
+        'Programado': 'info',
+        'Levantamiento': 'warning',
+        'Catálogo': 'primary',
+        'Pendiente de aprobación': 'warning',
+        'Proceso de ejecución': 'warning',
+        'Ejecutado': 'success',
+        'Finalizado': 'success',
+        'Facturado': 'primary',
+        'Pagado': 'success',
+        'Cancelado': 'danger',
+    };
+    return map[status] || 'info';
+};
+
+const similarityTagType = (similarity) => {
+    if (similarity >= 85) return 'danger';
+    if (similarity >= 60) return 'warning';
+    return 'info';
+};
+
+const formatDate = (dateString) => {
+    if (!dateString) return '—';
+    return new Date(dateString).toLocaleDateString('es-MX', {
+        day: '2-digit', month: 'short', year: '2-digit'
+    });
+};
 
 // --- SERVICE TYPE MANAGEMENT ---
 const showServiceTypeModal = ref(false);
@@ -305,6 +427,70 @@ const getTechLabel = (user) => {
                     </div>
                 </el-form-item>
             </div>
+
+            <!-- Tickets recientes del cliente (prevención de duplicados) -->
+            <div v-if="form.customer_id" class="mt-6 border-t border-gray-100 dark:border-gray-700 pt-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                        <el-icon class="text-primary"><Ticket /></el-icon>
+                        Tickets registrados del cliente
+                        <el-tag v-if="duplicateLoading" size="small" type="info" effect="plain" class="ml-1">Buscando...</el-tag>
+                    </h4>
+                    <span class="text-sm text-amber-600 bg-amber-100 px-3">Revisa antes de crear para evitar duplicados</span>
+                </div>
+                
+                <el-empty v-if="!duplicateLoading && duplicateTickets.length === 0" description="Sin tickets registrados para este cliente" :image-size="60" />
+                
+                <div v-else class="overflow-x-auto">
+                    <el-table :data="duplicateTickets" size="small" max-height="260" stripe class="w-full">
+                        <el-table-column label="Folio" width="90">
+                            <template #default="scope">
+                                <a :href="route('tickets.show', scope.row.ticket.id)" target="_blank" class="text-primary font-mono font-bold hover:underline">
+                                    {{ scope.row.ticket.folio }}
+                                </a>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="Proyecto / servicio" min-width="200">
+                            <template #default="scope">
+                                <div class="flex flex-col">
+                                    <span class="font-medium text-gray-700 dark:text-gray-300 truncate">{{ scope.row.ticket.name }}</span>
+                                    <span class="text-xs text-gray-400">{{ scope.row.ticket.service_type }}</span>
+                                </div>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="Sucursal" min-width="150" show-overflow-tooltip>
+                            <template #default="scope">
+                                {{ scope.row.ticket.branch?.label || '—' }}
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="Estado" width="120">
+                            <template #default="scope">
+                                <el-tag :type="getStatusColor(scope.row.ticket.status)" size="small" effect="light">
+                                    {{ scope.row.ticket.status }}
+                                </el-tag>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="Prioridad" width="90" align="center">
+                            <template #default="scope">
+                                {{ scope.row.ticket.priority }}
+                            </template>
+                        </el-table-column>
+                        <el-table-column v-if="hasQuery" label="Similitud" width="110" align="center" sortable>
+                            <template #default="scope">
+                                <span v-if="scope.row.match_type === 'recent' && scope.row.similarity === 0" class="text-gray-400 text-xs">—</span>
+                                <el-tag v-else :type="similarityTagType(scope.row.similarity)" size="small">
+                                    {{ scope.row.similarity }}%
+                                </el-tag>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="Creado" width="110">
+                            <template #default="scope">
+                                <span class="text-xs text-gray-500">{{ formatDate(scope.row.ticket.created_at) }}</span>
+                            </template>
+                        </el-table-column>
+                    </el-table>
+                </div>
+            </div>
         </div>
 
         <!-- SECCIÓN 2: DATOS DEL PROYECTO -->
@@ -312,6 +498,28 @@ const getTechLabel = (user) => {
             <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2 border-b pb-3 dark:border-gray-700">
                 <el-icon class="text-primary"><Document /></el-icon> Datos del proyecto / servicio
             </h3>
+
+            <!-- Alerta de posible duplicado -->
+            <div v-if="strongDuplicates.length > 0" class="mb-4">
+                <el-alert
+                    v-for="dup in strongDuplicates"
+                    :key="dup.id"
+                    :title="`Posible duplicado con ${dup.folio}: ${dup.name}`"
+                    type="warning"
+                    show-icon
+                    :closable="false"
+                    class="mb-2"
+                >
+                    <template #default>
+                        <a :href="route('tickets.show', dup.id)" target="_blank" class="text-primary underline font-medium">
+                            Ver ticket {{ dup.folio }}
+                        </a>
+                    </template>
+                </el-alert>
+                <el-checkbox v-model="confirmNotDuplicate" class="mt-2">
+                    Confirmo que este es un ticket nuevo y no un duplicado
+                </el-checkbox>
+            </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <el-form-item label="Nombre del proyecto" prop="name" :error="form.errors.name" class="md:col-span-2">

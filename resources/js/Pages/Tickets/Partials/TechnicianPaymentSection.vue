@@ -2,8 +2,9 @@
 import { ref, computed } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Money, ZoomIn, Delete, Coin, Timer } from '@element-plus/icons-vue';
+import { Money, ZoomIn, Delete, Coin, Timer, Check } from '@element-plus/icons-vue';
 import RequestDepositModal from '@/Components/Deposits/RequestDepositModal.vue';
+import CompleteDepositModal from '@/Pages/Public/Deposits/Partials/CompleteDepositModal.vue';
 import axios from 'axios';
 
 const props = defineProps({
@@ -50,6 +51,22 @@ const technicianPaymentProgress = computed(() => {
 const ticketDeposits = computed(() => {
     return (props.ticket.deposits || []).filter(d => d.status !== 'completed');
 });
+
+// --- COMPLETE DEPOSIT MODAL ---
+const showCompleteModal = ref(false);
+const selectedDeposit = ref(null);
+
+const openCompleteModal = (dep) => {
+    selectedDeposit.value = dep;
+    showCompleteModal.value = true;
+};
+
+const handleDepositCompleted = () => {
+    showCompleteModal.value = false;
+    selectedDeposit.value = null;
+    ElMessage.success('Depósito marcado como realizado. El pago se registró automáticamente.');
+    router.reload({ only: ['ticket'], preserveScroll: true, preserveState: true });
+};
 
 // --- DEPOSIT REQUEST MODAL ---
 const showDepositModal = ref(false);
@@ -223,6 +240,14 @@ const getStatusLabel = (status) => {
                         <el-tooltip v-if="depositHasVoucher(dep)" content="Ver comprobante">
                             <el-button circle size="small" type="info" plain icon="ZoomIn" @click="showDepositVoucher(dep)" />
                         </el-tooltip>
+                        <el-tooltip v-if="dep.status === 'approved'" content="Marcar como realizado">
+                            <el-button circle size="small" type="success" plain :icon="Check" @click="openCompleteModal(dep)" />
+                        </el-tooltip>
+                        <el-tooltip v-else content="No se puede marcar como realizado porque el depósito no ha sido aprobado.">
+                            <span class="inline-flex">
+                                <el-button circle size="small" type="success" plain :icon="Check" disabled />
+                            </span>
+                        </el-tooltip>
                         <el-tooltip v-if="dep.status === 'pending'" content="Eliminar depósito">
                             <el-button circle size="small" type="danger" plain icon="Delete" @click="deleteDeposit(dep.id)" />
                         </el-tooltip>
@@ -264,6 +289,15 @@ const getStatusLabel = (status) => {
             :technician="selectedTechForDeposit"
             :ticket="depositTicketInfo"
             @saved="handleDepositSaved"
+        />
+
+        <!-- MODAL MARCAR DEPÓSITO COMO REALIZADO -->
+        <CompleteDepositModal
+            v-if="selectedDeposit"
+            v-model="showCompleteModal"
+            :deposit="selectedDeposit"
+            :complete-url="selectedDeposit.complete_url"
+            @completed="handleDepositCompleted"
         />
 
         <!-- VISOR DE COMPROBANTE -->
