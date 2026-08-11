@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DeployBuildController;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Http;
@@ -63,6 +64,21 @@ Route::middleware([
             return response()->json(['rates' => ['MXN' => null]], 500);
         }
     })->name('exchange.rate');
+
+    // --- Herramienta: Migrar firmas de BD a disco ---
+    Route::post('/tools/migrate-signatures', function () {
+        if (!auth()->user()?->can('manage roles-permissions')) {
+            abort(403);
+        }
+
+        Artisan::call('signatures:migrate-to-disk', ['--clear-db' => true]);
+
+        return back()->with('success', 'Firmas migradas correctamente. Se han liberado los datos base64 de la base de datos.');
+    })->name('tools.migrate-signatures');
+
+    // --- Herramienta: Desplegar build de Vite ---
+    Route::get('/tools/deploy-build', [DeployBuildController::class, 'showForm'])->name('tools.deploy-build.form');
+    Route::post('/tools/deploy-build', [DeployBuildController::class, 'deploy'])->name('tools.deploy-build.deploy');
 });
 
 // Importar rutas modulares
@@ -77,8 +93,12 @@ require __DIR__ . '/web/calendar.php';
 require __DIR__ . '/web/technicians.php';
 require __DIR__ . '/web/invoices.php';
 require __DIR__ . '/web/costs.php';
+require __DIR__ . '/web/special-costs.php';
+require __DIR__ . '/web/work-acceptance-reports.php';
 require __DIR__ . '/web/notifications.php';
 require __DIR__ . '/web/tutorials.php';
+require __DIR__ . '/web/deposits.php';
+require __DIR__ . '/web/field-work.php';
 
 // --- SOLUCIÓN PARA HOSTING SIN SYMLINK ---
 // Esta ruta intercepta las peticiones a imágenes y documentos
@@ -90,5 +110,15 @@ Route::get('/storage/{extra}', function ($extra) {
         abort(404);
     }
 
-    return response()->file($path);
+    $mimeType = \Illuminate\Support\Facades\File::mimeType($path);
+
+    return response()->file($path, [
+        'Content-Type' => $mimeType,
+    ]);
 })->where('extra', '.*');
+
+//artisan commands -------------------
+Route::get('/clear-all', function () {
+    Artisan::call('signatures:migrate-to-disk --clear-db');
+    return 'migrated.';
+});

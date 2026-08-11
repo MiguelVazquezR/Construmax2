@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed } from 'vue';
+import { ref, reactive, computed, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import axios from 'axios';
 
@@ -21,13 +21,18 @@ const formRef = ref();
 const isSubmitting = ref(false);
 
 const form = reactive({
-    customer_id: props.selectedCustomerId || '',
+    customer_id: '',
     country: 'México',
     region: '',
     city: '',
     unit: '',
     branch_name: '',
 });
+
+// Sync selectedCustomerId prop to form whenever modal opens or prop changes
+watch(() => props.selectedCustomerId, (newVal) => {
+    form.customer_id = newVal || '';
+}, { immediate: true });
 
 const rules = reactive({
     customer_id: [
@@ -53,7 +58,6 @@ const close = () => {
 };
 
 const resetForm = () => {
-    form.customer_id = props.selectedCustomerId || '';
     form.country = 'México';
     form.region = '';
     form.city = '';

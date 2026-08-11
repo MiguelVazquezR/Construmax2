@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Calendar;
-use App\Models\Ticket;
 use App\Models\User;
+use App\Models\CustomerBranch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -78,45 +78,23 @@ class CalendarController extends Controller
                 ];
             });
 
-        // Tickets as calendar entries (visible to all users)
-        $tickets = Ticket::with(['customer', 'branch', 'seller'])
-            ->whereNotNull('scheduled_start')
-            ->whereNotNull('scheduled_end')
-            ->whereNotIn('status', ['Cancelado', 'Pagado'])
-            ->get()
-            ->map(function ($ticket) {
-                $now = now()->startOfDay();
-                $end = $ticket->scheduled_end->copy()->startOfDay();
-                $start = $ticket->scheduled_start->copy()->startOfDay();
-
-                if ($now->gt($end)) {
-                    $health = 'Vencido';
-                } elseif ($now->lt($start)) {
-                    $health = 'Programado';
-                } else {
-                    $health = 'A tiempo';
-                }
-
-                return [
-                    'id'           => $ticket->id,
-                    'folio'        => $ticket->folio,
-                    'name'         => $ticket->name ?? $ticket->service_type ?? 'Servicio',
-                    'customer'     => $ticket->customer?->name,
-                    'branch'       => $ticket->branch?->branch_name,
-                    'seller'       => $ticket->seller?->name,
-                    'status'       => $ticket->status,
-                    'priority'     => $ticket->priority,
-                    'progress'     => $ticket->progress,
-                    'health'       => $health,
-                    'start'        => $ticket->scheduled_start->toDateString(),
-                    'end'          => $ticket->scheduled_end->toDateString(),
-                ];
-            });
-
         return Inertia::render('Calendar/Index', [
             'events' => $events,
-            'tickets' => $tickets,
             'users' => User::where('id', '!=', $userId)->where('is_active', true)->get(),
+            'technicians' => User::whereHas('technician')->with('technician')->orderBy('name')->get()
+                ->map(fn ($u) => [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'is_internal' => $u->technician?->is_internal ?? false,
+                ]),
+            'branches' => CustomerBranch::with('customer')
+                ->orderBy('branch_name')
+                ->get()
+                ->map(fn ($b) => [
+                    'id' => $b->id,
+                    'branch_name' => $b->branch_name,
+                    'customer_name' => $b->customer?->name,
+                ]),
         ]);
     }
 

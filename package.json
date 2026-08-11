@@ -26,6 +26,7 @@
     "dependencies": {
         "@element-plus/icons-vue": "^2.3.2",
         "apexcharts": "^5.3.6",
+        "dayjs": "^1.11.21",
         "echarts": "^6.1.0",
         "element-plus": "^2.13.2",
         "lodash": "^4.17.23",

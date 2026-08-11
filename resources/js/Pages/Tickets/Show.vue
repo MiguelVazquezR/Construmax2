@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { Tools, Back, Edit, ChatDotSquare } from '@element-plus/icons-vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import TicketTasks from '@/Pages/Tickets/Partials/TicketTasks.vue';
 import TicketInfo from '@/Pages/Tickets/Partials/TicketInfo.vue';
@@ -59,7 +60,7 @@ async function handleStatusChange(newStatus) {
     if (newStatus === 'Catálogo' && !hasBudget.value) {
         try {
             await ElMessageBox.confirm(
-                'Para mover este ticket a Cotización (Catálogo) es necesario tener un presupuesto registrado. ¿Deseas crear uno ahora?',
+                'Para mover este ticket a Cotización (Catálogo) es necesario registrar el presupuesto y enviarlo al área de costos. ¿Deseas crear el presupuesto ahora?',
                 'Presupuesto requerido',
                 {
                     confirmButtonText: 'Crear presupuesto',
@@ -67,20 +68,10 @@ async function handleStatusChange(newStatus) {
                     type: 'warning',
                 }
             );
-            // Change status first, then redirect to budget creation
-            router.put(route('tickets.update-status', props.ticket.id), {
-                status: newStatus
-            }, {
-                preserveScroll: true,
-                preserveState: true,
-                onSuccess: () => {
-                    router.visit(route('budgets.create', { ticket_id: props.ticket.id }));
-                },
-                onError: () => {
-                    currentStatus.value = props.ticket.status;
-                    ElMessage.error('Error al actualizar el estatus.');
-                }
-            });
+            // Redirect to budget creation. The status is NOT changed here — the
+            // ticket only moves to 'Catálogo' when the budget form is submitted
+            // with "Guardar y pasar a costos".
+            router.visit(route('budgets.create', { ticket_id: props.ticket.id }));
             return;
         } catch {
             // User cancelled — revert to previous status
@@ -103,6 +94,45 @@ async function handleStatusChange(newStatus) {
         }
     });
 }
+
+const handleImportantNote = () => {
+    ElMessageBox.prompt(
+        props.ticket.important_note ? 'Editar o eliminar la nota importante' : 'Agregar una nota importante',
+        'Nota importante',
+        {
+            confirmButtonText: props.ticket.important_note ? 'Actualizar' : 'Guardar',
+            cancelButtonText: props.ticket.important_note ? 'Eliminar nota' : 'Cancelar',
+            inputValue: props.ticket.important_note || '',
+            inputPlaceholder: 'Ej. Falta subir OC, Cotización pendiente...',
+            inputType: 'textarea',
+            inputValidator: (value) => {
+                if (value && value.length > 500) return 'Máximo 500 caracteres';
+                return true;
+            },
+            distinguishCancelAndClose: true,
+        }
+    )
+    .then(({ value }) => {
+        router.put(route('tickets.update-important-note', props.ticket.id), {
+            important_note: value || null,
+        }, {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => ElMessage.success('Nota importante actualizada.'),
+        });
+    })
+    .catch((action) => {
+        if (action === 'cancel' && props.ticket.important_note) {
+            router.put(route('tickets.update-important-note', props.ticket.id), {
+                important_note: null,
+            }, {
+                preserveScroll: true,
+                preserveState: true,
+                onSuccess: () => ElMessage.success('Nota importante eliminada.'),
+            });
+        }
+    });
+};
 </script>
 
 <template>
@@ -131,6 +161,29 @@ async function handleStatusChange(newStatus) {
                             </div>
                         </el-option>
                     </el-select>
+                    <!-- Indicador de nota importante -->
+                    <el-tooltip
+                        v-if="ticket.important_note"
+                        :content="ticket.important_note"
+                        placement="bottom"
+                    >
+                        <el-button
+                            type="warning"
+                            :icon="ChatDotSquare"
+                            size="small"
+                            circle
+                            @click="handleImportantNote"
+                        />
+                    </el-tooltip>
+                    <el-button
+                        v-else
+                        :icon="ChatDotSquare"
+                        size="small"
+                        circle
+                        class="!text-gray-400 hover:!text-orange-500"
+                        @click="handleImportantNote"
+                        title="Agregar nota importante"
+                    />
                 </div>
                 
                 <div class="flex gap-2">

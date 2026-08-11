@@ -4,14 +4,18 @@ import { router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { debounce } from 'lodash';
 import TableList from '@/Pages/Budgets/Partials/TableList.vue';
+import BulkFileUploadModal from '@/Pages/Budgets/Partials/BulkFileUploadModal.vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
 const { can } = usePermissions();
 
+const showBulkUploadModal = ref(false);
+
 const props = defineProps({
     budgets: Object,
     filters: Object,
-    users: Array, // Nueva prop recibida del controlador
+    users: Array,
+    customers: Array,
 });
 
 const search = ref(props.filters.search || '');
@@ -63,11 +67,11 @@ watch([search, statusFilter, perPage, userFilter, branchFilter], fetchData);
     <AppLayout title="Gestión de presupuestos">
         <div class="space-y-4">
             <!-- Barra de Herramientas -->
-            <div class="bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] flex flex-col lg:flex-row justify-between items-center gap-4">
+            <div class="bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] space-y-3">
                 
-                <!-- Filtros Izquierda -->
-                <div class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto flex-1">
-                    <div class="w-full sm:w-64">
+                <!-- Fila 1: Filtros -->
+                <div class="flex flex-wrap items-center gap-3">
+                    <div class="w-full sm:w-56">
                         <el-input
                             v-model="search"
                             placeholder="Buscar por nombre, cliente..."
@@ -76,8 +80,7 @@ watch([search, statusFilter, perPage, userFilter, branchFilter], fetchData);
                         />
                     </div>
                     
-                    <!-- NUEVO: Filtro de asesor/vendedor -->
-                    <div class="w-full sm:w-60">
+                    <div class="w-full sm:w-52">
                          <el-select 
                             v-model="userFilter" 
                             placeholder="Asesor/vendedor" 
@@ -96,36 +99,42 @@ watch([search, statusFilter, perPage, userFilter, branchFilter], fetchData);
                         </el-select>
                     </div>
 
-                    <div class="w-full sm:w-48">
+                    <div class="w-full sm:w-44">
                         <el-select v-model="statusFilter" placeholder="Filtrar estado" clearable class="w-full">
                             <el-option label="Todos los estados" value="all" />
                             <el-option v-for="st in ticketStatuses" :key="st" :label="st" :value="st" />
                         </el-select>
                     </div>
 
-                    <div class="w-full sm:w-48">
+                    <div class="w-full sm:w-44">
                         <el-input
                             v-model="branchFilter"
-                            placeholder="Sucursal, región, unidad..."
+                            placeholder="Sucursal, región..."
                             clearable
                             prefix-icon="Search"
                         />
                     </div>
                 </div>
 
-                <!-- Acciones Derecha -->
-                <div class="flex items-center gap-3 w-full lg:w-auto justify-end">
+                <!-- Fila 2: Acciones -->
+                <div class="flex items-center gap-3 justify-between flex-wrap">
                     <el-select v-model="perPage" placeholder="Ver" style="width: 100px" class="hidden sm:block">
                         <el-option label="10 / pág" :value="10" />
                         <el-option label="20 / pág" :value="20" />
                         <el-option label="50 / pág" :value="50" />
                     </el-select>
 
-                    <Link v-if="can('budgets.create')" :href="route('budgets.create')">
-                        <el-button type="primary" color="#f26c17" icon="Plus">
-                            Nuevo
+                    <div class="flex items-center gap-3">
+                        <el-button type="warning" plain icon="Upload" @click="showBulkUploadModal = true">
+                            Adjuntar archivos
                         </el-button>
-                    </Link>
+
+                        <Link v-if="can('budgets.create')" :href="route('budgets.create')">
+                            <el-button type="primary" color="#f26c17" icon="Plus">
+                                Nuevo
+                            </el-button>
+                        </Link>
+                    </div>
                 </div>
             </div>
 
@@ -141,6 +150,8 @@ watch([search, statusFilter, perPage, userFilter, branchFilter], fetchData);
                 </template>
             </el-alert>
             <TableList :budgets="budgets" />
+
+            <BulkFileUploadModal v-model:show="showBulkUploadModal" :customers="customers" />
 
         </div>
     </AppLayout>

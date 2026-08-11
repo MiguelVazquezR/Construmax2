@@ -12,11 +12,20 @@ const emit = defineEmits(['update:modelValue', 'created']);
 const formRef = ref();
 const isSubmitting = ref(false);
 
+const mexicoStates = [
+    'Aguascalientes', 'Baja California', 'Baja California Sur', 'Campeche', 'Chiapas', 'Chihuahua',
+    'Ciudad de México', 'Coahuila', 'Colima', 'Durango', 'Estado de México', 'Guanajuato',
+    'Guerrero', 'Hidalgo', 'Jalisco', 'Michoacán', 'Morelos', 'Nayarit', 'Nuevo León',
+    'Oaxaca', 'Puebla', 'Querétaro', 'Quintana Roo', 'San Luis Potosí', 'Sinaloa', 'Sonora',
+    'Tabasco', 'Tamaulipas', 'Tlaxcala', 'Veracruz', 'Yucatán', 'Zacatecas'
+];
+
 const form = reactive({
     name: '',
     phone: '',
     is_internal: false, // NUEVO CAMPO
     level: 'Encargado',
+    state: '',
 });
 
 const rules = reactive({
@@ -35,6 +44,7 @@ const close = () => {
     form.phone = '';
     form.is_internal = false;
     form.level = 'Encargado';
+    form.state = '';
     if (formRef.value) formRef.value.clearValidate();
 };
 
@@ -94,6 +104,12 @@ const submit = () => {
                 <el-select v-model="form.level" class="w-full">
                     <el-option label="Encargado" value="Encargado" />
                     <el-option label="Auxiliar / Ayudante" value="Auxiliar/Ayudante" />
+                </el-select>
+            </el-form-item>
+
+            <el-form-item label="Estado">
+                <el-select v-model="form.state" placeholder="Opcional" class="w-full" filterable clearable>
+                    <el-option v-for="state in mexicoStates" :key="state" :label="state" :value="state" />
                 </el-select>
             </el-form-item>
         </el-form>

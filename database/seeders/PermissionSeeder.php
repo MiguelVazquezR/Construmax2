@@ -198,6 +198,32 @@ class PermissionSeeder extends Seeder
                 'category' => 'Tickets',
                 'description' => 'Marcar tareas como completadas o pendientes de cualquier usuario'
             ],
+            [
+                'name' => 'tickets.create-tasks-template',
+                'category' => 'Tickets',
+                'description' => 'Crear plantillas de tareas'
+            ],
+            [
+                'name' => 'tickets.edit-tasks-template',
+                'category' => 'Tickets',
+                'description' => 'Editar plantillas de tareas'
+            ],
+            [
+                'name' => 'tickets.delete-tasks-template',
+                'category' => 'Tickets',
+                'description' => 'Eliminar plantillas de tareas'
+            ],
+            [
+                'name' => 'tickets.calendar.view',
+                'category' => 'Tickets',
+                'description' => 'Ver el calendario de trabajos en sitio de tickets'
+            ],
+            [
+                'name' => 'tickets.calendar.create',
+                'category' => 'Tickets',
+                'description' => 'Crear eventos en el calendario de actividades'
+            ],
+            
 
             // --- MÓDULO: ANALÍTICAS (DASHBOARDS) ---
             [
@@ -224,12 +250,76 @@ class PermissionSeeder extends Seeder
                 'category' => 'Costos',
                 'description' => 'Ver listado de presupuestos y costos'
             ],
+            [
+                'name' => 'costs.create',
+                'category' => 'Costos',
+                'description' => 'Crear versiones de catálogo de costos'
+            ],
+            [
+                'name' => 'costs.approve',
+                'category' => 'Costos',
+                'description' => 'Aprobar catálogos de costos'
+            ],
+            [
+                'name' => 'costs.transfer',
+                'category' => 'Costos',
+                'description' => 'Transferir catálogos a costos especiales para autorización'
+            ],
+
+            // --- MÓDULO: COSTOS ESPECIALES ---
+            [
+                'name' => 'special-costs.index',
+                'category' => 'Costos especiales',
+                'description' => 'Ver listado y detalles de catálogos en costos especiales'
+            ],
+            [
+                'name' => 'special-costs.approve',
+                'category' => 'Costos especiales',
+                'description' => 'Aprobar catálogos de costos especiales'
+            ],
+            [
+                'name' => 'special-costs.create-version',
+                'category' => 'Costos especiales',
+                'description' => 'Crear nuevas versiones de catálogo en costos especiales'
+            ],
 
             // --- MÓDULO: NOTIFICACIONES ---
             [
                 'name' => 'config.notifications',
                 'category' => 'Configuración',
                 'description' => 'Gestionar configuraciones de notificaciones (quién recibe qué)'
+            ],
+
+            // --- MÓDULO: DEPÓSITOS ---
+            [
+                'name' => 'deposits.index',
+                'category' => 'Depósitos',
+                'description' => 'Ver el módulo de depósitos (lista y calendario)'
+            ],
+            [
+                'name' => 'deposits.create',
+                'category' => 'Depósitos',
+                'description' => 'Programar nuevos depósitos a técnicos'
+            ],
+            [
+                'name' => 'deposits.edit',
+                'category' => 'Depósitos',
+                'description' => 'Editar depósitos existentes'
+            ],
+            [
+                'name' => 'deposits.delete',
+                'category' => 'Depósitos',
+                'description' => 'Eliminar depósitos del sistema'
+            ],
+            [
+                'name' => 'deposits.approve',
+                'category' => 'Depósitos',
+                'description' => 'Aprobar depósitos pendientes y recibir notificaciones'
+            ],
+            [
+                'name' => 'deposits.types.manage',
+                'category' => 'Depósitos',
+                'description' => 'Gestionar el catálogo de tipos de depósito'
             ],
         ];
 

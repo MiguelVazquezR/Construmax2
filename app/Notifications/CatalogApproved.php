@@ -7,7 +7,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class CatalogCreated extends Notification
+class CatalogApproved extends Notification
 {
     use Queueable;
 
@@ -25,9 +25,9 @@ class CatalogCreated extends Notification
         $ticket = $this->catalog->budget->ticket;
 
         return (new MailMessage)
-            ->subject('Catálogo de costos listo — ' . $ticket->folio)
+            ->subject('Catálogo de costos aprobado — ' . $ticket->folio)
             ->greeting('Hola ' . $notifiable->name . ',')
-            ->line('Se ha generado un nuevo catálogo de costos (versión **' . $this->catalog->version . '**) para el ticket **' . $ticket->folio . '**.')
+            ->line('El catálogo de costos (versión **' . $this->catalog->version . '**) para el ticket **' . $ticket->folio . '** ha sido **aprobado**.')
             ->line('Total: $' . number_format($this->catalog->total, 2))
             ->line('El catálogo está listo para enviarse al cliente.')
             ->action('Ver ticket', route('tickets.show', $ticket))
@@ -44,10 +44,10 @@ class CatalogCreated extends Notification
             'catalog_id'   => $this->catalog->id,
             'version'      => $this->catalog->version,
             'folio'        => $ticket->folio,
-            'type'         => 'catalog.created',
+            'type'         => 'catalog.approved',
             'route'        => 'tickets.show',
             'route_params' => ['ticket' => $ticket->id],
-            'message'      => 'Catálogo de costos v' . $this->catalog->version . ' generado para ' . $ticket->folio . '.',
+            'message'      => 'Catálogo de costos v' . $this->catalog->version . ' aprobado para ' . $ticket->folio . '.',
         ];
     }
 }

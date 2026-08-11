@@ -25,6 +25,8 @@ const catalog = computed(() => {
     return props.budget.latest_catalog;
 });
 
+const isApproved = computed(() => catalog.value?.is_approved === true);
+
 const materialsItems = computed(() =>
     (catalog.value?.items || []).filter(i => i.type === 'material')
 );
@@ -88,40 +90,47 @@ const handlePrint = () => {
             </button>
         </div>
 
-        <div class="max-w-5xl mx-auto bg-white dark:bg-white print:shadow-none shadow-lg p-8 print:p-0 text-gray-900 dark:text-gray-900">
+        <div class="max-w-5xl mx-auto bg-white dark:bg-white print:shadow-none shadow-lg p-8 print:p-0 text-gray-900 dark:text-gray-900 relative">
+
+            <!-- Approval watermark overlay -->
+            <div v-if="!isApproved" class="absolute inset-0 flex items-center justify-center z-50 pointer-events-none print:flex">
+                <div class="transform -rotate-12 bg-red-500/10 border-4 border-red-500 rounded-lg px-12 py-4">
+                    <span class="text-6xl font-black text-red-500 opacity-90 select-none">ESPERANDO APROBACIÓN</span>
+                </div>
+            </div>
 
             <!-- ============================================================ -->
             <!-- HEADER                                                       -->
             <!-- ============================================================ -->
-            <div class="flex border-2 border-[#1e1e20] mb-2">
+            <div class="flex border-2 border-[#b9b9b9] mb-2">
                 <!-- Logo Area -->
-                <div class="w-1/3 flex justify-center items-center border-r-2 border-[#1e1e20] p-1 bg-white dark:bg-white">
+                <div class="w-1/3 flex justify-center items-center border-r-2 border-[#b9b9b9] p-1 bg-white dark:bg-white">
                     <ApplicationLogo class="h-auto w-full object-contain" />
                 </div>
 
                 <!-- Info Area -->
                 <div class="w-2/3 flex flex-col">
-                    <div class="bg-[#f26c17] text-white text-center font-bold py-1 border-b-2 border-[#1e1e20] uppercase">
+                    <div class="bg-[#f26c17] text-white text-center font-bold py-1 border-b-2 border-[#b9b9b9] uppercase">
                         Catálogo de costos
                     </div>
 
-                    <div class="flex border-b border-[#1e1e20] flex-1">
-                        <div class="w-1/4 bg-[#1e1e20] text-white px-2 py-1.5 font-bold border-r border-[#1e1e20] flex items-center">Sucursal</div>
+                    <div class="flex border-b border-[#b9b9b9] flex-1">
+                        <div class="w-1/4 bg-[#b9b9b9] text-white px-2 py-1.5 font-bold border-r border-[#b9b9b9] flex items-center">Sucursal</div>
                         <div class="w-3/4 px-2 py-1.5 text-center font-bold text-[#f26c17] flex items-center justify-center truncate cursor-pointer hover:text-[#d95d0f] transition" @click="copyToClipboard(budget.ticket?.branch?.branch_name)" title="Clic para copiar">{{ budget.ticket?.branch?.branch_name || 'N/D' }}</div>
                     </div>
 
-                    <div class="flex border-b border-[#1e1e20] flex-1">
-                        <div class="w-1/4 bg-[#1e1e20] text-white px-2 py-1.5 font-bold border-r border-[#1e1e20] flex items-center">Ticket</div>
+                    <div class="flex border-b border-[#b9b9b9] flex-1">
+                        <div class="w-1/4 bg-[#b9b9b9] text-white px-2 py-1.5 font-bold border-r border-[#b9b9b9] flex items-center">Ticket</div>
                         <div class="w-3/4 px-2 py-1.5 text-center font-bold text-[#f26c17] flex items-center justify-center truncate cursor-pointer hover:text-[#d95d0f] transition" @click="copyToClipboard(budget.ticket?.folio)" title="Clic para copiar">{{ budget.ticket?.folio || 'N/D' }}</div>
                     </div>
 
-                    <div class="flex border-b border-[#1e1e20] flex-1">
-                        <div class="w-1/4 bg-[#1e1e20] text-white px-2 py-1.5 font-bold border-r border-[#1e1e20] flex items-center">No. de sucursal</div>
+                    <div class="flex border-b border-[#b9b9b9] flex-1">
+                        <div class="w-1/4 bg-[#b9b9b9] text-white px-2 py-1.5 font-bold border-r border-[#b9b9b9] flex items-center">No. de sucursal</div>
                         <div class="w-3/4 px-2 py-1.5 text-center font-bold text-[#f26c17] flex items-center justify-center truncate cursor-pointer hover:text-[#d95d0f] transition" @click="copyToClipboard(budget.ticket?.branch?.unit)" title="Clic para copiar">{{ budget.ticket?.branch?.unit || 'N/D' }}</div>
                     </div>
 
                     <div class="flex flex-1">
-                        <div class="w-1/4 bg-[#1e1e20] text-white px-2 py-1.5 font-bold border-r border-[#1e1e20] flex items-center">Descripción</div>
+                        <div class="w-1/4 bg-[#b9b9b9] text-white px-2 py-1.5 font-bold border-r border-[#b9b9b9] flex items-center">Descripción</div>
                         <div class="w-3/4 px-2 py-1.5 text-center font-bold text-[#f26c17] flex items-center justify-center truncate cursor-pointer hover:text-[#d95d0f] transition" @click="copyToClipboard(budget.ticket?.name)" title="Clic para copiar">{{ budget.ticket?.name || 'N/D' }}</div>
                     </div>
                 </div>
@@ -130,41 +139,41 @@ const handlePrint = () => {
             <!-- ============================================================ -->
             <!-- TABLA DE MATERIALES                                          -->
             <!-- ============================================================ -->
-            <table class="w-full text-[11px] border-collapse border-2 border-[#1e1e20] text-gray-900 mb-4">
+            <table class="w-full text-[11px] border-collapse border-2 border-[#b9b9b9] text-gray-900 mb-4">
                 <thead>
                     <tr class="bg-[#f26c17] text-white text-center">
-                        <th class="border border-[#1e1e20] py-2 w-16">DESGLOCE</th>
-                        <th class="border border-[#1e1e20] py-2">DESCRIPCIÓN</th>
-                        <th class="border border-[#1e1e20] py-2 w-20">UNIDAD</th>
-                        <th class="border border-[#1e1e20] py-2 w-20">QTY</th>
-                        <th class="border border-[#1e1e20] py-2 w-24">PRECIO</th>
-                        <th class="border border-[#1e1e20] py-2 w-28">TOTAL</th>
+                        <th class="border border-[#b9b9b9] py-2 w-16">DESGLOCE</th>
+                        <th class="border border-[#b9b9b9] py-2">DESCRIPCIÓN</th>
+                        <th class="border border-[#b9b9b9] py-2 w-20">UNIDAD</th>
+                        <th class="border border-[#b9b9b9] py-2 w-20">QTY</th>
+                        <th class="border border-[#b9b9b9] py-2 w-24">PRECIO</th>
+                        <th class="border border-[#b9b9b9] py-2 w-28">TOTAL</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr v-for="(item, index) in materialsItems" :key="'m'+item.id" class="text-center">
-                        <td class="border border-[#1e1e20] py-1.5 px-1 text-gray-900">{{ index + 1 }}</td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 text-left leading-tight break-words text-gray-900 cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(item.description)" title="Clic para copiar">{{ item.description }}</td>
-                        <td class="border border-[#1e1e20] py-1.5 px-1 text-gray-900 cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(item.unit)" title="Clic para copiar">{{ item.unit }}</td>
-                        <td class="border border-[#1e1e20] py-1.5 px-1 text-gray-900">
+                        <td class="border border-[#b9b9b9] py-1.5 px-1 text-gray-900">{{ index + 1 }}</td>
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 text-left leading-tight break-words text-gray-900 cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(item.description)" title="Clic para copiar">{{ item.description }}</td>
+                        <td class="border border-[#b9b9b9] py-1.5 px-1 text-gray-900 cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(item.unit)" title="Clic para copiar">{{ item.unit }}</td>
+                        <td class="border border-[#b9b9b9] py-1.5 px-1 text-gray-900">
                             <span class="cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(Number(item.quantity))" title="Clic para copiar">{{ Number(item.quantity).toFixed(2) }}</span>
                         </td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 text-right text-gray-900">
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 text-right text-gray-900">
                             <div class="flex justify-between w-full cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(Number(item.unit_price))" title="Clic para copiar"><span>$</span><span>{{ formatCurrency(item.unit_price) }}</span></div>
                         </td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 text-right bg-orange-50 text-gray-900">
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 text-right bg-orange-50 text-gray-900">
                             <div class="flex justify-between w-full cursor-pointer hover:text-[#f26c17] transition font-bold" @click="copyToClipboard(Number(item.total))" title="Clic para copiar"><span>$</span><span>{{ formatCurrency(item.total) }}</span></div>
                         </td>
                     </tr>
                     <tr v-if="materialsItems.length === 0">
-                        <td colspan="6" class="border border-[#1e1e20] py-4 text-center text-gray-400">Sin materiales registrados.</td>
+                        <td colspan="6" class="border border-[#b9b9b9] py-4 text-center text-gray-400">Sin materiales registrados.</td>
                     </tr>
                 </tbody>
                 <tfoot v-if="materialsItems.length > 0">
                     <tr>
-                        <td colspan="4" class="border-t-2 border-[#1e1e20] border-b-0 border-l-0"></td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 font-bold text-white bg-[#1e1e20] text-center">Materiales subtotal</td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 font-bold text-right bg-[#1e1e20] text-white">
+                        <td colspan="4" class="border-t-2 border-[#b9b9b9] border-b-0 border-l-0"></td>
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-white bg-[#b9b9b9] text-center">Materiales subtotal</td>
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-right bg-[#b9b9b9] text-white">
                             <div class="flex justify-between w-full cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(materialsSubtotal)" title="Clic para copiar"><span>$</span><span>{{ formatCurrency(materialsSubtotal) }}</span></div>
                         </td>
                     </tr>
@@ -174,41 +183,41 @@ const handlePrint = () => {
             <!-- ============================================================ -->
             <!-- TABLA DE MANO DE OBRA                                        -->
             <!-- ============================================================ -->
-            <table class="w-full text-[11px] border-collapse border-2 border-[#1e1e20] text-gray-900 mb-4">
+            <table class="w-full text-[11px] border-collapse border-2 border-[#b9b9b9] text-gray-900 mb-4">
                 <thead>
                     <tr class="bg-[#f26c17] text-white text-center">
-                        <th class="border border-[#1e1e20] py-2 w-16">MO</th>
-                        <th class="border border-[#1e1e20] py-2">DESCRIPCIÓN</th>
-                        <th class="border border-[#1e1e20] py-2 w-32">TÉCNICO</th>
-                        <th class="border border-[#1e1e20] py-2 w-20">HORAS</th>
-                        <th class="border border-[#1e1e20] py-2 w-24">RATE</th>
-                        <th class="border border-[#1e1e20] py-2 w-28">TOTAL</th>
+                        <th class="border border-[#b9b9b9] py-2 w-16">MO</th>
+                        <th class="border border-[#b9b9b9] py-2">DESCRIPCIÓN</th>
+                        <th class="border border-[#b9b9b9] py-2 w-32">TÉCNICO</th>
+                        <th class="border border-[#b9b9b9] py-2 w-20">HORAS</th>
+                        <th class="border border-[#b9b9b9] py-2 w-24">RATE</th>
+                        <th class="border border-[#b9b9b9] py-2 w-28">TOTAL</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr v-for="(item, index) in laborItems" :key="'l'+item.id" class="text-center">
-                        <td class="border border-[#1e1e20] py-1.5 px-1 text-gray-900">{{ index + 1 }}</td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 text-left leading-tight break-words text-gray-900 cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(item.description)" title="Clic para copiar">{{ item.description }}</td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 text-left text-gray-900 cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(item.technician)" title="Clic para copiar">{{ item.technician || '—' }}</td>
-                        <td class="border border-[#1e1e20] py-1.5 px-1 text-gray-900">
+                        <td class="border border-[#b9b9b9] py-1.5 px-1 text-gray-900">{{ index + 1 }}</td>
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 text-left leading-tight break-words text-gray-900 cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(item.description)" title="Clic para copiar">{{ item.description }}</td>
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 text-left text-gray-900 cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(item.technician)" title="Clic para copiar">{{ item.technician || '—' }}</td>
+                        <td class="border border-[#b9b9b9] py-1.5 px-1 text-gray-900">
                             <span class="cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(Number(item.hours))" title="Clic para copiar">{{ Number(item.hours).toFixed(2) }}</span>
                         </td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 text-right text-gray-900">
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 text-right text-gray-900">
                             <div class="flex justify-between w-full cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(Number(item.rate))" title="Clic para copiar"><span>$</span><span>{{ formatCurrency(item.rate) }}</span></div>
                         </td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 text-right bg-orange-50 text-gray-900">
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 text-right bg-orange-50 text-gray-900">
                             <div class="flex justify-between w-full cursor-pointer hover:text-[#f26c17] transition font-bold" @click="copyToClipboard(Number(item.total))" title="Clic para copiar"><span>$</span><span>{{ formatCurrency(item.total) }}</span></div>
                         </td>
                     </tr>
                     <tr v-if="laborItems.length === 0">
-                        <td colspan="6" class="border border-[#1e1e20] py-4 text-center text-gray-400">Sin mano de obra registrada.</td>
+                        <td colspan="6" class="border border-[#b9b9b9] py-4 text-center text-gray-400">Sin mano de obra registrada.</td>
                     </tr>
                 </tbody>
                 <tfoot v-if="laborItems.length > 0">
                     <tr>
-                        <td colspan="4" class="border-t-2 border-[#1e1e20] border-b-0 border-l-0"></td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 font-bold text-white bg-[#1e1e20] text-center">Instalación laboral subtotal</td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 font-bold text-right bg-[#1e1e20] text-white">
+                        <td colspan="4" class="border-t-2 border-[#b9b9b9] border-b-0 border-l-0"></td>
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-white bg-[#b9b9b9] text-center">Instalación laboral subtotal</td>
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-right bg-[#b9b9b9] text-white">
                             <div class="flex justify-between w-full cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(laborSubtotal)" title="Clic para copiar"><span>$</span><span>{{ formatCurrency(laborSubtotal) }}</span></div>
                         </td>
                     </tr>
@@ -218,47 +227,47 @@ const handlePrint = () => {
             <!-- ============================================================ -->
             <!-- PIE: TOTALES GENERALES                                       -->
             <!-- ============================================================ -->
-            <table class="w-full text-[11px] border-collapse border-2 border-[#1e1e20] text-gray-900" v-if="catalog">
+            <table class="w-full text-[11px] border-collapse border-2 border-[#b9b9b9] text-gray-900" v-if="catalog">
                 <tfoot>
                     <tr>
                         <td colspan="4" class="border-none"></td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 font-bold text-white bg-[#1e1e20] text-center w-56">Subtotal</td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 font-bold text-right bg-[#1e1e20] text-white">
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-white bg-[#b9b9b9] text-center w-56">Subtotal</td>
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-right bg-[#b9b9b9] text-white">
                             <div class="flex justify-between w-full cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(combinedSubtotal)" title="Clic para copiar"><span>$</span><span>{{ formatCurrency(combinedSubtotal) }}</span></div>
                         </td>
                     </tr>
                     <tr>
                         <td colspan="4" class="border-none"></td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 font-bold text-white bg-[#1e1e20] text-center">Non installation labor</td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 font-bold text-right bg-[#1e1e20] text-white">
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-white bg-[#b9b9b9] text-center">Non installation labor</td>
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-right bg-[#b9b9b9] text-white">
                             <div class="flex justify-between w-full cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(Number(catalog.non_installation_labor))" title="Clic para copiar"><span>$</span><span>{{ formatCurrency(Number(catalog.non_installation_labor)) }}</span></div>
                         </td>
                     </tr>
                     <tr>
                         <td colspan="4" class="border-none"></td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 font-bold text-white bg-[#1e1e20] text-center">Utilidad de mano de obra</td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 font-bold text-right bg-[#1e1e20] text-white">
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-white bg-[#b9b9b9] text-center">Utilidad de mano de obra</td>
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-right bg-[#b9b9b9] text-white">
                             <div class="flex justify-between w-full cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(Number(catalog.labor_utility))" title="Clic para copiar"><span>$</span><span>{{ formatCurrency(Number(catalog.labor_utility)) }}</span></div>
                         </td>
                     </tr>
                     <tr>
                         <td colspan="4" class="border-none"></td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 font-bold text-white bg-[#1e1e20] text-center">IVA</td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 font-bold text-right bg-[#1e1e20] text-white">
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-white bg-[#b9b9b9] text-center">IVA</td>
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-right bg-[#b9b9b9] text-white">
                             <div class="flex justify-between w-full cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(Number(catalog.iva))" title="Clic para copiar"><span>$</span><span>{{ formatCurrency(Number(catalog.iva)) }}</span></div>
                         </td>
                     </tr>
                     <tr>
                         <td colspan="4" class="border-none"></td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 font-bold text-white bg-[#1e1e20] text-center">Subtotal general</td>
-                        <td class="border border-[#1e1e20] py-1.5 px-2 font-bold text-right bg-[#f26c17] text-white">
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-white bg-[#b9b9b9] text-center">Subtotal general</td>
+                        <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-right bg-[#f26c17] text-white">
                             <div class="flex justify-between w-full cursor-pointer hover:text-white/80 transition" @click="copyToClipboard(Number(catalog.total))" title="Clic para copiar"><span>$</span><span>{{ formatCurrency(Number(catalog.total)) }}</span></div>
                         </td>
                     </tr>
                 </tfoot>
             </table>
 
-            <div class="mt-2 text-[10px] text-right font-bold text-[#1e1e20] uppercase">
+            <div class="mt-2 text-[10px] text-right font-bold text-[#b9b9b9] uppercase">
                 MONEDA: {{ budget.currency }}
             </div>
         </div>

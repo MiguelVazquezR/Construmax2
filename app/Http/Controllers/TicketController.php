@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\ServiceType;
 use App\Models\TaskTemplate;
 use App\Services\Media\ImageOptimizerService;
+use App\Services\Tickets\TicketDuplicateService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\URL;
@@ -17,13 +18,14 @@ class TicketController extends Controller
 {
     public function __construct(
         private readonly ImageOptimizerService $imageOptimizer,
+        private readonly TicketDuplicateService $ticketDuplicateService,
     ) {}
     public function index(Request $request)
     {
         $perPage = $request->input('perPage', 20);
-        $sort = $request->input('sort', 'delay'); 
+        $sort = $request->input('sort', 'created_at'); 
 
-        $query = Ticket::with(['customer', 'contact', 'branch', 'tasks.assignee', 'budget.latestCatalog', 'seller']);
+        $query = Ticket::with(['customer', 'contact', 'branch', 'tasks.assignee', 'budget.latestCatalog', 'seller', 'workAcceptanceReport']);
 
         // FILTRO POR ASESOR: si no tiene permiso de ver todos, solo muestra sus tickets
         if (!$request->user()->can('tickets.index-all')) {
@@ -75,22 +77,66 @@ class TicketController extends Controller
             $query->where('seller_id', $request->input('seller'));
         }
 
-        if ($request->filled('status') && $request->input('status') !== 'all') {
-            $query->where('status', $request->input('status'));
+        // FILTRO POR CATÁLOGO
+        if ($request->filled('has_catalog')) {
+            $catalogFilter = $request->input('has_catalog');
+            if ($catalogFilter === 'yes') {
+                $query->whereHas('budget.latestCatalog');
+            } elseif ($catalogFilter === 'no') {
+                $query->where(function ($q) {
+                    $q->doesntHave('budget')
+                      ->orWhereHas('budget', function ($b) {
+                          $b->doesntHave('latestCatalog');
+                      });
+                });
+            }
+        }
+
+        // Default active statuses (exclude finalized/completed)
+        $defaultStatuses = ['Borrador', 'Programado', 'Levantamiento', 'Catálogo', 'Pendiente de aprobación', 'Proceso de ejecución', 'Ejecutado', 'Finalizado'];
+
+        if ($request->has('status')) {
+            $statusFilter = $request->input('status', []);
+            if (is_array($statusFilter) && !empty($statusFilter)) {
+                if (in_array('all', $statusFilter)) {
+                    // Show all — no status filter
+                } else {
+                    $query->whereIn('status', $statusFilter);
+                }
+            } else {
+                // Empty or invalid: use default active statuses
+                $query->whereIn('status', $defaultStatuses);
+            }
+        } else {
+            // Default: show only active statuses
+            $query->whereIn('status', $defaultStatuses);
         }
 
         // ORDENAMIENTO
         if ($sort === 'start_date') {
             $query->orderBy('scheduled_start', 'desc');
-        } else {
+        } elseif ($sort === 'delay') {
             $query->orderByRaw("CASE WHEN status IN ('Ejecutado', 'Facturado', 'Pagado', 'Cancelado') THEN 2 ELSE 1 END")
                   ->orderBy('scheduled_end', 'asc');
+        } elseif ($request->filled('has_catalog') && $request->input('has_catalog') === 'yes') {
+            // When filtering by catalog, sort by latest catalog creation date (newest first)
+            $query->orderBy(
+                \App\Models\BudgetCatalog::select('budget_catalogs.created_at')
+                    ->join('budgets', 'budgets.id', '=', 'budget_catalogs.budget_id')
+                    ->whereColumn('budgets.ticket_id', 'tickets.id')
+                    ->orderBy('budget_catalogs.version', 'desc')
+                    ->limit(1),
+                'desc'
+            );
+        } else {
+            // Default: created_at
+            $query->orderBy('created_at', 'desc');
         }
 
         return Inertia::render('Tickets/Index', [
             'tickets' => $query->paginate($perPage)->withQueryString(),
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(['id', 'name']),
-            'technicians' => User::whereHas('technician')->orderBy('name')->get(['id', 'name']),
+            'technicians' => User::whereHas('technician')->with('technician')->orderBy('name')->get(['id', 'name']),
             'sellers' => User::whereHas('ticketsAsSeller')->orderBy('name')->get(['id', 'name']),
             'canViewAll' => $request->user()->can('tickets.index-all'),
             'filters' => [
@@ -100,11 +146,32 @@ class TicketController extends Controller
                 'priority' => $request->input('priority'),
                 'technician' => $request->input('technician'),
                 'seller' => $request->input('seller'),
-                'status' => $request->input('status', 'all'),
+                'status' => $request->input('status', $defaultStatuses),
+                'has_catalog' => $request->input('has_catalog'),
                 'perPage' => $perPage,
                 'sort' => $sort,
             ],
         ]);
+    }
+
+    /**
+     * Check a candidate ticket against the customer's most recent tickets
+     * and rank potential duplicates using fuzzy similarity.
+     */
+    public function checkDuplicates(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'customer_id' => 'required|integer|exists:customers,id',
+            'name' => 'nullable|string|max:255',
+            'report_number' => 'nullable|string|max:255',
+            'service_type' => 'nullable|string|max:255',
+            'branch_id' => 'nullable|integer|exists:customer_branches,id',
+            'ignore_id' => 'nullable|integer|exists:tickets,id',
+        ]);
+
+        $result = $this->ticketDuplicateService->check($validated);
+
+        return response()->json($result);
     }
 
     public function create()
@@ -126,6 +193,7 @@ class TicketController extends Controller
             'seller_id' => 'nullable|exists:users,id',
             'name' => 'required|string|max:255',
             'service_type' => 'required|string|max:255',
+            'report_number' => 'nullable|string|max:255',
             'duration' => 'nullable|string',
             'technicians' => 'nullable|array',
             'technicians.*' => 'exists:users,id',
@@ -142,8 +210,18 @@ class TicketController extends Controller
 
         $ticket = Ticket::create($validated);
 
-        if (!empty($validated['task_template_id']) && !empty($validated['technicians'])) {
-            $ticket->generateTasksFromTemplate($validated['task_template_id'], $validated['technicians']);
+        // Generate tasks from template for lead technicians, or auxiliaries if no leads
+        $templateId = $validated['task_template_id'] ?? null;
+        $leadTechs = $validated['technicians'] ?? [];
+        $auxTechs = $validated['assistant_technicians'] ?? [];
+
+        if (!empty($templateId)) {
+            if (!empty($leadTechs)) {
+                $ticket->generateTasksFromTemplate($templateId, $leadTechs);
+            } elseif (!empty($auxTechs)) {
+                // No lead technicians — assign template tasks to the first auxiliary
+                $ticket->generateTasksFromTemplate($templateId, [$auxTechs[0]]);
+            }
         }
 
         // Handle file uploads
@@ -172,10 +250,20 @@ class TicketController extends Controller
             'budget.responsible',
             'budget.technicianPayments.technician.technician',
             'budget.technicianPayments.media',
+            'budget.technicianPayments.deposit.media',
             'tasks.assignee', 
             'tasks.media', 
-            'media'
+            'media',
+            'workAcceptanceReport',
+            'deposits.technician.user',
+            'deposits.depositType',
         ]);
+
+        // Inject signed complete URLs so the technician payment section can
+        // mark approved deposits as completed directly from the ticket page.
+        $ticket->deposits->each(function ($deposit) {
+            $deposit->complete_url = URL::signedRoute('public.deposits.complete', ['deposit' => $deposit->id]);
+        });
         
         $ticket->append('progress', 'folio'); 
 
@@ -202,6 +290,33 @@ class TicketController extends Controller
         return back()->with('success', 'Estatus actualizado.');
     }
 
+    public function updateReportNumber(Request $request, Ticket $ticket)
+    {
+        $request->validate(['report_number' => 'nullable|string|max:255']);
+        $ticket->update(['report_number' => $request->report_number]);
+        return back()->with('success', 'Número de reporte actualizado.');
+    }
+
+    public function updateField(Request $request, Ticket $ticket)
+    {
+        $validated = $request->validate([
+            'field' => 'required|string|in:name,report_number,service_type,scheduled_start,scheduled_end',
+            'value' => 'nullable|string|max:255',
+        ]);
+
+        $ticket->update([$validated['field'] => $validated['value']]);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'Campo actualizado.',
+                'field' => $validated['field'],
+                'value' => $validated['value'],
+            ]);
+        }
+
+        return back()->with('success', 'Campo actualizado.');
+    }
+
     public function updateTechnicians(Request $request, Ticket $ticket)
     {
         $validated = $request->validate([
@@ -218,6 +333,86 @@ class TicketController extends Controller
         $this->reassignTechnicianData($ticket, $oldTechnicians, $newTechnicians);
 
         return back()->with('success', 'Técnicos actualizados correctamente.');
+    }
+
+    /**
+     * Toggle the OC (Orden de Compra Externa) flag on a ticket.
+     */
+    public function toggleOce(Request $request, Ticket $ticket)
+    {
+        $ticket->update(['has_oc' => !$ticket->has_oc]);
+
+        $message = $ticket->has_oc ? 'OC marcada como adjunta.' : 'OC desmarcada.';
+
+        // Return Inertia-compatible response (no JSON — Inertia expects a view/redirect)
+        back()->with('success', $message);
+    }
+
+    /**
+     * Return technicians with pending payments from budget concepts marked as payable.
+     */
+    public function pendingTechnicianPayments(Request $request)
+    {
+        $budgets = \App\Models\Budget::whereHas('concepts', function ($q) {
+            $q->where('paid_to_technician', true);
+        })->with(['concepts', 'technicianPayments', 'ticket'])->get();
+
+        $result = [];
+
+        foreach ($budgets as $budget) {
+            $ticket = $budget->ticket;
+            if (!$ticket) continue;
+
+            // Filter by seller: if user can't see all tickets, only show their own
+            if (!$request->user()->can('tickets.index-all') && $ticket->seller_id !== $request->user()->id) {
+                continue;
+            }
+
+            $totalPayable = (float) $budget->concepts
+                ->where('paid_to_technician', true)
+                ->sum('amount');
+
+            if ($totalPayable <= 0) continue;
+
+            // Collect all tech IDs from JSON fields
+            $techIds = array_unique(array_merge(
+                array_map('intval', $ticket->technicians ?? []),
+                array_map('intval', $ticket->assistant_technicians ?? []),
+            ));
+
+            if (empty($techIds)) continue;
+
+            // Only external technicians (is_internal = false)
+            $users = User::whereIn('id', $techIds)
+                ->whereHas('technician', function ($q) {
+                    $q->where('is_internal', false);
+                })
+                ->with('technician')
+                ->get();
+
+            foreach ($users as $user) {
+                $totalPaid = (float) $budget->technicianPayments
+                    ->where('user_id', $user->id)
+                    ->sum('amount');
+
+                $pendingAmount = $totalPayable - $totalPaid;
+
+                if ($pendingAmount <= 0) continue;
+
+                $result[] = [
+                    'user_id'        => $user->id,
+                    'name'           => $user->name,
+                    'state'          => $user->technician->state ?? null,
+                    'is_internal'    => $user->technician->is_internal ?? null,
+                    'ticket_id'      => $ticket->id,
+                    'ticket_folio'   => $ticket->folio,
+                    'ticket_name'    => $ticket->name,
+                    'pending_amount' => $pendingAmount,
+                ];
+            }
+        }
+
+        return response()->json($result);
     }
 
     public function edit(Ticket $ticket)
@@ -240,6 +435,7 @@ class TicketController extends Controller
             'seller_id' => 'nullable|exists:users,id',
             'name' => 'required|string|max:255',
             'service_type' => 'required|string|max:255',
+            'report_number' => 'nullable|string|max:255',
             'duration' => 'nullable|string',
             'technicians' => 'nullable|array',
             'technicians.*' => 'exists:users,id',
@@ -250,6 +446,7 @@ class TicketController extends Controller
             'scheduled_start' => 'nullable|date',
             'scheduled_end' => 'nullable|date|after_or_equal:scheduled_start',
             'instructions' => 'nullable|string',
+            'task_template_id' => 'nullable|exists:task_templates,id',
         ]);
 
         $oldTechnicians = $ticket->technicians ?? [];
@@ -259,6 +456,15 @@ class TicketController extends Controller
         // When a technician is replaced, reassign all tasks and payments
         // from the removed technician to the new one
         $this->reassignTechnicianData($ticket, $oldTechnicians, $newTechnicians);
+
+        // Generate tasks from template if selected and ticket has no tasks yet
+        if ($request->filled('task_template_id') && !empty($newTechnicians)) {
+            $hasTasks = $ticket->tasks()->exists();
+            if (!$hasTasks) {
+                $ticket->generateTasksFromTemplate($request->input('task_template_id'), $newTechnicians);
+                $ticket->updateStatusBasedOnTasks();
+            }
+        }
 
         return redirect()->route('tickets.show', $ticket->id)->with('success', 'Ticket actualizado.');
     }
@@ -302,6 +508,17 @@ class TicketController extends Controller
                     ->update(['user_id' => $newId]);
             }
         }
+    }
+
+    public function updateImportantNote(Request $request, Ticket $ticket)
+    {
+        $validated = $request->validate([
+            'important_note' => 'nullable|string|max:500',
+        ]);
+
+        $ticket->update(['important_note' => $validated['important_note']]);
+
+        return back()->with('success', 'Nota importante actualizada.');
     }
 
     public function destroy(Ticket $ticket)

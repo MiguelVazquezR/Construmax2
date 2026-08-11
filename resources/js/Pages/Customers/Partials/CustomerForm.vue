@@ -67,11 +67,12 @@ const initContacts = () => {
 };
 
 const form = useForm({
+    type: props.customer?.type || 'customer',
     name: props.customer?.name || '',
     business_name: props.customer?.business_name || '',
     rfc: props.customer?.rfc || '',
     payment_condition: props.customer?.payment_condition || '',
-    payment_method: props.customer?.payment_method || '',
+    payment_method: props.customer?.payment_method || 'Transferencia',
     invoice_usage: props.customer?.invoice_usage || '',
     currency: props.customer?.currency || 'MXN',
     payment_days: props.customer?.payment_days || 0,
@@ -80,6 +81,10 @@ const form = useForm({
     logo: null,
     files: [],
 });
+
+const isProspect = computed(() => form.type === 'prospect');
+const typeLabel = computed(() => isProspect.value ? 'prospecto' : 'cliente');
+const TypeLabel = computed(() => isProspect.value ? 'Prospecto' : 'Cliente');
 
 // Computed para media del cliente (en edición)
 const logoUrl = computed(() => {
@@ -96,8 +101,6 @@ const customerFiles = computed(() => {
 // Reglas de validación generales
 const rules = reactive({
     name: [{ required: true, message: 'Requerido', trigger: 'blur' }],
-    business_name: [{ required: true, message: 'Requerido', trigger: 'blur' }],
-    rfc: [{ required: true, message: 'Requerido', trigger: 'blur' }],
     payment_condition: [{ required: true, message: 'Requerido', trigger: 'change' }],
     payment_method: [{ required: true, message: 'Requerido', trigger: 'change' }],
     invoice_usage: [{ required: true, message: 'Requerido', trigger: 'change' }],
@@ -180,7 +183,7 @@ const removeLogo = () => {
         logoPreviewUrl.value = null;
         return;
     }
-    ElMessageBox.confirm('¿Eliminar el logo del cliente?', 'Confirmar', {
+    ElMessageBox.confirm(`¿Eliminar el logo del ${typeLabel.value}?`, 'Confirmar', {
         type: 'warning',
         confirmButtonText: 'Eliminar',
         cancelButtonText: 'Cancelar',
@@ -196,11 +199,13 @@ const submit = () => {
     
     formRef.value.validate((valid) => {
         if (valid) {
-            // Validar que todos los contactos tengan al menos una sucursal
-            const invalidContact = form.contacts.find(c => c.branch_indices.length === 0);
-            if (invalidContact) {
-                ElMessage.error('Todos los contactos deben tener al menos una sucursal a su cargo.');
-                return false;
+            // Validar que todos los contactos tengan al menos una sucursal (solo para clientes)
+            if (!isProspect.value) {
+                const invalidContact = form.contacts.find(c => c.branch_indices.length === 0);
+                if (invalidContact) {
+                    ElMessage.error('Todos los contactos deben tener al menos una sucursal a su cargo.');
+                    return false;
+                }
             }
 
             const hasFiles = !!form.logo || (form.files && form.files.length > 0);
@@ -208,9 +213,10 @@ const submit = () => {
             if (props.isEdit) {
                 // En edición: enviamos solo datos (JSON), los archivos se suben aparte
                 form.transform((data) => ({
+                    type: data.type,
                     name: data.name,
                     business_name: data.business_name,
-                    rfc: data.rfc,
+                    rfc: isProspect.value ? (data.rfc || null) : data.rfc,
                     payment_condition: data.payment_condition,
                     payment_method: data.payment_method,
                     invoice_usage: data.invoice_usage,
@@ -232,9 +238,10 @@ const submit = () => {
             } else {
                 // En creación: enviamos todo junto (incluyendo archivos si hay)
                 form.transform((data) => ({
+                    type: data.type,
                     name: data.name,
                     business_name: data.business_name,
-                    rfc: data.rfc,
+                    rfc: data.rfc || null,
                     payment_condition: data.payment_condition,
                     payment_method: data.payment_method,
                     invoice_usage: data.invoice_usage,
@@ -292,9 +299,44 @@ const uploadCustomerFiles = (customerId) => {
         @submit.prevent="submit"
     >
         <div class="space-y-6">
+
+            <!-- TIPO: Cliente o Prospecto -->
+            <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
+                <div class="p-6">
+                    <el-form-item label="Tipo de registro" prop="type">
+                        <el-radio-group v-model="form.type" size="large">
+                            <el-radio-button label="customer">Cliente</el-radio-button>
+                            <el-radio-button label="prospect">Prospecto</el-radio-button>
+                        </el-radio-group>
+                        <template #extra>
+                            <p v-if="isProspect" class="text-xs text-amber-600 mt-1">
+                                Los prospectos solo requieren datos básicos. Podrás convertirlos a cliente más adelante.
+                            </p>
+                        </template>
+                    </el-form-item>
+                </div>
+            </div>
+            
+            <!-- TARJETA 0: DATOS BÁSICOS (siempre visible) -->
+            <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
+                <div class="p-6 border-b border-gray-100 dark:border-[#2b2b2e] bg-gray-50/50 dark:bg-[#252529]">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        <el-icon class="text-primary"><OfficeBuilding /></el-icon> 
+                        Datos básicos
+                    </h3>
+                </div>
+                <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <el-form-item label="Nombre comercial" prop="name" :error="form.errors.name">
+                        <el-input v-model="form.name" placeholder="Ej. Constructora del Norte" />
+                    </el-form-item>
+                    <el-form-item label="Razón social (opcional)" prop="business_name" :error="form.errors.business_name">
+                        <el-input v-model="form.business_name" placeholder="Ej. Constructora del Norte S.A. de C.V." />
+                    </el-form-item>
+                </div>
+            </div>
             
             <!-- TARJETA 1: DATOS GENERALES -->
-            <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
+            <div v-if="!isProspect" class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
                 <div class="p-6 border-b border-gray-100 dark:border-[#2b2b2e] bg-gray-50/50 dark:bg-[#252529]">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                         <el-icon class="text-primary"><OfficeBuilding /></el-icon> 
@@ -303,15 +345,7 @@ const uploadCustomerFiles = (customerId) => {
                 </div>
                 
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <el-form-item label="Nombre comercial" prop="name" :error="form.errors.name">
-                        <el-input v-model="form.name" placeholder="Ej. Constructora del Norte" />
-                    </el-form-item>
-
-                    <el-form-item label="Razón social" prop="business_name" :error="form.errors.business_name">
-                        <el-input v-model="form.business_name" placeholder="Ej. Constructora del Norte S.A. de C.V." />
-                    </el-form-item>
-
-                    <el-form-item label="RFC" prop="rfc" :error="form.errors.rfc">
+                    <el-form-item :label="isProspect ? 'RFC (opcional)' : 'RFC'" prop="rfc" :error="form.errors.rfc" :rules="!isProspect ? requiredRules : []">
                         <el-input v-model="form.rfc" placeholder="XAXX010101000" />
                     </el-form-item>
 
@@ -360,8 +394,8 @@ const uploadCustomerFiles = (customerId) => {
                 </div>
             </div>
 
-            <!-- TARJETA 2: SUCURSALES (Globales del cliente) -->
-            <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
+            <!-- TARJETA 2: SUCURSALES (Globales del cliente) - Solo clientes -->
+            <div v-if="!isProspect" class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
                 <div class="p-6 border-b border-gray-100 dark:border-[#2b2b2e] bg-gray-50/50 dark:bg-[#252529] flex justify-between items-center flex-wrap gap-4">
                     <div>
                         <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
@@ -491,7 +525,7 @@ const uploadCustomerFiles = (customerId) => {
                                 <el-input v-model="contact.email" placeholder="maria@email.com" />
                             </el-form-item>
                             
-                            <el-form-item label="Teléfono" :prop="'contacts.' + index + '.phone'" :rules="requiredRules">
+                            <el-form-item label="Teléfono" :prop="'contacts.' + index + '.phone'" :rules="isProspect ? [] : requiredRules">
                                 <el-input v-model="contact.phone" placeholder="55 1234 5678" />
                             </el-form-item>
                             
@@ -499,8 +533,9 @@ const uploadCustomerFiles = (customerId) => {
                                 <el-input v-model="contact.position" placeholder="Ej. Compras" />
                             </el-form-item>
 
-                            <!-- ASIGNACIÓN DE SUCURSALES AL CONTACTO -->
+                            <!-- ASIGNACIÓN DE SUCURSALES AL CONTACTO - Solo clientes -->
                             <el-form-item 
+                                v-if="!isProspect"
                                 label="Sucursales a cargo" 
                                 :prop="'contacts.' + index + '.branch_indices'" 
                                 :rules="[{ required: true, message: 'Asigna al menos una', trigger: 'change' }]"
@@ -532,7 +567,7 @@ const uploadCustomerFiles = (customerId) => {
                 <div class="p-6 border-b border-gray-100 dark:border-[#2b2b2e] bg-gray-50/50 dark:bg-[#252529]">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                         <el-icon class="text-primary"><Picture /></el-icon> 
-                        Logo del cliente
+                        Logo del {{ typeLabel }}
                     </h3>
                 </div>
                 
@@ -565,7 +600,7 @@ const uploadCustomerFiles = (customerId) => {
                         <!-- Upload -->
                         <div class="flex flex-col gap-2">
                             <p class="text-sm text-gray-500 dark:text-gray-400">
-                                Sube un logo para identificar al cliente. Formatos: JPG, PNG, WEBP. Máx. 2 MB.
+                                Sube un logo para identificar al {{ typeLabel }}. Formatos: JPG, PNG, WEBP. Máx. 2 MB.
                             </p>
                             <el-upload
                                 :show-file-list="false"
@@ -594,7 +629,7 @@ const uploadCustomerFiles = (customerId) => {
                             Archivos adjuntos
                         </h3>
                         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                            Sube documentos adicionales relacionados con el cliente (PDF, Word, Excel, imágenes).
+                            Sube documentos adicionales relacionados con el {{ typeLabel }} (PDF, Word, Excel, imágenes).
                         </p>
                     </div>
                     <div class="flex items-center gap-2">
@@ -715,7 +750,7 @@ const uploadCustomerFiles = (customerId) => {
                     color="#f26c17"
                     class="!font-bold"
                 >
-                    {{ isEdit ? 'Actualizar cliente' : 'Guardar cliente' }}
+                    {{ isEdit ? `Actualizar ${typeLabel}` : `Guardar ${typeLabel}` }}
                 </el-button>
             </div>
 

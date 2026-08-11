@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\TechnicianController;
+use App\Http\Controllers\TechnicianSpecialtyController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware([
@@ -10,11 +11,26 @@ Route::middleware([
 ])->group(function () {
     // Rutas específicas para acciones AJAX/Parciales
     Route::post('technicians/quick', [TechnicianController::class, 'quickStore'])->name('technicians.quick-store');
+
+    // Technician specialties catalog (AJAX)
+    Route::get('technician-specialties', [TechnicianSpecialtyController::class, 'index'])->name('technician-specialties.index');
+    Route::post('technician-specialties', [TechnicianSpecialtyController::class, 'store'])->name('technician-specialties.store');
+    Route::put('technician-specialties/{technicianSpecialty}', [TechnicianSpecialtyController::class, 'update'])->name('technician-specialties.update');
+    Route::delete('technician-specialties/{technicianSpecialty}', [TechnicianSpecialtyController::class, 'destroy'])->name('technician-specialties.destroy');
     
     // Rutas específicas para acciones AJAX/Parciales
     Route::put('technicians/{technician}/rating', [TechnicianController::class, 'updateRating'])->name('technicians.update-rating');
     Route::put('technicians/{technician}/status', [TechnicianController::class, 'updateStatus'])->name('technicians.update-status');
     Route::delete('technicians/{technician}/media/{media}', [TechnicianController::class, 'deleteMedia'])->name('technicians.delete-media');
+
+    // Bank accounts
+    Route::post('technicians/{technician}/bank-accounts', [TechnicianController::class, 'storeBankAccount'])->name('technicians.bank-accounts.store');
+    Route::post('technicians/{technician}/bank-accounts/{account}', [TechnicianController::class, 'updateBankAccount'])->name('technicians.bank-accounts.update');
+    Route::delete('technicians/{technician}/bank-accounts/{account}', [TechnicianController::class, 'destroyBankAccount'])->name('technicians.bank-accounts.destroy');
+    Route::put('technicians/{technician}/bank-accounts/{account}/favorite', [TechnicianController::class, 'setFavoriteBankAccount'])->name('technicians.bank-accounts.favorite');
+
+    // Soft delete & restore
+    Route::patch('technicians/{id}/restore', [TechnicianController::class, 'restore'])->name('technicians.restore');
 
     Route::resource('technicians', TechnicianController::class);
     

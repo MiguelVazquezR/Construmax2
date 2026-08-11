@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Budget;
 use App\Models\BudgetPayment;
 use App\Models\Calendar;
+use App\Models\Customer;
 use App\Models\Technician;
 use App\Models\Ticket;
 use App\Models\User;
@@ -12,6 +13,7 @@ use App\Models\TechnicianPayment;
 use App\Services\Media\ImageOptimizerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL;
 use Inertia\Inertia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
@@ -38,7 +40,65 @@ class BudgetController extends Controller
                 ->paginate($perPage)
                 ->withQueryString(),
             'filters' => $filters,
-            'users' => User::where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'users' => User::where('is_active', true)->whereDoesntHave('technician')->orderBy('name')->get(['id', 'name']),
+            'customers' => Customer::orderBy('name')->get(['id', 'name']),
+        ]);
+    }
+
+    /** Devuelve las opciones de presupuestos para la búsqueda remota del modal de carga masiva de archivos. */
+    public function options(Request $request)
+    {
+        $validated = $request->validate([
+            'search' => 'nullable|string|max:255',
+            'customer_id' => 'nullable|integer|exists:customers,id',
+            'limit' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        $search = $validated['search'] ?? null;
+        $limit = $validated['limit'] ?? 50;
+
+        $query = Budget::query()
+            ->with(['ticket.customer:id,name', 'ticket.branch:id,region,country'])
+            ->whereHas('ticket')
+            ->when($validated['customer_id'] ?? null, function ($q, $customerId) {
+                $q->whereHas('ticket', fn ($ticket) => $ticket->where('customer_id', $customerId));
+            })
+            ->when($search, function ($q) use ($search) {
+                $q->where(function ($q) use ($search) {
+                    $q->whereHas('ticket', fn ($ticket) => $ticket->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('ticket.customer', fn ($ticket) => $ticket->where('name', 'like', "%{$search}%"));
+
+                    // Coincide con la parte numérica de un folio (p. ej. "#5-MEX")
+                    $digits = preg_replace('/\D/', '', $search);
+                    if ($digits !== '') {
+                        $q->orWhereHas('ticket', fn ($ticket) => $ticket->where('id', (int) $digits));
+                    }
+                });
+            });
+
+        $total = (clone $query)->count();
+
+        $data = $query
+            ->orderBy('id', 'desc')
+            ->limit($limit)
+            ->get()
+            ->map(fn (Budget $budget) => [
+                'id' => $budget->id,
+                'ticket' => [
+                    'id' => $budget->ticket?->id,
+                    'name' => $budget->ticket?->name,
+                    'folio' => $budget->ticket?->folio,
+                    'customer' => [
+                        'id' => $budget->ticket?->customer?->id,
+                        'name' => $budget->ticket?->customer?->name,
+                    ],
+                ],
+            ])
+            ->values();
+
+        return response()->json([
+            'data' => $data,
+            'total' => $total,
         ]);
     }
 
@@ -65,6 +125,7 @@ class BudgetController extends Controller
                     'name' => $technician?->user?->name ?? null,
                     'is_internal' => $technician?->is_internal,
                     'phone' => $technician?->phone,
+                    'state' => $technician?->state,
                 ];
             });
         });
@@ -92,6 +153,9 @@ class BudgetController extends Controller
             'concepts.*.payment_date' => 'nullable|date',
             'survey_images' => 'nullable|array',
             'survey_images.*' => 'image|max:10240',
+            'support_files' => 'nullable|array',
+            'support_files.*' => 'file|max:10240',
+            'send_to_costs' => 'nullable|boolean',
         ]);
 
         $budget = null;
@@ -108,10 +172,12 @@ class BudgetController extends Controller
             $budget->concepts()->createMany($validated['concepts']);
         });
 
-        // When a budget is created, move the ticket to 'Catálogo' status
-        // to indicate it needs a cost catalog
+        // Move the ticket to 'Catálogo' status only when the user explicitly
+        // sends the budget to the costs area (send_to_costs = true, default).
+        // Initial budgets (e.g. survey/levantamiento costs) are kept as drafts
+        // and must NOT reach the costs area until they are complete.
         $budget?->load('ticket');
-        if ($budget->ticket && $budget->ticket->status !== 'Catálogo') {
+        if ($request->boolean('send_to_costs', true) && $budget->ticket && $budget->ticket->status !== 'Catálogo') {
             $budget->ticket->update(['status' => 'Catálogo']);
         }
 
@@ -121,6 +187,21 @@ class BudgetController extends Controller
                 $budget?->addMedia($optimizedPath)
                     ->usingFileName($image->getClientOriginalName())
                     ->toMediaCollection('survey_images');
+            }
+        }
+
+        if ($request->hasFile('support_files')) {
+            foreach ($request->file('support_files') as $file) {
+                if (str_starts_with($file->getMimeType(), 'image/')) {
+                    $optimizedPath = $this->imageOptimizer->optimize($file);
+                    $budget?->addMedia($optimizedPath)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('budget_files');
+                } else {
+                    $budget?->addMedia($file)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('budget_files');
+                }
             }
         }
 
@@ -147,8 +228,18 @@ class BudgetController extends Controller
             'ticket.tasks.assignee.technician',
             'technicianPayments.media',
             'technicianPayments.technician',
+            'technicianPayments.deposit.media',
             'latestCatalog',
+            'ticket.deposits.technician.user',
+            'ticket.deposits.depositType',
+            'ticket.deposits.media',
         ]);
+
+        // Inject signed complete URLs so the technicians section can mark
+        // approved deposits as completed directly from the budget page.
+        $budget->ticket?->deposits?->each(function ($deposit) {
+            $deposit->complete_url = URL::signedRoute('public.deposits.complete', ['deposit' => $deposit->id]);
+        });
 
         $budget->append(['total_cost', 'total_paid', 'balance_due', 'total_catalog_cost']);
 
@@ -179,6 +270,7 @@ class BudgetController extends Controller
                     'name' => $technician?->user?->name ?? null,
                     'is_internal' => $technician?->is_internal,
                     'phone' => $technician?->phone,
+                    'state' => $technician?->state,
                 ];
             });
         });
@@ -206,6 +298,9 @@ class BudgetController extends Controller
             'concepts.*.payment_date' => 'nullable|date',
             'survey_images' => 'nullable|array',
             'survey_images.*' => 'image|max:10240',
+            'support_files' => 'nullable|array',
+            'support_files.*' => 'file|max:10240',
+            'send_to_costs' => 'nullable|boolean',
         ]);
 
         DB::transaction(function () use ($validated, $budget) {
@@ -221,12 +316,34 @@ class BudgetController extends Controller
             $budget->concepts()->createMany($validated['concepts']);
         });
 
+        // Only move the ticket to 'Catálogo' when the user explicitly sends
+        // the budget to the costs area. This prevents edits from reverting a
+        // ticket that has already advanced to a later stage.
+        if ($request->boolean('send_to_costs') && $budget->ticket && $budget->ticket->status !== 'Catálogo') {
+            $budget->ticket->update(['status' => 'Catálogo']);
+        }
+
         if ($request->hasFile('survey_images')) {
             foreach ($request->file('survey_images') as $image) {
                 $optimizedPath = $this->imageOptimizer->optimize($image);
                 $budget->addMedia($optimizedPath)
                     ->usingFileName($image->getClientOriginalName())
                     ->toMediaCollection('survey_images');
+            }
+        }
+
+        if ($request->hasFile('support_files')) {
+            foreach ($request->file('support_files') as $file) {
+                if (str_starts_with($file->getMimeType(), 'image/')) {
+                    $optimizedPath = $this->imageOptimizer->optimize($file);
+                    $budget->addMedia($optimizedPath)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('budget_files');
+                } else {
+                    $budget->addMedia($file)
+                        ->usingFileName($file->getClientOriginalName())
+                        ->toMediaCollection('budget_files');
+                }
             }
         }
 
@@ -338,6 +455,41 @@ class BudgetController extends Controller
         return back()->with('success', 'Archivo eliminado.');
     }
 
+    public function bulkUploadFiles(Request $request)
+    {
+        $validated = $request->validate([
+            'budget_ids' => 'required|array|min:1',
+            'budget_ids.*' => 'exists:budgets,id',
+            'files' => 'required|array|min:1',
+            'files.*' => 'file|max:20480',
+        ]);
+
+        $budgets = Budget::whereIn('id', $validated['budget_ids'])->get();
+        $count = 0;
+
+        // Process each file once and attach a fresh copy to every budget.
+        // Spatie deletes the source file after storing it, so each budget
+        // needs its own copy of the (optimized) temp file.
+        foreach ($request->file('files') as $file) {
+            $originalName = $file->getClientOriginalName();
+            $sourcePath = str_starts_with($file->getMimeType(), 'image/')
+                ? $this->imageOptimizer->optimize($file)
+                : $file->getPathname();
+
+            foreach ($budgets as $budget) {
+                $tempCopy = tempnam(sys_get_temp_dir(), 'upl_');
+                copy($sourcePath, $tempCopy);
+
+                $budget->addMedia($tempCopy)
+                    ->usingFileName($originalName)
+                    ->toMediaCollection('budget_files');
+                $count++;
+            }
+        }
+
+        return back()->with('success', "{$count} archivos adjuntados a " . $budgets->count() . " presupuestos.");
+    }
+
     // --- NUEVOS MÉTODOS: PAGOS A TÉCNICOS ---
 
     public function storeTechnicianPayment(Request $request, Budget $budget)
@@ -349,7 +501,7 @@ class BudgetController extends Controller
             'payment_method' => 'required|string',
             'reference' => 'nullable|string',
             'notes' => 'nullable|string',
-            'proof' => 'required|file|max:5120', // Comprobante obligatorio como solicitaste
+            'proof' => 'nullable|file|max:5120',
         ]);
 
         $payment = $budget->technicianPayments()->create([

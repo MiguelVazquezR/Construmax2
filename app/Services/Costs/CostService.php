@@ -9,22 +9,52 @@ class CostService
 {
     public function getBudgetsForCosting(array $filters): LengthAwarePaginator
     {
-        return Budget::with(['ticket.customer', 'ticket.branch', 'ticket.contact', 'latestCatalog'])
+        return Budget::with(['ticket.customer', 'ticket.branch', 'ticket.contact', 'latestCatalog.approver'])
             ->when($filters['search'] ?? null, function ($query, $search) {
                 $query->whereHas('ticket', function ($q) use ($search) {
                     $q->where('name', 'like', '%' . $search . '%')
-                        ->orWhere('folio', 'like', '%' . $search . '%')
                         ->orWhereHas('customer', function ($q) use ($search) {
                             $q->where('name', 'like', '%' . $search . '%');
+                        })
+                        // Search by folio location codes (folio format: #{id}-{region}-{country})
+                        ->orWhereHas('branch', function ($q) use ($search) {
+                            $q->where('region', 'like', '%' . $search . '%')
+                                ->orWhere('country', 'like', '%' . $search . '%');
                         });
+
+                    // Search by folio number (the id portion of the folio)
+                    $folioDigits = preg_replace('/\D/', '', $search);
+                    if ($folioDigits !== '') {
+                        $q->orWhere('id', 'like', '%' . $folioDigits . '%');
+                    }
                 });
             })
-            ->when($filters['catalog'] ?? 'all', function ($query, $catalogStatus) {
-                if ($catalogStatus === 'with') {
-                    $query->has('catalogs');
-                } elseif ($catalogStatus === 'without') {
-                    $query->doesntHave('catalogs');
+            ->when(true, function ($query) use ($filters) {
+                // Normalize: accept string or array, default to ['pending']
+                $catalogValues = $filters['catalog'] ?? ['pending'];
+                $catalogValues = (array) $catalogValues;
+                $catalogValues = array_filter($catalogValues);
+
+                // Empty array or 'all' means no filter
+                if (empty($catalogValues) || in_array('all', $catalogValues, true)) {
+                    return;
                 }
+
+                $query->where(function ($q) use ($catalogValues) {
+                    foreach ($catalogValues as $value) {
+                        match ($value) {
+                            'with'     => $q->orWhereHas('catalogs'),
+                            'without'  => $q->orWhereDoesntHave('catalogs'),
+                            'pending'  => $q->orWhereHas('latestCatalog', function ($sub) {
+                                $sub->where('status', \App\Models\BudgetCatalog::STATUS_PENDING_APPROVAL);
+                            }),
+                            'approved' => $q->orWhereHas('latestCatalog', function ($sub) {
+                                $sub->where('status', \App\Models\BudgetCatalog::STATUS_APPROVED);
+                            }),
+                            default    => null,
+                        };
+                    }
+                });
             })
             ->when($filters['branch'] ?? null, function ($query, $branch) {
                 $query->whereHas('ticket.branch', function ($q) use ($branch) {
@@ -38,23 +68,30 @@ class CostService
             ->paginate(15)
             ->through(function ($budget) {
                 return [
-                    'id'             => $budget->id,
-                    'ticket_name'    => $budget->ticket->name ?? 'N/A',
-                    'ticket_folio'   => $budget->ticket->folio ?? 'N/A',
-                    'customer_name'  => $budget->ticket->customer->name ?? 'N/A',
-                    'status'         => $budget->ticket->status ?? 'N/A',
-                    'total_cost'     => $budget->latestCatalog
+                    'id'               => $budget->id,
+                    'ticket_id'        => $budget->ticket->id ?? null,
+                    'ticket_name'      => $budget->ticket->name ?? 'N/A',
+                    'ticket_folio'     => $budget->ticket->folio ?? 'N/A',
+                    'customer_name'    => $budget->ticket->customer->name ?? 'N/A',
+                    'status'           => $budget->ticket->status ?? 'N/A',
+                    'total_cost'       => $budget->latestCatalog
                         ? $budget->latestCatalog->total
                         : $budget->total_cost,
-                    'currency'       => $budget->currency,
-                    'concept_count'  => $budget->concepts()->count(),
-                    'latest_version' => $budget->latestCatalog ? $budget->latestCatalog->version : null,
-                    'has_catalog'    => $budget->latestCatalog !== null,
-                    'branch_name'    => $budget->ticket->branch->branch_name ?? '—',
-                    'branch_unit'    => $budget->ticket->branch->unit ?? '—',
-                    'branch_country' => $budget->ticket->branch->country ?? '—',
-                    'branch_region'  => $budget->ticket->branch->region ?? '—',
-                    'contact_name'   => $budget->ticket->contact->name ?? '—',
+                    'currency'         => $budget->currency,
+                    'concept_count'    => $budget->concepts()->count(),
+                    'latest_version'   => $budget->latestCatalog ? $budget->latestCatalog->version : null,
+                    'has_catalog'      => $budget->latestCatalog !== null,
+                    'catalog_status'   => $budget->latestCatalog ? $budget->latestCatalog->status : null,
+                    'catalog_status_label' => $budget->latestCatalog ? $budget->latestCatalog->statusLabel() : null,
+                    'catalog_approved_by' => $budget->latestCatalog?->approver?->name ?? null,
+                    'catalog_id'       => $budget->latestCatalog?->id ?? null,
+                    'needs_special_authorization' => $budget->latestCatalog?->needs_special_authorization ?? false,
+                    'branch_name'      => $budget->ticket->branch->branch_name ?? '—',
+                    'branch_unit'      => $budget->ticket->branch->unit ?? '—',
+                    'branch_country'   => $budget->ticket->branch->country ?? '—',
+                    'branch_region'    => $budget->ticket->branch->region ?? '—',
+                    'contact_name'     => $budget->ticket->contact->name ?? '—',
+                    'ticket_important_note' => $budget->ticket->important_note ?? null,
                 ];
             });
     }
@@ -67,9 +104,12 @@ class CostService
             'ticket.contact',
             'ticket.seller',
             'ticket.tasks.media',
+            'ticket.media',
             'concepts',
             'catalogs.items',
+            'catalogs.approver',
             'latestCatalog.items',
+            'latestCatalog.approver',
             'media',
         ]);
 
@@ -112,6 +152,16 @@ class CostService
             });
         })->sortByDesc('created_at')->values();
 
+        $ticketMedia = $budget->ticket->media->map(function ($media) {
+            return [
+                'id'          => $media->id,
+                'file_name'   => $media->file_name,
+                'mime_type'   => $media->mime_type,
+                'url'         => $media->getUrl(),
+                'created_at'  => $media->created_at?->toISOString(),
+            ];
+        })->values();
+
         return [
             'id'            => $budget->id,
             'status'        => $budget->ticket->status ?? 'N/A',
@@ -122,6 +172,7 @@ class CostService
                 'id'              => $budget->ticket->id ?? null,
                 'folio'           => $budget->ticket->folio ?? 'N/A',
                 'name'            => $budget->ticket->name ?? 'N/A',
+                'report_number'   => $budget->ticket->report_number ?? null,
                 'service_type'    => $budget->ticket->service_type ?? 'N/A',
                 'scheduled_start' => $budget->ticket->scheduled_start ?? null,
                 'scheduled_end'   => $budget->ticket->scheduled_end ?? null,
@@ -147,6 +198,7 @@ class CostService
                     'name'  => $budget->ticket->seller->name,
                     'email' => $budget->ticket->seller->email,
                 ] : null,
+                'important_note'  => $budget->ticket->important_note ?? null,
                 'technicians'     => $technicians,
                 'technician_ids'  => array_map('intval', $budget->ticket->technicians ?? []),
                 'assistant_technician_ids' => array_map('intval', $budget->ticket->assistant_technicians ?? []),
@@ -159,6 +211,10 @@ class CostService
                 'total'    => $budget->latestCatalog->total,
                 'non_installation_labor' => $budget->latestCatalog->non_installation_labor,
                 'labor_utility'         => $budget->latestCatalog->labor_utility,
+                'status'   => $budget->latestCatalog->status,
+                'status_label' => $budget->latestCatalog->statusLabel(),
+                'is_approved' => $budget->latestCatalog->isApproved(),
+                'approved_by_name' => $budget->latestCatalog->approver?->name ?? null,
                 'items'    => $budget->latestCatalog->items->map(function ($item) {
                     return [
                         'id'          => $item->id,
@@ -183,6 +239,10 @@ class CostService
                     'total'    => $catalog->total,
                     'non_installation_labor' => $catalog->non_installation_labor,
                     'labor_utility'         => $catalog->labor_utility,
+                    'status'   => $catalog->status,
+                    'status_label' => $catalog->statusLabel(),
+                    'is_approved' => $catalog->isApproved(),
+                    'approved_by_name' => $catalog->approver?->name ?? null,
                     'items'   => $catalog->items->map(function ($item) {
                         return [
                             'id'          => $item->id,
@@ -214,6 +274,7 @@ class CostService
                 ];
             }),
             'task_evidence'  => $taskEvidence,
+            'ticket_media'   => $ticketMedia,
             'subtotal'       => $budget->total_cost,
         ];
     }

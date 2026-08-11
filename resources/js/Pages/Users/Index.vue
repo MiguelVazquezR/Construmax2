@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { debounce } from 'lodash';
@@ -15,6 +15,21 @@ const props = defineProps({
 
 const search = ref(props.filters.search || '');
 const perPage = ref(parseInt(props.filters.perPage) || 10);
+const selectedIds = ref([]);
+
+// Check if all rows on the current page are selected
+const allSelected = computed({
+    get() {
+        return props.users.data.length > 0 && selectedIds.value.length === props.users.data.length;
+    },
+    set(val) {
+        if (val) {
+            selectedIds.value = props.users.data.map(u => u.id);
+        } else {
+            selectedIds.value = [];
+        }
+    },
+});
 
 const handleSearch = debounce((val) => {
     router.get(route('users.index'), { search: val, perPage: perPage.value }, {
@@ -92,6 +107,32 @@ const deleteUser = (user) => {
     .catch(() => {});
 };
 
+const bulkDelete = () => {
+    if (selectedIds.value.length === 0) {
+        ElMessage.warning('Selecciona al menos un usuario para eliminar.');
+        return;
+    }
+
+    ElMessageBox.confirm(
+        `¿Eliminar ${selectedIds.value.length} usuarios seleccionados? Esta acción no se puede deshacer.`,
+        'Eliminación masiva',
+        {
+            confirmButtonText: 'Eliminar seleccionados',
+            cancelButtonText: 'Cancelar',
+            type: 'error',
+        }
+    )
+    .then(() => {
+        router.post(route('users.bulk-destroy'), { ids: selectedIds.value }, {
+            onSuccess: () => {
+                selectedIds.value = [];
+                ElMessage.success('Usuarios eliminados correctamente.');
+            },
+        });
+    })
+    .catch(() => {});
+};
+
 watch(search, (val) => {
     handleSearch(val);
 });
@@ -117,6 +158,9 @@ watch(search, (val) => {
                         <el-option label="20 / pág" :value="20" />
                         <el-option label="50 / pág" :value="50" />
                     </el-select>
+                    <el-button v-if="can('users.delete') && selectedIds.length > 0" type="danger" icon="Delete" @click="bulkDelete">
+                        Eliminar ({{ selectedIds.length }})
+                    </el-button>
                     <Link v-if="can('users.create')" :href="route('users.create')">
                         <el-button type="primary" color="#f26c17" icon="Plus">
                             Nuevo usuario
@@ -135,8 +179,10 @@ watch(search, (val) => {
                         style="width: 100%" 
                         stripe
                         @row-click="handleRowClick"
+                        @selection-change="(rows) => selectedIds = rows.map(r => r.id)"
                         row-class-name="cursor-pointer hover:bg-gray-50 dark:hover:bg-[#27272a] transition-colors"
                     >
+                        <el-table-column type="selection" width="40" />
                         <el-table-column prop="id" label="ID" width="60" />
                         
                         <el-table-column label="Usuario" min-width="200">

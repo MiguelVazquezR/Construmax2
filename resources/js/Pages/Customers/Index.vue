@@ -89,6 +89,20 @@ const toggleStatus = (customer) => {
 };
 
 // Acciones
+const convertToCustomer = (customer) => {
+    ElMessageBox.confirm(
+        `¿Convertir "${customer.name}" de prospecto a cliente? Podrás agregar datos fiscales y sucursales después.`,
+        'Convertir a cliente',
+        { confirmButtonText: 'Convertir', cancelButtonText: 'Cancelar', type: 'info' }
+    ).then(() => {
+        router.put(route('customers.convert-to-customer', customer.id), {}, {
+            preserveScroll: true,
+            onSuccess: () => ElMessage.success('Prospecto convertido a cliente.'),
+            onError: () => ElMessage.error('Error al convertir.'),
+        });
+    }).catch(() => {});
+};
+
 const deleteCustomer = (customer) => {
     ElMessageBox.confirm(
         `¿Estás seguro de eliminar al cliente "${customer.name}"? Esta acción borrará también sus contactos y sucursales.`,
@@ -266,8 +280,15 @@ watch([search, region, contact], () => {
                         <el-table-column prop="rfc" label="RFC" width="140">
                             <template #default="scope">
                                 <span class="font-mono text-gray-600 dark:text-gray-400 text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
-                                    {{ scope.row.rfc }}
+                                    {{ scope.row.rfc || '—' }}
                                 </span>
+                            </template>
+                        </el-table-column>
+
+                        <el-table-column label="Tipo" width="110" align="center">
+                            <template #default="scope">
+                                <el-tag v-if="scope.row.type === 'prospect'" type="warning" size="small" effect="light">Prospecto</el-tag>
+                                <el-tag v-else type="success" size="small" effect="light">Cliente</el-tag>
                             </template>
                         </el-table-column>
 
@@ -319,6 +340,10 @@ watch([search, region, contact], () => {
                                                 <Link v-if="can('customers.edit')" :href="route('customers.edit', scope.row.id)">
                                                     <el-dropdown-item :icon="Edit">Editar</el-dropdown-item>
                                                 </Link>
+                                                
+                                                <el-dropdown-item v-if="scope.row.type === 'prospect' && can('customers.edit')" :icon="Check" @click="convertToCustomer(scope.row)">
+                                                    Convertir a cliente
+                                                </el-dropdown-item>
                                                 
                                                 <el-dropdown-item v-if="can('customers.delete')" divided :icon="Delete" class="text-red-500" @click="deleteCustomer(scope.row)">
                                                     Eliminar

@@ -4,6 +4,7 @@ import { useCostsHelpers } from '@/Composables/useCostsHelpers';
 const props = defineProps({
     items: { type: Array, required: true },
     currency: { type: String, default: 'MXN' },
+    canEdit: { type: Boolean, default: true },
 });
 
 const emit = defineEmits(['add', 'remove', 'calculate']);
@@ -25,7 +26,7 @@ function onRemove(item) {
             <h3 class="text-md font-bold text-gray-800 dark:text-white flex items-center gap-2">
                 <el-icon><User /></el-icon> Mano de obra
             </h3>
-            <el-button type="warning" plain size="small" icon="Plus" @click="$emit('add')">
+            <el-button v-if="canEdit" type="warning" plain size="small" icon="Plus" @click="$emit('add')">
                 Agregar mano de obra
             </el-button>
         </div>
@@ -47,18 +48,18 @@ function onRemove(item) {
                         <td class="px-4 py-2 text-center text-gray-500">{{ index + 1 }}</td>
                         <td class="px-2 py-2">
                             <el-input v-model="item.description" type="textarea" :rows="2"
-                                placeholder="Descripción de la labor" />
+                                placeholder="Descripción de la labor" :disabled="!canEdit" />
                         </td>
                         <td class="px-2 py-2">
-                            <el-input v-model="item.technician" placeholder="Núm. de técnicos" />
+                            <el-input v-model="item.technician" placeholder="Núm. de técnicos" :disabled="!canEdit" />
                         </td>
                         <td class="px-2 py-2">
                             <el-input-number v-model="item.hours" :min="0" :step="0.5" :controls="false"
-                                class="!w-full text-right" @change="onRowTotal(item)" />
+                                class="!w-full text-right" @change="onRowTotal(item)" :disabled="!canEdit" />
                         </td>
                         <td class="px-2 py-2">
                             <el-input-number v-model="item.rate" :min="0" :step="0.01" :controls="false"
-                                class="!w-full text-right" @change="onRowTotal(item)" />
+                                class="!w-full text-right" @change="onRowTotal(item)" :disabled="!canEdit" />
                         </td>
                         <td class="px-2 py-2 text-right font-mono font-bold text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-[#252529]">
                             <el-button text size="small" class="!font-mono !font-bold !text-gray-700 dark:!text-gray-300"
@@ -67,13 +68,13 @@ function onRemove(item) {
                             </el-button>
                         </td>
                         <td class="px-2 py-2 text-center">
-                            <el-button type="danger" plain circle icon="Delete" size="small"
+                            <el-button v-if="canEdit" type="danger" plain circle icon="Delete" size="small"
                                 @click="onRemove(item)" />
                         </td>
                     </tr>
                     <tr v-if="items.length === 0">
                         <td colspan="7" class="px-4 py-6 text-center text-gray-400">
-                            No hay mano de obra. Haz clic en "Agregar mano de obra".
+                            {{ canEdit ? 'No hay mano de obra. Haz clic en "Agregar mano de obra".' : 'Sin mano de obra registrada.' }}
                         </td>
                     </tr>
                 </tbody>

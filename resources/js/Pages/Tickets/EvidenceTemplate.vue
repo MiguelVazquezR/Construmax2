@@ -5,6 +5,32 @@ import PdfInstructionsDialog from '@/Components/PdfInstructionsDialog.vue';
 
 const showPdfInstructions = ref(false);
 
+// Slider index 0-5 maps to: 1, 2, 4, 6, 8, 10 images per page
+const perPageOptions = [1, 2, 4, 6, 8, 10];
+const sliderIndex = ref(2); // default: 4 images per page (index 2)
+
+// Track which images should occupy a full page
+const fullPageSet = ref(new Set());
+
+const toggleFullPage = (imgId) => {
+    const newSet = new Set(fullPageSet.value);
+    if (newSet.has(imgId)) {
+        newSet.delete(imgId);
+    } else {
+        newSet.add(imgId);
+    }
+    fullPageSet.value = newSet;
+};
+
+const imagesPerPage = computed(() => perPageOptions[sliderIndex.value]);
+const sliderMarks = computed(() => {
+    const marks = {};
+    perPageOptions.forEach((val) => {
+        marks[perPageOptions.indexOf(val)] = String(val);
+    });
+    return marks;
+});
+
 const handlePrintModal = () => {
     showPdfInstructions.value = true;
 };
@@ -31,18 +57,119 @@ const getLogoUrl = () => {
     return logo ? logo.original_url : null;
 };
 
-// Tasks with at least one image evidence, in natural order.
-// Within each task, media is already ordered by order_column via the model.
-const tasksWithImages = computed(() => {
+// Flat list of all images across all tasks, enriched with task name
+const flattenedImages = computed(() => {
     if (!props.ticket.tasks) return [];
 
-    return props.ticket.tasks
-        .map(task => ({
-            ...task,
-            images: (task.media || []).filter(m => m.mime_type?.startsWith('image/')),
-        }))
-        .filter(task => task.images.length > 0);
+    const images = [];
+    props.ticket.tasks.forEach(task => {
+        const taskImages = (task.media || []).filter(m => m.mime_type?.startsWith('image/'));
+        taskImages.forEach((img, imgIdx) => {
+            images.push({
+                ...img,
+                taskName: task.name,
+                imgIdx: imgIdx,
+                totalInTask: taskImages.length,
+            });
+        });
+    });
+    return images;
 });
+
+// Group images into pages: full-page images get their own page,
+// remaining images are chunked according to the slider
+const pages = computed(() => {
+    const result = [];
+    const buffer = [];
+    const perPage = imagesPerPage.value;
+    const fullIds = fullPageSet.value;
+
+    const flushBuffer = () => {
+        while (buffer.length > 0) {
+            result.push({
+                type: 'grid',
+                images: buffer.splice(0, perPage),
+            });
+        }
+    };
+
+    for (const img of flattenedImages.value) {
+        if (fullIds.has(img.id)) {
+            flushBuffer();
+            result.push({
+                type: 'full',
+                images: [img],
+            });
+        } else {
+            buffer.push(img);
+            if (buffer.length >= perPage) {
+                result.push({
+                    type: 'grid',
+                    images: buffer.splice(0, perPage),
+                });
+            }
+        }
+    }
+
+    flushBuffer();
+
+    return result;
+});
+
+// Grid layout based on images per page
+const gridLayout = computed(() => {
+    const n = imagesPerPage.value;
+    switch (n) {
+        case 1:  return { cols: 1, rows: 1 };
+        case 2:  return { cols: 1, rows: 2 };
+        case 4:  return { cols: 2, rows: 2 };
+        case 6:  return { cols: 2, rows: 3 };
+        case 8:  return { cols: 2, rows: 4 };
+        case 10: return { cols: 2, rows: 5 };
+        default: return { cols: 2, rows: 3 };
+    }
+});
+
+const gridTemplateRows = computed(() => {
+    return `repeat(${gridLayout.value.rows}, minmax(0, 1fr))`;
+});
+
+const gridTemplateCols = computed(() => {
+    return `repeat(${gridLayout.value.cols}, minmax(0, 1fr))`;
+});
+
+// Dynamically determine grid style per page (full-page vs normal grid)
+const pageGridStyle = (page) => {
+    if (page.type === 'full') {
+        return {
+            gridTemplateColumns: '1fr',
+            gridTemplateRows: '1fr',
+        };
+    }
+    return {
+        gridTemplateColumns: gridTemplateCols.value,
+        gridTemplateRows: gridTemplateRows.value,
+    };
+};
+
+// Height of the header block (gray bar + accent line) in print mode, in px
+const HEADER_PRINT_HEIGHT = 120;
+
+const pageHeight = (pageIdx) => {
+    const fullPage = 'calc(297mm - 2cm)';
+    if (pageIdx === 0) {
+        return `calc(297mm - 2cm - ${HEADER_PRINT_HEIGHT}px)`;
+    }
+    return fullPage;
+};
+
+const pageMinHeight = (pageIdx) => {
+    const fullMin = 'calc(100vh - 200px)';
+    if (pageIdx === 0) {
+        return `calc(100vh - 200px - ${HEADER_PRINT_HEIGHT}px)`;
+    }
+    return fullMin;
+};
 </script>
 
 <template>
@@ -50,11 +177,33 @@ const tasksWithImages = computed(() => {
         <Head title="Plantilla de evidencias" />
 
         <!-- Top orange bar -->
-        <div class="h-2 bg-[#f26c17] print:h-1"></div>
+        <div class="h-2 bg-[#f26c17] print:hidden"></div>
 
-        <div class="px-8 py-6 print:px-4 print:py-3">
-            <!-- Print / PDF button (hidden when printing) -->
-            <div class="flex items-center justify-end gap-3 mb-6 print:hidden">
+        <div class="px-8 py-6 print:px-0 print:py-0">
+            <!-- Controls bar (hidden when printing) -->
+            <div class="flex items-center justify-between gap-4 mb-6 print:hidden">
+                <!-- Images per page slider -->
+                <div class="flex items-center gap-4">
+                    <span class="text-sm font-semibold text-gray-600 whitespace-nowrap">Imágenes por hoja</span>
+
+                    <div class="w-56">
+                        <el-slider
+                            v-model="sliderIndex"
+                            :min="0"
+                            :max="5"
+                            :step="1"
+                            :marks="sliderMarks"
+                            :format-tooltip="(idx) => perPageOptions[idx]"
+                            show-stops
+                            size="small"
+                        />
+                    </div>
+
+                    <span class="text-sm text-gray-500 w-6 text-center tabular-nums font-semibold">
+                        {{ imagesPerPage }}
+                    </span>
+                </div>
+
                 <el-button
                     type="primary"
                     color="#f26c17"
@@ -65,8 +214,18 @@ const tasksWithImages = computed(() => {
                 </el-button>
             </div>
 
+            <!-- Info text about expand feature -->
+            <p class="text-sm text-gray-500 mb-6 print:hidden">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 inline-block align-text-bottom mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="16" x2="12" y2="12" />
+                    <line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
+                Coloca el cursor sobre cualquier imagen y usa el botón <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 inline-block align-text-bottom mx-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg> para expandirla y que abarque toda la hoja. Vuelve a presionarlo para regresarla a su tamaño normal.
+            </p>
+
             <!-- Header with corporate styling -->
-            <div class="bg-[#1e1e20] rounded-t-lg px-6 py-5 print:bg-[#1e1e20] print:px-4 print:py-3">
+            <div class="bg-[#7a7a7a] rounded-t-lg px-6 py-5 print:bg-[#7a7a7a] print:rounded-none print:px-4 print:py-3">
                 <div class="flex items-center gap-5">
                     <div
                         v-if="getLogoUrl()"
@@ -77,7 +236,7 @@ const tasksWithImages = computed(() => {
                     <div>
                         <h1 class="text-xl font-bold text-white print:text-white">Recopilación de evidencias</h1>
                         <p class="text-sm text-orange-300 mt-0.5">{{ ticket.name }}</p>
-                        <p class="text-xs text-gray-400 mt-0.5">
+                        <p class="text-xs text-gray-300 mt-0.5">
                             Cliente: {{ ticket.customer?.name }} | {{ ticket.branch?.branch_name }}
                             <template v-if="ticket.branch?.city"> - {{ ticket.branch.city }}</template>
                             <template v-if="ticket.branch?.region">, {{ ticket.branch.region }}</template>
@@ -87,47 +246,66 @@ const tasksWithImages = computed(() => {
             </div>
 
             <!-- Thin orange accent line -->
-            <div class="h-1 bg-[#f26c17] print:h-0.5"></div>
+            <div class="h-1 bg-[#f26c17]"></div>
 
-            <!-- Evidence by task -->
-            <div class="mt-6 print:mt-4">
-                <div v-if="tasksWithImages.length > 0">
+            <!-- Evidence pages -->
+            <div class="mt-0">
+                <div v-if="pages.length > 0">
                     <div
-                        v-for="(task, taskIdx) in tasksWithImages"
-                        :key="task.id"
-                        class="mb-8 print:mb-4 break-inside-avoid"
+                        v-for="(page, pageIdx) in pages"
+                        :key="pageIdx"
+                        class="evidence-page print:mb-0"
+                        :class="{ 'page-break': pageIdx < pages.length - 1 }"
+                        :style="{
+                            height: pageHeight(pageIdx),
+                            minHeight: pageMinHeight(pageIdx),
+                        }"
                     >
-                        <!-- Task header -->
-                        <div class="flex items-center gap-3 mb-3 print:mb-1.5">
-                            <span class="flex items-center justify-center w-6 h-6 print:w-5 print:h-5 rounded-full bg-[#f26c17] text-white text-xs print:text-[10px] font-bold shrink-0">
-                                {{ taskIdx + 1 }}
-                            </span>
-                            <h3 class="text-sm print:text-xs font-bold text-[#1e1e20] uppercase tracking-wide">
-                                {{ task.name }}
-                            </h3>
-                            <span class="text-xs print:text-[10px] text-gray-400">
-                                {{ task.images.length }} {{ task.images.length === 1 ? 'imagen' : 'imágenes' }}
-                            </span>
-                        </div>
-
-                        <!-- Images grid for this task -->
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 print:gap-2">
+                        <div
+                            class="grid gap-3 print:gap-2 h-full"
+                            :style="pageGridStyle(page)"
+                        >
                             <div
-                                v-for="(img, imgIdx) in task.images"
+                                v-for="img in page.images"
                                 :key="img.id"
-                                class="border border-gray-200 rounded-lg overflow-hidden bg-gray-50"
+                                class="border border-gray-200 rounded-lg overflow-hidden bg-gray-50 flex flex-col print:rounded-none print:border-gray-300 relative group"
                             >
-                                <div class="h-48 print:h-32 bg-white flex items-center justify-center p-2 print:p-2">
+                                <div class="flex-1 bg-white flex items-center justify-center p-3 print:p-2 min-h-0 relative">
                                     <img
                                         :src="img.original_url"
                                         :alt="img.file_name"
                                         class="max-w-full max-h-full object-contain"
                                     />
+                                    <!-- Full-page toggle button -->
+                                    <button
+                                        class="absolute top-2 right-2 w-8 h-8 rounded-full shadow-md border flex items-center justify-center transition-all print:hidden focus:outline-none focus:ring-2 focus:ring-[#f26c17]"
+                                        :class="fullPageSet.has(img.id)
+                                            ? 'bg-[#f26c17] border-[#f26c17] text-white opacity-100'
+                                            : 'bg-white/80 hover:bg-white border-gray-200 text-gray-600 opacity-0 group-hover:opacity-100 focus:opacity-100'"
+                                        :title="fullPageSet.has(img.id) ? 'Quitar hoja completa' : 'Hoja completa'"
+                                        @click="toggleFullPage(img.id)"
+                                    >
+                                        <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            class="w-4 h-4"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <polyline points="15 3 21 3 21 9" />
+                                            <polyline points="9 21 3 21 3 15" />
+                                            <line x1="21" y1="3" x2="14" y2="10" />
+                                            <line x1="3" y1="21" x2="10" y2="14" />
+                                        </svg>
+                                    </button>
                                 </div>
-                                <div class="p-2 print:p-1.5 border-t border-gray-200">
-                                    <p class="text-xs print:text-[9px] font-semibold text-[#1e1e20] truncate">{{ task.name }}</p>
+                                <div class="p-2 print:p-1.5 border-t border-gray-200 shrink-0">
+                                    <p class="text-xs print:text-[9px] font-semibold text-[#7a7a7a] truncate">{{ img.taskName }}</p>
                                     <p class="text-[10px] print:text-[8px] text-gray-400">
-                                        Imagen {{ imgIdx + 1 }} de {{ task.images.length }}
+                                        Imagen {{ img.imgIdx + 1 }} de {{ img.totalInTask }}
                                     </p>
                                 </div>
                             </div>
@@ -135,17 +313,9 @@ const tasksWithImages = computed(() => {
                     </div>
                 </div>
 
-                <div v-else class="text-center py-16">
+                <div v-else class="text-center py-16 print:py-8">
                     <p class="text-gray-400">No hay evidencias registradas para este ticket.</p>
                 </div>
-            </div>
-
-            <!-- Footer -->
-            <div class="mt-10 pt-5 border-t border-gray-200 text-center print:mt-6">
-                <p class="text-xs text-gray-400">
-                    Generado el {{ new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' }) }}
-                </p>
-                <div class="mt-2 h-1 w-16 mx-auto bg-[#f26c17]/60 rounded-full"></div>
             </div>
         </div>
 
@@ -160,6 +330,26 @@ const tasksWithImages = computed(() => {
 <style>
 @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    @page { margin: 1cm; }
+    @page { margin: 1cm; size: A4; }
+
+    .evidence-page {
+        overflow: hidden;
+        break-inside: avoid;
+    }
+
+    .evidence-page.page-break {
+        page-break-after: always;
+    }
+}
+
+/* Screen preview: each page fills the viewport */
+.evidence-page {
+    break-inside: avoid;
+}
+
+@media screen {
+    .evidence-page.page-break {
+        page-break-after: always;
+    }
 }
 </style>

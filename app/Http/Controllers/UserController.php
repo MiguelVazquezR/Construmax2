@@ -19,6 +19,7 @@ class UserController extends Controller
         return Inertia::render('Users/Index', [
             'users' => User::with(['employee', 'roles'])
                 ->where('id', '!=', 1) // Excluir al super admin
+                ->whereDoesntHave('technician') // Solo usuarios sin técnico asociado
                 ->filter($request->only('search'))
                 ->orderBy('id', 'desc')
                 ->paginate($perPage)
@@ -132,10 +133,60 @@ class UserController extends Controller
         return redirect()->route('users.index')->with('success', 'Usuario actualizado exitosamente.');
     }
 
+    /**
+     * Clean up all foreign key references to the given user IDs before deletion.
+     *
+     * Strategy per table:
+     *   - Nullable FK          → set user_id = null (e.g. ticket_tasks)
+     *   - NOT NULL, owns data  → DELETE the row (e.g. calendars, calendar_participants, tech_payments)
+     *   - NOT NULL, important  → reassign to admin (id=1) (e.g. budgets)
+     */
+    private function nullifyUserReferences(array $ids): void
+    {
+        // Nullable FK — safe to just unlink
+        DB::table('ticket_tasks')->whereIn('user_id', $ids)->update(['user_id' => null]);
+
+        // NOT NULL — delete the row (acceptable data loss for mistakenly-created users)
+        DB::table('calendars')->whereIn('user_id', $ids)->delete();
+        DB::table('calendar_participants')->whereIn('user_id', $ids)->delete();
+        DB::table('technician_payments')->whereIn('user_id', $ids)->delete();
+        DB::table('field_work_schedules')->whereIn('user_id', $ids)->delete();
+
+        // NOT NULL but important data — reassign to admin (id=1)
+        DB::table('budgets')->whereIn('user_id', $ids)->update(['user_id' => 1]);
+    }
+
     public function destroy(User $user)
     {
+        if ($user->id === 1) {
+            return back()->with('error', 'No se puede eliminar al super administrador.');
+        }
+
+        $this->nullifyUserReferences([$user->id]);
+
         $user->delete();
         return back()->with('success', 'Usuario eliminado correctamente.');
+    }
+
+    public function bulkDestroy(Request $request)
+    {
+        $validated = $request->validate([
+            'ids'   => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'exists:users,id'],
+        ]);
+
+        // Exclude super admin (id=1) from bulk deletion
+        $ids = array_values(array_filter($validated['ids'], fn ($id) => $id !== 1));
+
+        if (empty($ids)) {
+            return back()->with('error', 'No se puede eliminar al super administrador.');
+        }
+
+        $this->nullifyUserReferences($ids);
+
+        User::whereIn('id', $ids)->delete();
+
+        return back()->with('success', count($ids) . ' usuarios eliminados correctamente.');
     }
 
     public function toggleStatus(User $user)

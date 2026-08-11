@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -28,7 +29,6 @@ class Ticket extends Model implements HasMedia
                 $action = app(DispatchNotificationAction::class);
 
                 match ($ticket->status) {
-                    'Catálogo'   => $action->ticketNeedsCatalog($ticket),
                     'Finalizado' => $action->ticketNeedsInvoice($ticket),
                     default      => null,
                 };
@@ -43,6 +43,7 @@ class Ticket extends Model implements HasMedia
         'seller_id',
         'name',
         'service_type',
+        'report_number',
         'duration',
         'technicians',
         'assistant_technicians',
@@ -51,6 +52,8 @@ class Ticket extends Model implements HasMedia
         'scheduled_start',
         'scheduled_end',
         'instructions',
+        'important_note',
+        'has_oc',
     ];
 
     protected $casts = [
@@ -58,6 +61,7 @@ class Ticket extends Model implements HasMedia
         'scheduled_end' => 'date',
         'technicians' => 'array',
         'assistant_technicians' => 'array',
+        'has_oc' => 'boolean',
     ];
 
     protected $appends = ['progress', 'folio'];
@@ -103,6 +107,16 @@ class Ticket extends Model implements HasMedia
     public function tasks(): HasMany
     {
         return $this->hasMany(TicketTask::class);
+    }
+
+    public function workAcceptanceReport(): HasOne
+    {
+        return $this->hasOne(WorkAcceptanceReport::class);
+    }
+
+    public function deposits(): HasMany
+    {
+        return $this->hasMany(Deposit::class);
     }
 
     // --- LÓGICA DE NEGOCIO ---
@@ -196,5 +210,46 @@ class Ticket extends Model implements HasMedia
         if ($newStatus !== $currentStatus) {
             $this->update(['status' => $newStatus]);
         }
+    }
+
+    // --- SCOPES ---
+
+    /**
+     * Find tickets where a technician participated (via JSON technicians,
+     * assistant_technicians, or assigned tasks).
+     *
+     * @param int $userId The user_id of the technician (stored in tickets.technicians JSON).
+     */
+    public function scopeWhereInvolved(Builder $query, int $userId): Builder
+    {
+        return $query->where(function ($q) use ($userId) {
+            $q->whereJsonContains('technicians', (string) $userId)
+              ->orWhereJsonContains('technicians', (int) $userId)
+              ->orWhereJsonContains('assistant_technicians', (string) $userId)
+              ->orWhereJsonContains('assistant_technicians', (int) $userId)
+              ->orWhereHas('tasks', function ($t) use ($userId) {
+                  $t->where('user_id', $userId);
+              });
+        });
+    }
+
+    /**
+     * Tickets overdue per the same health criteria used in the tickets
+     * table (TicketList.vue getHealthStatus):
+     *  - Not in a final/cancelled status
+     *  - Has both scheduled_start and scheduled_end
+     *  - Past the end date by a full day (one-day grace period)
+     *  - Not all tasks completed (progress < 100)
+     */
+    public function scopeOverdue(Builder $query): Builder
+    {
+        return $query->whereNotIn('status', ['Finalizado', 'Facturado', 'Pagado', 'Cancelado'])
+            ->whereNotNull('scheduled_start')
+            ->whereNotNull('scheduled_end')
+            ->whereDate('scheduled_end', '<=', now()->subDay()->toDateString())
+            ->where(function ($q) {
+                $q->whereDoesntHave('tasks')
+                  ->orWhereHas('tasks', fn($sub) => $sub->where('status', '!=', 'Completada'));
+            });
     }
 }

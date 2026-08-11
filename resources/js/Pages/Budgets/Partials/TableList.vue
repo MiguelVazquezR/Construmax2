@@ -75,9 +75,11 @@ const deleteBudget = (budget) => {
                 @row-click="handleRowClick"
                 row-class-name="cursor-pointer hover:bg-gray-50 dark:hover:bg-[#27272a] transition-colors"
             >
-                <el-table-column prop="id" label="Folio" width="80" align="center">
+                <el-table-column label="Folio" width="130" align="center">
                     <template #default="scope">
-                        <span class="font-mono text-xs text-gray-500">#{{ scope.row.id }}</span>
+                        <span class="font-mono text-xs text-gray-700 dark:text-gray-300 font-bold bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
+                            {{ scope.row.ticket?.folio || '#' + scope.row.id }}
+                        </span>
                     </template>
                 </el-table-column>
                 

@@ -23,10 +23,17 @@ Route::middleware([
     
     // Rutas de Tickets
     Route::get('/tickets/dashboard', [TicketAnalyticsController::class, 'index'])->name('tickets.dashboard');
+    Route::get('/tickets/pending-tech-payments', [TicketController::class, 'pendingTechnicianPayments'])->name('tickets.pending-tech-payments');
+    // Debe registrarse antes de Route::resource para que no sea capturada por {ticket}
+    Route::get('/tickets/duplicate-check', [TicketController::class, 'checkDuplicates'])->name('tickets.duplicate-check');
     Route::resource('tickets', TicketController::class);
     Route::post('/budgets/{budget}/ticket-auto', [TicketController::class, 'storeFromBudget'])->name('tickets.store-from-budget');
     Route::put('/tickets/{ticket}/status', [TicketController::class, 'updateStatus'])->name('tickets.update-status');
     Route::put('/tickets/{ticket}/technicians', [TicketController::class, 'updateTechnicians'])->name('tickets.update-technicians');
+    Route::put('/tickets/{ticket}/important-note', [TicketController::class, 'updateImportantNote'])->name('tickets.update-important-note');
+    Route::put('/tickets/{ticket}/report-number', [TicketController::class, 'updateReportNumber'])->name('tickets.update-report-number');
+    Route::put('/tickets/{ticket}/update-field', [TicketController::class, 'updateField'])->name('tickets.update-field');
+    Route::put('/tickets/{ticket}/toggle-oc', [TicketController::class, 'toggleOce'])->name('tickets.toggle-oc');
 
     // Rutas de Tareas
     Route::post('/tickets/{ticket}/tasks', [TicketTaskController::class, 'store'])->name('tickets.tasks.store');
@@ -43,6 +50,7 @@ Route::middleware([
     Route::delete('/tickets/evidence/{media}', [TicketController::class, 'destroyEvidence'])->name('tickets.evidence.destroy');
 
     // Rutas de Plantillas de Tareas
+    Route::get('/task-templates', [TaskTemplateController::class, 'index'])->name('task-templates.index');
     Route::post('/task-templates', [TaskTemplateController::class, 'store'])->name('task-templates.store');
     Route::put('/task-templates/{taskTemplate}', [TaskTemplateController::class, 'update'])->name('task-templates.update');
     Route::put('/task-templates/{taskTemplate}/toggle-status', [TaskTemplateController::class, 'toggleStatus'])->name('task-templates.toggle-status');

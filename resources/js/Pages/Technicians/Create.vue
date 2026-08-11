@@ -6,6 +6,13 @@ import { ElMessage } from 'element-plus';
 import { Back } from '@element-plus/icons-vue';
 import TechnicianForm from './Partials/TechnicianForm.vue'; // Nuevo componente
 
+const props = defineProps({
+    availableSpecialties: {
+        type: Array,
+        default: () => []
+    }
+});
+
 const formRef = ref();
 const photoPreview = ref(null);
 
@@ -128,6 +135,7 @@ const submit = () => {
                     :form="form"
                     :photo-preview="photoPreview"
                     :is-edit="false"
+                    :available-specialties="availableSpecialties"
                     @photo-change="handlePhotoChange"
                     @tax-file-change="handleTaxFileChange"
                     @tax-file-remove="handleTaxFileRemove"

@@ -1,4 +1,4 @@
-# ERP — Project guidelines for Claude
+# ERP — Project guidelines for deepseek
 
 ## Stack
 
@@ -383,3 +383,4 @@ routes/web/
 - ❌ Title Case in user-facing text — always sentence case
 - ❌ Checking roles directly — always check permissions
 - ❌ Spanish variable names, method names, or comments — all code in English
+- ❌ english user interface text — all user-facing text must be in Spanish

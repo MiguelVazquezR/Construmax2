@@ -13,7 +13,9 @@ import {
     Delete,
     Location,
     StarFilled,
-    Filter
+    Filter,
+    RefreshRight,
+    InfoFilled
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
@@ -25,6 +27,9 @@ const props = defineProps({
     states: Array,      // Lista de estados únicos
     specialties: Array, // Lista de especialidades (Array simple de strings)
 });
+
+// Tab activo: 'active' o 'trashed'
+const activeTab = ref(props.filters.trashed ? 'trashed' : 'active');
 
 // Filtros Reactivos
 const search = ref(props.filters.search || '');
@@ -47,8 +52,9 @@ const updateParams = () => {
     return {
         search: search.value,
         state: filterState.value,
-        specialty: filterSpecialty.value, // Ahora enviamos el array
-        perPage: perPage.value
+        specialty: filterSpecialty.value,
+        perPage: perPage.value,
+        trashed: activeTab.value === 'trashed' ? true : undefined,
     };
 };
 
@@ -75,6 +81,19 @@ const handlePageChange = (val) => {
     });
 };
 
+// Cambio de tab
+const handleTabChange = (tabName) => {
+    activeTab.value = tabName;
+    router.get(route('technicians.index'), {
+        ...updateParams(),
+        trashed: tabName === 'trashed' ? true : undefined,
+        page: 1,
+    }, {
+        preserveState: true,
+        preserveScroll: true,
+    });
+};
+
 // Navegación
 const handleRowClick = (row) => {
     router.visit(route('technicians.show', row.id));
@@ -83,18 +102,38 @@ const handleRowClick = (row) => {
 // Acciones
 const deleteTechnician = (technician) => {
     ElMessageBox.confirm(
-        `¿Estás seguro de eliminar al técnico "${technician.user.name}"? Esta acción borrará su usuario y todo su historial asociado permanentemente.`,
-        'Eliminar técnico',
+        `¿Dar de baja al técnico "${technician.user.name}"? Su usuario será desactivado y aparecerá en la pestaña "Eliminados". Todo su historial (tickets, tareas, pagos y presupuestos) se conservará intacto para mantener la trazabilidad del sistema. Podrá reactivarse en cualquier momento.`,
+        'Dar de baja técnico',
         {
-            confirmButtonText: 'Eliminar',
+            confirmButtonText: 'Dar de baja',
             cancelButtonText: 'Cancelar',
-            type: 'error',
+            type: 'warning',
         }
     )
     .then(() => {
         router.delete(route('technicians.destroy', technician.id), {
              onSuccess: () => {
-                ElMessage({ type: 'success', message: 'Técnico eliminado correctamente' });
+                ElMessage({ type: 'success', message: 'Técnico dado de baja correctamente. Su historial y trazabilidad se conservan.' });
+            }
+        });
+    })
+    .catch(() => {});
+};
+
+const restoreTechnician = (technician) => {
+    ElMessageBox.confirm(
+        `¿Reactivar al técnico "${technician.user.name}"? Volverá a aparecer en el listado activo y podrá operar normalmente.`,
+        'Reactivar técnico',
+        {
+            confirmButtonText: 'Reactivar',
+            cancelButtonText: 'Cancelar',
+            type: 'info',
+        }
+    )
+    .then(() => {
+        router.patch(route('technicians.restore', technician.id), {}, {
+            onSuccess: () => {
+                ElMessage({ type: 'success', message: 'Técnico reactivado correctamente.' });
             }
         });
     })
@@ -106,7 +145,8 @@ const getStatusColor = (status) => {
         'Activo': 'success',
         'Inactivo': 'info',
         'En revisión': 'warning',
-        'Vetado': 'danger'
+        'Vetado': 'danger',
+        'Eliminado': 'danger'
     };
     return map[status] || 'info';
 };
@@ -120,6 +160,29 @@ watch(search, () => {
 <template>
     <AppLayout title="Gestión de técnicos">
         <div class="space-y-4">
+
+            <!-- Tabs: Activos / Eliminados -->
+            <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+                <el-tab-pane label="Activos" name="active" />
+                <el-tab-pane label="Eliminados" name="trashed" />
+            </el-tabs>
+
+            <!-- Banner informativo para pestaña de eliminados -->
+            <el-alert
+                v-if="activeTab === 'trashed'"
+                type="info"
+                :closable="false"
+                show-icon
+                class="!mb-4"
+            >
+                <template #title>
+                    <div class="flex items-center gap-2">
+                        <el-icon><InfoFilled /></el-icon>
+                        <span>Estos técnicos fueron dados de baja. Su historial de tickets, tareas, pagos y presupuestos se conserva intacto para mantener la trazabilidad del sistema.</span>
+                    </div>
+                </template>
+            </el-alert>
+
             <!-- Barra de Herramientas y Filtros -->
             <div class="bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e]">
                 <div class="flex flex-col lg:flex-row justify-between items-center gap-4">
@@ -171,7 +234,7 @@ watch(search, () => {
                             <el-option label="20" :value="20" />
                             <el-option label="50" :value="50" />
                         </el-select>
-                        <Link v-if="can('technicians.create')" :href="route('technicians.create')">
+                        <Link v-if="can('technicians.create') && activeTab === 'active'" :href="route('technicians.create')">
                             <el-button type="primary" color="#f26c17" :icon="Plus">
                                 Nuevo
                             </el-button>
@@ -288,17 +351,20 @@ watch(search, () => {
                                             <el-icon><MoreFilled /></el-icon>
                                         </span>
                                         <template #dropdown>
-                                            <el-dropdown-menu>
-                                                <Link :href="route('technicians.show', scope.row.id)">
-                                                    <el-dropdown-item :icon="View">Ver perfil</el-dropdown-item>
-                                                </Link>
-                                                <Link v-if="can('technicians.edit')" :href="route('technicians.edit', scope.row.id)">
-                                                    <el-dropdown-item :icon="Edit">Editar</el-dropdown-item>
-                                                </Link>
-                                                <el-dropdown-item v-if="can('technicians.delete')" divided :icon="Delete" class="text-red-500" @click="deleteTechnician(scope.row)">
-                                                    Eliminar
-                                                </el-dropdown-item>
-                                            </el-dropdown-menu>
+                                            <Link :href="route('technicians.show', scope.row.id)">
+                                                <el-dropdown-item :icon="View">Ver perfil</el-dropdown-item>
+                                            </Link>
+                                            <Link v-if="can('technicians.edit') && activeTab === 'active'" :href="route('technicians.edit', scope.row.id)">
+                                                <el-dropdown-item :icon="Edit">Editar</el-dropdown-item>
+                                            </Link>
+                                            <!-- Reactivar (solo en pestaña eliminados) -->
+                                            <el-dropdown-item v-if="activeTab === 'trashed'" :icon="RefreshRight" class="text-green-500" @click="restoreTechnician(scope.row)">
+                                                Reactivar
+                                            </el-dropdown-item>
+                                            <!-- Dar de baja (solo en pestaña activos) -->
+                                            <el-dropdown-item v-if="can('technicians.delete') && activeTab === 'active'" divided :icon="Delete" class="text-red-500" @click="deleteTechnician(scope.row)">
+                                                Dar de baja
+                                            </el-dropdown-item>
                                         </template>
                                     </el-dropdown>
                                 </div>
@@ -357,10 +423,11 @@ watch(search, () => {
                             <Link :href="route('technicians.show', tech.id)">
                                 <el-button size="small" :icon="View" circle plain />
                             </Link>
-                            <Link v-if="can('technicians.edit')" :href="route('technicians.edit', tech.id)">
+                            <Link v-if="can('technicians.edit') && activeTab === 'active'" :href="route('technicians.edit', tech.id)">
                                 <el-button size="small" :icon="Edit" circle />
                             </Link>
-                            <el-button v-if="can('technicians.delete')" size="small" type="danger" :icon="Delete" circle @click="deleteTechnician(tech)" />
+                            <el-button v-if="activeTab === 'trashed'" size="small" type="success" :icon="RefreshRight" circle @click="restoreTechnician(tech)" />
+                            <el-button v-if="can('technicians.delete') && activeTab === 'active'" size="small" type="danger" :icon="Delete" circle @click="deleteTechnician(tech)" />
                         </div>
                     </div>
                 </div>

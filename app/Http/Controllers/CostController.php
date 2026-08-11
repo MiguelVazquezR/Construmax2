@@ -29,6 +29,7 @@ class CostController extends Controller
         return Inertia::render('Costs/Index', [
             'budgets' => $budgets,
             'filters' => $request->only(['search', 'catalog', 'branch']),
+            'canTransfer' => $request->user()->can('costs.transfer'),
         ]);
     }
 
@@ -42,12 +43,15 @@ class CostController extends Controller
 
         return Inertia::render('Costs/Show', [
             'budget' => $budgetDetails,
+            'canCreateCatalog' => $request->user()->can('costs.create'),
+            'canApprove' => $request->user()->can('costs.approve'),
+            'canTransfer' => $request->user()->can('costs.transfer'),
         ]);
     }
 
     public function storeCatalog(Request $request, Budget $budget): RedirectResponse
     {
-        if (!$request->user()->can('costs.index')) {
+        if (!$request->user()->can('costs.create')) {
             abort(403);
         }
 
@@ -78,14 +82,46 @@ class CostController extends Controller
             'total' => $validated['total'],
             'non_installation_labor' => $validated['non_installation_labor'] ?? 0,
             'labor_utility' => $validated['labor_utility'] ?? 0,
+            'status' => \App\Models\BudgetCatalog::STATUS_PENDING_APPROVAL,
         ]);
 
         $catalog->items()->createMany($validated['items']);
 
-        // Dispatch notification: catalog created
-        $this->dispatchNotification->catalogCreated($catalog);
+        // Update ticket status to Pendiente de aprobación
+        if ($budget->ticket_id) {
+            \App\Models\Ticket::where('id', $budget->ticket_id)->update(['status' => 'Pendiente de aprobación']);
+        }
 
-        return back()->with('success', 'Nueva versión del catálogo guardada correctamente.');
+        return back()->with('success', 'Nueva versión del catálogo guardada correctamente. Queda pendiente de aprobación.');
+    }
+
+    /**
+     * Approve a cost catalog.
+     */
+    public function approveCatalog(Request $request, Budget $budget, \App\Models\BudgetCatalog $catalog): RedirectResponse
+    {
+        if (!$request->user()->can('costs.approve')) {
+            abort(403);
+        }
+
+        if ($catalog->isApproved()) {
+            return back()->with('info', 'Este catálogo ya fue aprobado anteriormente.');
+        }
+
+        $catalog->approve($request->user()->id);
+
+        // Move ticket back to Catálogo status (approved)
+        if ($budget->ticket_id) {
+            $ticket = \App\Models\Ticket::find($budget->ticket_id);
+            if ($ticket && $ticket->status === 'Pendiente de aprobación') {
+                $ticket->update(['status' => 'Catálogo']);
+            }
+        }
+
+        // Dispatch notification: catalog approved
+        $this->dispatchNotification->catalogApproved($catalog);
+
+        return back()->with('success', 'Catálogo de costos aprobado correctamente.');
     }
 
     public function print(Request $request, Budget $budget): Response
@@ -101,6 +137,27 @@ class CostController extends Controller
             'budget' => $budgetDetails,
             'version' => $version,
         ]);
+    }
+
+    /**
+     * Transfer a catalog to special costs authorization.
+     */
+    public function transferToSpecial(Request $request, Budget $budget, \App\Models\BudgetCatalog $catalog): RedirectResponse
+    {
+        if (!$request->user()->can('costs.transfer')) {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'transfer_notes' => 'required|string|max:2000',
+        ]);
+
+        $catalog->update([
+            'needs_special_authorization' => true,
+            'transfer_notes' => $validated['transfer_notes'],
+        ]);
+
+        return back()->with('success', 'Catálogo transferido a costos especiales para autorización.');
     }
 
     public function printEmpenoFacil(Request $request, Budget $budget): Response

@@ -1,10 +1,13 @@
 <script setup>
+import { computed } from 'vue';
 import { useForm, router, Link } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 const props = defineProps({
     ticket: Object,
 });
+
+const isEmpenoFacil = computed(() => props.ticket?.customer?.id === 2);
 
 const formatDate = (date) => {
     if(!date) return 'No definida';
@@ -24,7 +27,8 @@ const openEvidenceTemplate = () => {
 };
 
 const openCostsPrint = () => {
-    const url = route('costs.print', props.ticket.budget.id);
+    const routeName = isEmpenoFacil.value ? 'costs.print-empeno-facil' : 'costs.print';
+    const url = route(routeName, props.ticket.budget.id);
     window.open(url, '_blank');
 };
 
@@ -99,6 +103,10 @@ const deleteEvidence = (mediaId) => {
                         <p class="text-blue-900 dark:text-blue-100 font-medium">{{ ticket.service_type || 'Sin especificar' }}</p>
                     </div>
                     <div>
+                        <p class="text-xs text-blue-500 uppercase font-bold">No. Reporte / Ticket</p>
+                        <p class="text-blue-900 dark:text-blue-100 font-medium">{{ ticket.report_number || 'Sin especificar' }}</p>
+                    </div>
+                    <div>
                         <p class="text-xs text-blue-500 uppercase font-bold">Vendedor / Asesor</p>
                         <p class="text-blue-900 dark:text-blue-100 font-medium">{{ ticket.seller?.name || 'Sin asignar' }}</p>
                     </div>
@@ -119,10 +127,20 @@ const deleteEvidence = (mediaId) => {
                 <div class="bg-gray-50 dark:bg-[#252529] rounded-lg p-4 border border-gray-200 dark:border-[#3f3f46]">
                     <div class="flex items-center justify-between mb-3">
                         <h4 class="text-sm font-bold text-gray-700 dark:text-gray-300">Último catálogo de costos</h4>
-                        <el-tag v-if="ticket.budget?.latest_catalog" type="success" size="small" effect="dark">
-                            V{{ ticket.budget.latest_catalog.version }}
-                        </el-tag>
-                        <el-tag v-else type="info" size="small" effect="plain">Sin catálogo</el-tag>
+                        <div class="flex items-center gap-2">
+                            <el-tag v-if="ticket.budget?.latest_catalog" type="success" size="small" effect="dark">
+                                V{{ ticket.budget.latest_catalog.version }}
+                            </el-tag>
+                            <el-tag
+                                v-if="ticket.budget?.latest_catalog"
+                                :type="ticket.budget.latest_catalog.status === 'approved' ? 'success' : 'warning'"
+                                size="small"
+                                effect="plain"
+                            >
+                                {{ ticket.budget.latest_catalog.status === 'approved' ? 'Aprobado' : 'Pendiente de aprobación' }}
+                            </el-tag>
+                            <el-tag v-else type="info" size="small" effect="plain">Sin catálogo</el-tag>
+                        </div>
                     </div>
                     <div v-if="ticket.budget?.latest_catalog" class="space-y-2 text-sm">
                         <div class="flex justify-between">

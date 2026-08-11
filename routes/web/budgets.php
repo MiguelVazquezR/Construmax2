@@ -11,6 +11,7 @@ Route::middleware([
     Route::post('/budgets/{budget}/technician-payments', [BudgetController::class, 'storeTechnicianPayment'])->name('budgets.technician-payments.store');
     Route::delete('/technician-payments/{payment}', [BudgetController::class, 'destroyTechnicianPayment'])->name('budgets.technician-payments.destroy');
     // Rutas Resource principales
+    Route::get('/budgets/options', [BudgetController::class, 'options'])->name('budgets.options');
     Route::resource('budgets', BudgetController::class);
 
     // Pagos
@@ -19,5 +20,6 @@ Route::middleware([
 
     // Archivos
     Route::post('/budgets/{budget}/files', [BudgetController::class, 'storeFile'])->name('budgets.files.store');
+    Route::post('/budgets/bulk-upload-files', [BudgetController::class, 'bulkUploadFiles'])->name('budgets.bulk-upload-files');
     Route::delete('/budgets/files/{media}', [BudgetController::class, 'destroyFile'])->name('budgets.files.destroy');
 });

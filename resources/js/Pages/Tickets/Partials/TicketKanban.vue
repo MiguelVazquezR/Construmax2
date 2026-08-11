@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { OfficeBuilding, Timer, Location, UserFilled } from '@element-plus/icons-vue';
+import { OfficeBuilding, Timer, Location, UserFilled, DocumentChecked } from '@element-plus/icons-vue';
 
 const props = defineProps({
     tickets: Object,
@@ -21,11 +21,12 @@ const columns = [
     { id: 'Programado', label: 'Programado', color: '#6366f1' },
     { id: 'Levantamiento', label: 'Levantamiento', color: '#0d9488' },
     { id: 'Catálogo', label: 'Cotización (Catálogo)', color: '#3b82f6' },
-    { id: 'Proceso de ejecución', label: 'En ejecución', color: '#f59e0b' },
-    { id: 'Ejecutado', label: 'Ejecutado', color: '#10b981' },
-    { id: 'Finalizado', label: 'Finalizado', color: '#059669' },
-    { id: 'Facturado', label: 'Facturado', color: '#eab308' },
-    { id: 'Pagado', label: 'Pagado', color: '#34d399' },
+    { id: 'Pendiente de aprobación', label: 'Pendiente de aprobación', color: '#f59e0b' },
+    { id: 'Proceso de ejecución', label: 'En ejecución', color: '#10b981' },
+    { id: 'Ejecutado', label: 'Ejecutado', color: '#059669' },
+    { id: 'Finalizado', label: 'Finalizado', color: '#eab308' },
+    { id: 'Facturado', label: 'Facturado', color: '#34d399' },
+    { id: 'Pagado', label: 'Pagado', color: '#22c55e' },
     { id: 'Cancelado', label: 'Cancelado', color: '#ef4444' },
 ];
 
@@ -97,6 +98,13 @@ const onDrop = async (e, targetStatus) => {
         return;
     }
 
+    // Pendiente de aprobación solo se alcanza al guardar un catálogo, no por drag-and-drop
+    if (targetStatus === 'Pendiente de aprobación') {
+        ElMessage.warning('Este estado se asigna automáticamente al guardar un catálogo de costos. No puede moverse manualmente.');
+        draggedItem.value = null;
+        return;
+    }
+
     updateStatus(ticket.id, targetStatus);
     draggedItem.value = null;
 };
@@ -139,6 +147,17 @@ const getAssignedTechnicians = (ticket) => {
         });
     }
     return Array.from(techs.values());
+};
+
+const getTechDisplayName = (user) => {
+    let label = user.name;
+    if (user.technician) {
+        label += user.technician.is_internal ? ' (Interno)' : ' (Externo)';
+        if (user.technician.state) {
+            label += ` — ${user.technician.state}`;
+        }
+    }
+    return label;
 };
 </script>
 
@@ -209,17 +228,68 @@ const getAssignedTechnicians = (ticket) => {
                             </div>
                             <div v-else class="mb-3"></div>
 
+                            <!-- Catalog indicator -->
+                            <div class="flex items-center gap-1.5 mb-2">
+                                <el-tag
+                                    v-if="ticket.budget?.latest_catalog"
+                                    size="small"
+                                    :type="ticket.budget.latest_catalog.status === 'approved' ? 'success' : 'warning'"
+                                    effect="plain"
+                                    class="!text-[10px] !h-5 !px-1"
+                                >
+                                    v{{ ticket.budget.latest_catalog.version }}
+                                    <span class="ml-0.5 opacity-70">
+                                        — {{ ticket.budget.latest_catalog.status === 'approved' ? 'Aprobado' : 'Pendiente' }}
+                                    </span>
+                                </el-tag>
+                                <el-tag
+                                    v-else
+                                    size="small"
+                                    type="info"
+                                    effect="plain"
+                                    class="!text-[10px] !h-5 !px-1 !bg-gray-100 !text-gray-500 !border-gray-300 dark:!bg-gray-800 dark:!text-gray-400 dark:!border-gray-700"
+                                >
+                                    Sin catálogo
+                                </el-tag>
+                            </div>
+
+                            <!-- Acta indicator -->
+                            <div v-if="ticket.work_acceptance_report" class="flex items-center gap-1.5 mb-2">
+                                <el-tooltip
+                                    :content="ticket.work_acceptance_report.is_signed ? 'Acta de recepción firmada' : 'Acta de recepción pendiente de firma'"
+                                    placement="top"
+                                >
+                                    <el-icon
+                                        :size="14"
+                                        :color="ticket.work_acceptance_report.is_signed ? '#22c55e' : '#f59e0b'"
+                                    >
+                                        <DocumentChecked />
+                                    </el-icon>
+                                </el-tooltip>
+                                <span
+                                    class="text-[10px] font-medium"
+                                    :class="ticket.work_acceptance_report.is_signed ? 'text-green-600' : 'text-amber-600'"
+                                >
+                                    {{ ticket.work_acceptance_report.is_signed ? 'Firmada' : 'Pendiente' }}
+                                </span>
+                            </div>
+
                             <div class="flex justify-between items-end border-t border-gray-100 dark:border-[#3f3f46] pt-2 mt-2 pr-2">
                                 <div class="flex -space-x-1">
-                                    <el-avatar 
-                                        v-for="tech in getAssignedTechnicians(ticket).slice(0, 3)" 
+                                    <el-tooltip
+                                        v-for="tech in getAssignedTechnicians(ticket).slice(0, 3)"
                                         :key="tech.id"
-                                        :size="22" 
-                                        :src="tech.profile_photo_url"
-                                        class="border border-white dark:border-[#252529]"
+                                        :content="getTechDisplayName(tech)"
+                                        placement="top"
                                     >
-                                        {{ tech.name.charAt(0) }}
-                                    </el-avatar>
+                                        <el-avatar 
+                                            :size="22" 
+                                            :src="tech.profile_photo_url"
+                                            class="border border-white dark:border-[#252529]"
+                                        >
+                                            {{ tech.name.charAt(0) }}
+                                        </el-avatar>
+                                    </el-tooltip>
                                     <div v-if="getAssignedTechnicians(ticket).length > 3" class="flex items-center justify-center w-[22px] h-[22px] rounded-full border border-white bg-gray-100 text-[9px] text-gray-600 font-bold z-10">
                                         +{{ getAssignedTechnicians(ticket).length - 3 }}
                                     </div>

@@ -8,6 +8,18 @@ const props = defineProps({
 
 const viewMode = ref('vertical');
 
+const getTechDisplayName = (user) => {
+    if (!user) return 'Técnico';
+    let label = user.name;
+    if (user.technician) {
+        label += user.technician.is_internal ? ' (Interno)' : ' (Externo)';
+        if (user.technician.state) {
+            label += ` — ${user.technician.state}`;
+        }
+    }
+    return label;
+};
+
 // --- 1. LÓGICA VERTICAL ---
 const timelineActivities = computed(() => {
     const activities = [];
@@ -53,7 +65,7 @@ const timelineActivities = computed(() => {
                     type: 'success',
                     icon: 'Check',
                     color: '#67c23a',
-                    detail: `Realizada por: ${task.assignee?.name || 'Técnico'}`
+                    detail: `Realizada por: ${getTechDisplayName(task.assignee)}`
                 });
             } else if (task.due_date) {
                 activities.push({

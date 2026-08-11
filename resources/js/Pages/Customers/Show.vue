@@ -97,6 +97,20 @@ const getPriorityColor = (priority) => {
 const navigateToTicket = (row) => {
     router.visit(route('tickets.show', row.id)); 
 };
+
+const convertToCustomer = () => {
+    ElMessageBox.confirm(
+        `¿Convertir "${props.customer.name}" de prospecto a cliente? Podrás agregar datos fiscales y sucursales después.`,
+        'Convertir a cliente',
+        { confirmButtonText: 'Convertir', cancelButtonText: 'Cancelar', type: 'info' }
+    ).then(() => {
+        router.put(route('customers.convert-to-customer', props.customer.id), {}, {
+            preserveScroll: true,
+            onSuccess: () => ElMessage.success('Prospecto convertido a cliente.'),
+            onError: () => ElMessage.error('Error al convertir.'),
+        });
+    }).catch(() => {});
+};
 </script>
 
 <template>
@@ -114,6 +128,9 @@ const navigateToTicket = (row) => {
                     </div>
                 </div>
                 <div class="flex gap-2">
+                    <el-button v-if="customer.type === 'prospect' && can('customers.edit')" type="warning" @click="convertToCustomer">
+                        Convertir a cliente
+                    </el-button>
                     <Link v-if="can('customers.edit')" :href="route('customers.edit', customer.id)">
                         <el-button type="primary" color="#f26c17" :icon="Edit">
                             Editar cliente
@@ -140,6 +157,8 @@ const navigateToTicket = (row) => {
                             <el-tag :type="customer.is_active ? 'success' : 'danger'" size="small" effect="dark" class="rounded-full">
                                 {{ customer.is_active ? 'Activo' : 'Inactivo' }}
                             </el-tag>
+                            <el-tag v-if="customer.type === 'prospect'" type="warning" size="small" effect="dark" class="rounded-full">Prospecto</el-tag>
+                            <el-tag v-else type="success" size="small" effect="dark" class="rounded-full">Cliente</el-tag>
                         </div>
                         <p class="text-gray-500 dark:text-gray-400 text-sm flex items-center gap-2">
                             <span class="font-medium text-gray-700 dark:text-gray-300">{{ customer.business_name }}</span>

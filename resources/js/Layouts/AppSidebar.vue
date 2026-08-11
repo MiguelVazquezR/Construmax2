@@ -30,11 +30,18 @@ const activeMenu = computed(() => {
     // Presupuestos
     if (route().current('budgets.*')) return 'budgets.index';
 
+    // Deposits
+    if (route().current('deposits.*')) return 'deposits.index';
+
     // Invoices
     if (route().current('invoices.*')) return 'invoices.index';
 
         // Tutoriales
         if (route().current('tutorials.*')) return 'tutorials.index';
+
+    // Costos especiales
+    if (route().current('special-costs.*')) return 'special-costs.index';
+
     if (route().current('costs.*')) return 'costs.index';
 
     // Tickets
@@ -128,6 +135,14 @@ const activeMenu = computed(() => {
                     </el-menu-item>
                 </Link>
 
+                   <!-- Costos especiales -->
+               <Link v-if="can('special-costs.index')" :href="route('special-costs.index')">
+                   <el-menu-item class="!bg-dark" index="special-costs.index">
+                       <el-icon><ZoomIn/></el-icon>
+                       <template #title><span>Costos especiales</span></template>
+                   </el-menu-item>
+               </Link>
+
                    <!-- Costos -->
                <Link v-if="can('costs.index')" :href="route('costs.index')">
                    <el-menu-item class="!bg-dark" index="costs.index">
@@ -140,6 +155,14 @@ const activeMenu = computed(() => {
                     <el-menu-item class="!bg-dark" index="invoices.index">
                         <el-icon><Document/></el-icon>
                         <template #title><span>Facturación</span></template>
+                    </el-menu-item>
+                </Link>
+
+                <!-- Depósitos -->
+                <Link v-if="can('deposits.index')" :href="route('deposits.index')">
+                    <el-menu-item class="!bg-dark" index="deposits.index">
+                       <el-icon><Coin /></el-icon>
+                        <template #title><span>Depósitos</span></template>
                     </el-menu-item>
                 </Link>
 

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Technician;
+use App\Models\TechnicianBankAccount;
+use App\Models\TechnicianSpecialty;
 use App\Models\User;
 use App\Models\Ticket;
 use App\Models\TechnicianPayment;
@@ -22,6 +24,30 @@ class TechnicianController extends Controller
     public function index(Request $request)
     {
         $perPage = $request->input('perPage', 10);
+        $trashed = $request->boolean('trashed');
+
+        $technicians = Technician::with(['user' => function ($q) use ($trashed) {
+                if ($trashed) {
+                    $q->onlyTrashed();
+                }
+            }])
+            ->whereHas('user', function ($q) use ($trashed) {
+                if ($trashed) {
+                    $q->onlyTrashed();
+                } else {
+                    $q->whereNull('deleted_at');
+                }
+            })
+            ->filter($request->only('search', 'specialty', 'state'))
+            ->when($request->has('is_internal'), fn ($q) => $q->where('is_internal', $request->boolean('is_internal')))
+            ->orderBy('id', 'desc')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        // Return JSON for AJAX requests (e.g. deposit form technician search)
+        if ($request->expectsJson()) {
+            return response()->json($technicians);
+        }
 
         // Obtener listas únicas para los filtros del frontend
         $states = Technician::select('state')
@@ -29,19 +55,14 @@ class TechnicianController extends Controller
             ->whereNotNull('state')
             ->orderBy('state')
             ->pluck('state');
-        
-        // Usamos la constante del Modelo para asegurar consistencia
-        $specialties = Technician::SPECIALTIES;
+
+        $specialties = TechnicianSpecialty::active()->orderBy('name')->pluck('name');
 
         return Inertia::render('Technicians/Index', [
-            'technicians' => Technician::with('user')
-                ->filter($request->only('search', 'specialty', 'state'))
-                ->orderBy('id', 'desc')
-                ->paginate($perPage)
-                ->withQueryString(),
-            'filters' => $request->only(['search', 'perPage', 'specialty', 'state']),
+            'technicians' => $technicians,
+            'filters' => $request->only(['search', 'perPage', 'specialty', 'state', 'trashed']),
             'states' => $states,
-            'specialties' => $specialties 
+            'specialties' => $specialties,
         ]);
     }
 
@@ -49,7 +70,7 @@ class TechnicianController extends Controller
     {
         // Pasamos las especialidades también al formulario de creación si lo necesitas
         return Inertia::render('Technicians/Create', [
-            'availableSpecialties' => Technician::SPECIALTIES
+            'availableSpecialties' => TechnicianSpecialty::active()->orderBy('name')->pluck('name')
         ]);
     }
 
@@ -141,7 +162,11 @@ class TechnicianController extends Controller
 
     public function show(Technician $technician)
     {
-        $technician->load(['user', 'media']);
+        $technician->load([
+            'user' => fn ($q) => $q->withTrashed(),
+            'media',
+            'bankAccounts.media',
+        ]);
         
         $historyQuery = Ticket::with(['budget.customer', 'tasks'])
             ->where(function($query) use ($technician) {
@@ -181,8 +206,8 @@ class TechnicianController extends Controller
     public function edit(Technician $technician)
     {
         return Inertia::render('Technicians/Edit', [
-            'technician' => $technician->load('user'),
-            'availableSpecialties' => Technician::SPECIALTIES // Pasamos lista para editar
+            'technician' => $technician->load(['user', 'bankAccounts.media']),
+            'availableSpecialties' => TechnicianSpecialty::active()->orderBy('name')->pluck('name')
         ]);
     }
 
@@ -276,7 +301,7 @@ class TechnicianController extends Controller
     public function updateStatus(Request $request, Technician $technician)
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:Activo,Inactivo,En revisión,Vetado'
+            'status' => 'required|string|in:Activo,Inactivo,En revisión,Vetado,Eliminado'
         ]);
 
         $technician->update(['status' => $validated['status']]);
@@ -303,6 +328,7 @@ class TechnicianController extends Controller
             'phone' => 'required|string|max:20',
             'is_internal' => 'boolean', // NUEVO CAMPO ACEPTADO
             'level' => 'nullable|string|in:' . implode(',', Technician::LEVELS),
+            'state' => 'nullable|string|max:255',
         ]);
 
         $user = null;
@@ -320,6 +346,7 @@ class TechnicianController extends Controller
                 'phone' => $validated['phone'],
                 'is_internal' => $validated['is_internal'] ?? false, // APLICADO AQUÍ
                 'level' => $validated['level'] ?? 'Encargado',
+                'state' => $validated['state'] ?? null,
                 'status' => 'Activo', 
                 'rating_avg' => 0,
                 'coverage_radius_km' => 10,
@@ -342,9 +369,112 @@ class TechnicianController extends Controller
         return back()->with('success', 'Documento eliminado.');
     }
 
+    // --- BANK ACCOUNTS ---
+
+    public function storeBankAccount(Request $request, Technician $technician)
+    {
+        $validated = $request->validate([
+            'bank_name' => 'nullable|string|max:100',
+            'card_owner_name' => 'nullable|string|max:255',
+            'account_number' => 'nullable|string|max:50',
+            'card_number' => 'nullable|string|max:50',
+            'clabe' => 'nullable|string|max:50',
+            'branch_number' => 'nullable|string|max:50',
+            'qr_image' => 'nullable|image|max:2048',
+        ]);
+
+        // If this is the first account, make it favorite by default
+        $isFavorite = $technician->bankAccounts()->count() === 0;
+
+        $account = $technician->bankAccounts()->create([
+            'bank_name' => $validated['bank_name'] ?? null,
+            'card_owner_name' => $validated['card_owner_name'] ?? null,
+            'account_number' => $validated['account_number'] ?? null,
+            'card_number' => $validated['card_number'] ?? null,
+            'clabe' => $validated['clabe'] ?? null,
+            'branch_number' => $validated['branch_number'] ?? null,
+            'is_favorite' => $isFavorite,
+        ]);
+
+        if ($request->hasFile('qr_image')) {
+            $account->addMediaFromRequest('qr_image')
+                ->toMediaCollection('bank_qr');
+        }
+
+        return back()->with('success', 'Cuenta bancaria agregada.');
+    }
+
+    public function updateBankAccount(Request $request, Technician $technician, TechnicianBankAccount $account)
+    {
+        $validated = $request->validate([
+            'bank_name' => 'nullable|string|max:100',
+            'card_owner_name' => 'nullable|string|max:255',
+            'account_number' => 'nullable|string|max:50',
+            'card_number' => 'nullable|string|max:50',
+            'clabe' => 'nullable|string|max:50',
+            'branch_number' => 'nullable|string|max:50',
+            'qr_image' => 'nullable|image|max:2048',
+        ]);
+
+        $account->update([
+            'bank_name' => $validated['bank_name'] ?? null,
+            'card_owner_name' => $validated['card_owner_name'] ?? null,
+            'account_number' => $validated['account_number'] ?? null,
+            'card_number' => $validated['card_number'] ?? null,
+            'clabe' => $validated['clabe'] ?? null,
+            'branch_number' => $validated['branch_number'] ?? null,
+        ]);
+
+        if ($request->hasFile('qr_image')) {
+            $account->clearMediaCollection('bank_qr');
+            $account->addMediaFromRequest('qr_image')
+                ->toMediaCollection('bank_qr');
+        }
+
+        return back()->with('success', 'Cuenta bancaria actualizada.');
+    }
+
+    public function destroyBankAccount(Technician $technician, TechnicianBankAccount $account)
+    {
+        $wasFavorite = $account->is_favorite;
+        $account->delete();
+
+        // If the deleted account was favorite, make the first remaining one favorite
+        if ($wasFavorite) {
+            $next = $technician->bankAccounts()->first();
+            if ($next) {
+                $next->update(['is_favorite' => true]);
+            }
+        }
+
+        return back()->with('success', 'Cuenta bancaria eliminada.');
+    }
+
+    public function setFavoriteBankAccount(Technician $technician, TechnicianBankAccount $account)
+    {
+        $technician->bankAccounts()->update(['is_favorite' => false]);
+        $account->update(['is_favorite' => true]);
+
+        return back()->with('success', 'Cuenta favorita actualizada.');
+    }
+
     public function destroy(Technician $technician)
     {
-        $technician->user->delete();
-        return redirect()->route('technicians.index')->with('success', 'Técnico y usuario eliminados.');
+        $technician->update(['status' => 'Eliminado']);
+        $technician->user->delete(); // Soft delete gracias al trait SoftDeletes en User
+
+        return redirect()->route('technicians.index')
+            ->with('success', 'Técnico dado de baja correctamente. Su historial y trazabilidad se conservan.');
+    }
+
+    public function restore($id)
+    {
+        $technician = Technician::where('id', $id)->firstOrFail();
+        $user = User::withTrashed()->findOrFail($technician->user_id);
+        $user->restore();
+        $technician->update(['status' => 'Activo']);
+
+        return redirect()->route('technicians.index')
+            ->with('success', 'Técnico reactivado correctamente.');
     }
 }

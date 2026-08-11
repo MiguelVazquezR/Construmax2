@@ -39,6 +39,8 @@ const form = useForm({
         }))
         : [{ concept: '', amount: 0, paid_to_technician: false, payment_date: null }],
     survey_images: [],
+    support_files: [],
+    send_to_costs: false,
 });
 
 // Si es edit y el cliente del ticket actual usa USD, cargar TC al montar
@@ -139,7 +141,9 @@ const rules = reactive({
     exchange_rate: [{ required: true, message: 'Requerido', trigger: 'blur' }],
 });
 
-const submit = () => {
+const submit = (sendToCosts = false) => {
+    form.send_to_costs = sendToCosts;
+
     if (!formRef.value) return;
 
     formRef.value.validate((valid) => {
@@ -150,7 +154,7 @@ const submit = () => {
                 return;
             }
 
-            const hasFiles = form.survey_images.length > 0;
+            const hasFiles = form.survey_images.length > 0 || form.support_files.length > 0;
 
             if (isEdit) {
                 form
@@ -161,7 +165,9 @@ const submit = () => {
                     .post(route('budgets.update', props.budget.id), {
                         forceFormData: hasFiles || false,
                         onSuccess: () => {
-                            ElMessage.success('Presupuesto actualizado correctamente');
+                            ElMessage.success(sendToCosts
+                                ? 'Presupuesto guardado y enviado al área de costos'
+                                : 'Presupuesto actualizado correctamente');
                             emit('submitted');
                         },
                     });
@@ -169,7 +175,9 @@ const submit = () => {
                 form.post(route('budgets.store'), {
                     forceFormData: hasFiles || false,
                     onSuccess: () => {
-                        ElMessage.success('Presupuesto registrado correctamente');
+                        ElMessage.success(sendToCosts
+                            ? 'Presupuesto guardado y enviado al área de costos'
+                            : 'Presupuesto registrado correctamente');
                         emit('submitted');
                     },
                 });
@@ -301,6 +309,9 @@ defineExpose({ form });
                                     >
                                         {{ tech.is_internal ? 'Interno' : 'Externo' }}
                                     </el-tag>
+                                    <span v-if="tech.state" class="text-gray-400 text-xs">
+                                        — {{ tech.state }}
+                                    </span>
                                     <span v-if="tech.phone" class="text-gray-400 text-xs">
                                         {{ tech.phone }}
                                     </span>
@@ -438,6 +449,45 @@ defineExpose({ form });
                     </div>
                 </div>
 
+                <!-- Tarjeta: Archivos de apoyo -->
+                <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                            <el-icon class="text-primary"><FolderOpened /></el-icon> Archivos de apoyo
+                        </h3>
+                        <span class="text-xs text-gray-400">Opcional</span>
+                    </div>
+                    <p class="text-sm text-gray-500 mb-4">
+                        Sube planos, cotizaciones, órdenes de compra o cualquier documento relacionado con este presupuesto.
+                    </p>
+                    <el-upload
+                        ref="supportUploadRef"
+                        :auto-upload="false"
+                        :show-file-list="false"
+                        :on-change="(file) => { form.support_files.push(file.raw); }"
+                        :on-remove="(file) => { form.support_files = form.support_files.filter(f => f.name !== file.name || f.size !== file.size); }"
+                        multiple
+                        class="w-full"
+                    >
+                        <el-button type="primary" plain icon="Upload">Seleccionar archivos</el-button>
+                        <template #tip>
+                            <div class="el-upload__tip">Archivos PDF, imágenes, documentos (Máx. 10MB c/u)</div>
+                        </template>
+                    </el-upload>
+                    <div v-if="form.support_files.length > 0" class="mt-3 flex flex-wrap gap-2">
+                        <el-tag
+                            v-for="(f, i) in form.support_files"
+                            :key="i"
+                            closable
+                            type="info"
+                            effect="plain"
+                            @close="form.support_files.splice(i, 1)"
+                        >
+                            {{ f.name }}
+                        </el-tag>
+                    </div>
+                </div>
+
                 <!-- Tarjeta: Imágenes de levantamiento -->
                 <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
                     <div class="flex justify-between items-center mb-4">
@@ -530,23 +580,30 @@ defineExpose({ form });
                     </div>
 
                     <div class="mt-8 pt-4 border-t border-gray-100 dark:border-gray-700">
-                        <!-- Info message: only for new budgets -->
                         <el-alert
-                            v-if="!isEdit"
                             class="mb-4"
-                            title="Al guardar, el ticket pasará a estado Catálogo para que el área de costos genere el catálogo correspondiente."
+                            :title="isEdit
+                                ? 'Guardar cambios solo actualiza el presupuesto sin notificar al área de costos.'
+                                : 'Puedes guardar el presupuesto como borrador o enviarlo al área de costos.'"
                             type="info"
                             :closable="false"
                             show-icon
                         />
                         <el-button
                             type="primary"
-                            native-type="submit"
-                            class="w-full !font-bold !h-12 !text-lg"
                             color="#f26c17"
+                            class="w-full !font-bold !h-12 !text-lg"
                             :loading="form.processing"
+                            @click="submit(true)"
                         >
-                            {{ isEdit ? 'Actualizar presupuesto' : 'Guardar presupuesto' }}
+                            {{ isEdit ? 'Guardar y pasar a costos' : 'Guardar y pasar a costos' }}
+                        </el-button>
+                        <el-button
+                            class="w-full !font-bold !h-11 !text-base mt-3"
+                            :loading="form.processing"
+                            @click="submit(false)"
+                        >
+                            {{ isEdit ? 'Solo guardar cambios' : 'Solo guardar presupuesto' }}
                         </el-button>
                         <div class="text-center mt-3">
                             <Link :href="route('budgets.index')" class="text-sm text-gray-500 hover:text-primary">

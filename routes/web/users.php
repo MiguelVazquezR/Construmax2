@@ -11,6 +11,7 @@ Route::middleware([
     
     // Rutas personalizadas (definirlas explícitamente)
     Route::put('users/{user}/toggle-status', [UserController::class, 'toggleStatus'])->name('users.toggle-status');
+    Route::post('users/bulk-delete', [UserController::class, 'bulkDestroy'])->name('users.bulk-destroy');
 
     // Ruta Resource: Genera index, create, store, show, edit, update, destroy automáticamente
     // URL base: /users | Nombre base: users.*

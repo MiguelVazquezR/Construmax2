@@ -4,16 +4,26 @@ import { router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { debounce } from 'lodash';
 import { usePermissions } from '@/Composables/usePermissions';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { ChatDotSquare } from '@element-plus/icons-vue';
 
 const { can } = usePermissions();
 
 const props = defineProps({
     budgets: Object,
     filters: Object,
+    canTransfer: Boolean,
 });
 
+const normalizeCatalogFilter = (value) => {
+    if (!value) return ['pending'];
+    if (Array.isArray(value)) return value;
+    if (value === 'all') return ['without', 'pending', 'approved'];
+    return [value];
+};
+
 const search = ref(props.filters.search || '');
-const catalogFilter = ref(props.filters.catalog || 'all');
+const catalogFilter = ref(normalizeCatalogFilter(props.filters.catalog));
 const branchFilter = ref(props.filters.branch || '');
 
 const fetchData = debounce(() => {
@@ -47,6 +57,15 @@ const getStatusColor = (status) => {
         'Trabajo en proceso': 'primary',
         'Trabajo terminado': 'success',
         'Pagado': 'success',
+        'Pendiente de aprobación': 'warning',
+    };
+    return map[status] || 'info';
+};
+
+const getCatalogStatusColor = (status) => {
+    const map = {
+        'pending_approval': 'warning',
+        'approved': 'success',
     };
     return map[status] || 'info';
 };
@@ -68,6 +87,64 @@ const getCatalogTotalLabel = (row) => {
     }
     return 'Presupuesto';
 };
+
+const transferDialogVisible = ref(false);
+const transferNotes = ref('');
+const transferRow = ref(null);
+
+const approveCatalog = (row, event) => {
+    event.stopPropagation();
+
+    ElMessageBox.confirm(
+        '¿Estás seguro de aprobar este catálogo de costos? Una vez aprobado, el asesor recibirá una notificación.',
+        'Aprobar catálogo',
+        {
+            confirmButtonText: 'Sí, aprobar',
+            cancelButtonText: 'Cancelar',
+            type: 'info',
+        }
+    ).then(() => {
+        router.post(route('costs.approve-catalog', { budget: row.id, catalog: row.catalog_id }), {}, {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => {
+                ElMessage.success('Catálogo de costos aprobado correctamente.');
+            },
+            onError: () => {
+                ElMessage.error('Error al aprobar el catálogo.');
+            },
+        });
+    }).catch(() => {});
+};
+
+const openTransferDialog = (row, event) => {
+    event.stopPropagation();
+    transferRow.value = row;
+    transferNotes.value = '';
+    transferDialogVisible.value = true;
+};
+
+const submitTransfer = () => {
+    if (!transferNotes.value.trim()) {
+        ElMessage.warning('Por favor escribe una nota explicando el motivo de la transferencia.');
+        return;
+    }
+    router.post(
+        route('costs.transfer-to-special', { budget: transferRow.value.id, catalog: transferRow.value.catalog_id }),
+        { transfer_notes: transferNotes.value },
+        {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => {
+                ElMessage.success('Catálogo transferido a costos especiales para autorización.');
+                transferDialogVisible.value = false;
+            },
+            onError: () => {
+                ElMessage.error('Error al transferir el catálogo.');
+            },
+        }
+    );
+};
 </script>
 
 <template>
@@ -86,18 +163,30 @@ const getCatalogTotalLabel = (row) => {
                     <el-input v-model="branchFilter" placeholder="Filtrar sucursal, unidad, país, región..." clearable
                         prefix-icon="Search" class="w-full sm:w-64" />
 
-                    <el-select v-model="catalogFilter" placeholder="Filtro de catálogo" clearable class="lg:!w-1/4">
-                        <el-option label="Todos los presupuestos" value="all" />
-                        <el-option label="Con catálogo" value="with" />
+                    <el-select v-model="catalogFilter" placeholder="Filtro de catálogo" multiple collapse-tags class="lg:!w-1/3">
                         <el-option label="Sin catálogo" value="without" />
+                        <el-option label="Pendientes de aprobación" value="pending" />
+                        <el-option label="Aprobados" value="approved" />
                     </el-select>
                 </div>
             </div>
 
+            <!-- Info: no rejection flow -->
+            <el-alert type="info" :closable="false" show-icon class="mx-0">
+                <template #title>
+                    <span class="text-sm">Si un catálogo requiere ajustes, simplemente crea una nueva versión desde la vista de detalle. El catálogo anterior permanecerá en el historial.</span>
+                </template>
+            </el-alert>
+
             <!-- Tabla de presupuestos para catálogos -->
             <div
                 class="bg-white dark:bg-[#1e1e20] rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
-                <el-alert type="info" :closable="false" show-icon class="m-4">
+                <el-alert type="info" :closable="false" show-icon class="m-4" v-if="catalogFilter.length === 0 || catalogFilter.includes('all')">
+                    <template #title>
+                        Mostrando todos los presupuestos. Usa los filtros "Sin catálogo" o "Pendientes de aprobación" para ver solo los que requieren atención.
+                    </template>
+                </el-alert>
+                <el-alert type="info" :closable="false" show-icon class="m-4" v-else>
                     <template #title>
                         Selecciona un presupuesto para generar o editar su catálogo de conceptos y desglosar sus costos
                         unitarios.
@@ -112,13 +201,32 @@ const getCatalogTotalLabel = (row) => {
                             <div class="flex flex-col">
                                 <span class="font-bold text-gray-800 dark:text-gray-200 text-sm">{{
                                     scope.row.ticket_name }}</span>
-                                <span class="font-mono text-xs text-gray-500">Folio Ticket: {{ scope.row.ticket_folio
-                                    }}</span>
+                                <div class="flex items-center gap-1.5">
+                                    <Link
+                                        v-if="can('tickets.index') && scope.row.ticket_id"
+                                        :href="route('tickets.show', scope.row.ticket_id)"
+                                        class="font-mono text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
+                                        @click.stop
+                                    >
+                                        Folio Ticket: {{ scope.row.ticket_folio }}
+                                    </Link>
+                                    <span v-else class="font-mono text-xs text-gray-500">Folio Ticket: {{ scope.row.ticket_folio }}</span>
+                                    <el-tooltip
+                                        v-if="scope.row.ticket_important_note"
+                                        :content="scope.row.ticket_important_note"
+                                        placement="top"
+                                        :show-after="300"
+                                    >
+                                        <el-icon :size="14" color="#e6a23c" class="shrink-0">
+                                            <ChatDotSquare />
+                                        </el-icon>
+                                    </el-tooltip>
+                                </div>
                             </div>
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Cliente" min-width="180">
+                    <el-table-column label="Cliente" min-width="160">
                         <template #default="scope">
                             <div class="flex items-center gap-2">
                                 <el-icon class="text-gray-400">
@@ -154,7 +262,7 @@ const getCatalogTotalLabel = (row) => {
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Estado" width="140" align="center">
+                    <el-table-column label="Estado ticket" width="160" align="center">
                         <template #default="scope">
                             <el-tag :type="getStatusColor(scope.row.status)" size="small" effect="light"
                                 class="w-full text-center">
@@ -163,11 +271,17 @@ const getCatalogTotalLabel = (row) => {
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Catálogo" width="120" align="center">
+                    <el-table-column label="Catálogo" width="160" align="center">
                         <template #default="scope">
-                            <el-tag v-if="scope.row.has_catalog" type="success" size="small" effect="light">
-                                Versión {{ scope.row.latest_version }}
-                            </el-tag>
+                            <div v-if="scope.row.has_catalog" class="flex flex-col items-center gap-1">
+                                <el-tag :type="getCatalogStatusColor(scope.row.catalog_status)" size="small" effect="light">
+                                    {{ scope.row.catalog_status_label }}
+                                </el-tag>
+                                <span class="text-[10px] text-gray-400">v{{ scope.row.latest_version }}</span>
+                                <span v-if="scope.row.catalog_approved_by" class="text-[10px] text-gray-400">
+                                    por {{ scope.row.catalog_approved_by }}
+                                </span>
+                            </div>
                             <el-tag v-else type="info" size="small" effect="light" class="text-gray-500">
                                 Sin registro
                             </el-tag>
@@ -184,6 +298,34 @@ const getCatalogTotalLabel = (row) => {
                             </div>
                         </template>
                     </el-table-column>
+
+                    <el-table-column label="Acciones" width="220" align="center" fixed="right">
+                        <template #default="scope">
+                            <div class="flex items-center justify-center gap-2">
+                                <span
+                                    v-if="scope.row.has_catalog && scope.row.needs_special_authorization && scope.row.catalog_status === 'pending_approval'"
+                                    class="text-xs text-orange-600 font-medium bg-orange-50 px-2 py-1 rounded border border-orange-200">
+                                    En revisión por Dirección
+                                </span>
+                                <el-button
+                                    v-else-if="scope.row.has_catalog && scope.row.catalog_status === 'pending_approval' && can('costs.approve')"
+                                    type="success" size="small" plain
+                                    @click="approveCatalog(scope.row, $event)">
+                                    Aprobar
+                                </el-button>
+                                <el-button
+                                    v-if="scope.row.has_catalog && scope.row.catalog_status === 'pending_approval' && !scope.row.needs_special_authorization && canTransfer"
+                                    type="warning" size="small" plain
+                                    @click="openTransferDialog(scope.row, $event)">
+                                    Enviar a aprobación
+                                </el-button>
+                                <span v-else-if="scope.row.has_catalog && scope.row.catalog_status === 'approved'"
+                                    class="text-xs text-green-600 font-medium">
+                                    ✓ Aprobado
+                                </span>
+                            </div>
+                        </template>
+                    </el-table-column>
                 </el-table>
 
                 <!-- Paginación -->
@@ -197,6 +339,25 @@ const getCatalogTotalLabel = (row) => {
                         class="!p-0" />
                 </div>
             </div>
+            <!-- Transfer Dialog -->
+            <el-dialog v-model="transferDialogVisible" title="Enviar a costos especiales" width="500px" @click.stop>
+                <el-form label-position="top">
+                    <el-form-item label="Nota de transferencia" required>
+                        <el-input
+                            v-model="transferNotes"
+                            type="textarea"
+                            :rows="4"
+                            placeholder="Explica por qué este catálogo requiere revisión de Dirección..."
+                            maxlength="2000"
+                            show-word-limit
+                        />
+                    </el-form-item>
+                </el-form>
+                <template #footer>
+                    <el-button @click="transferDialogVisible = false">Cancelar</el-button>
+                    <el-button type="primary" @click="submitTransfer">Enviar a costos especiales</el-button>
+                </template>
+            </el-dialog>
         </div>
     </AppLayout>
 </template>

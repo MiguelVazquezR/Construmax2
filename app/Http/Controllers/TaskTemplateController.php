@@ -5,11 +5,27 @@ namespace App\Http\Controllers;
 use App\Models\TaskTemplate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class TaskTemplateController extends Controller
 {
+    use AuthorizesRequests;
+
+    public function index(Request $request)
+    {
+        $query = TaskTemplate::with('items')->orderBy('name');
+
+        if ($request->filled('search')) {
+            $search = $request->input('search');
+            $query->whereRaw('name COLLATE utf8mb4_unicode_ci LIKE ?', ["%{$search}%"]);
+        }
+
+        return response()->json($query->get());
+    }
+
     public function store(Request $request)
     {
+        $this->authorize('tickets.create-tasks-template');
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -33,6 +49,7 @@ class TaskTemplateController extends Controller
 
     public function update(Request $request, TaskTemplate $taskTemplate)
     {
+        $this->authorize('tickets.edit-tasks-template');
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -56,12 +73,16 @@ class TaskTemplateController extends Controller
 
     public function toggleStatus(TaskTemplate $taskTemplate)
     {
+        $this->authorize('tickets.edit-tasks-template');
+
         $taskTemplate->update(['is_active' => !$taskTemplate->is_active]);
         return back()->with('success', 'Estatus de la plantilla actualizado.');
     }
 
     public function destroy(TaskTemplate $taskTemplate)
     {
+        $this->authorize('tickets.delete-tasks-template');
+
         $taskTemplate->delete();
         return back()->with('success', 'Plantilla de tareas eliminada.');
     }

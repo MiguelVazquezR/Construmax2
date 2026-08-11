@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { 
     MoreFilled, View, Edit, Delete, 
     OfficeBuilding, Warning, InfoFilled, Minus,
-    Timer, Check, Location
+    Timer, Check, Location, ChatDotSquare, DocumentChecked
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
@@ -29,11 +29,13 @@ const getStatusColor = (status) => {
         'Programado': 'info',
         'Levantamiento': 'warning',
         'Catálogo': 'primary',
+        'Pendiente de aprobación': 'warning',
         'Proceso de ejecución': 'warning',
         'Ejecutado': 'success',
         'Finalizado': 'success',
         'Facturado': 'primary',
         'Pagado': 'success',
+        'Cancelado': 'danger',
     };
     return map[status] || 'info';
 };
@@ -51,8 +53,13 @@ const getPriorityClasses = (priority) => {
 
 const getHealthStatus = (ticket) => {
     // Finalized statuses: always show as Finalizado
-    if (['Ejecutado', 'Finalizado', 'Facturado', 'Pagado', 'Cancelado'].includes(ticket.status)) {
+    if (['Finalizado', 'Facturado', 'Pagado', 'Cancelado'].includes(ticket.status)) {
         return { color: 'success', text: 'Finalizado', icon: Check };
+    }
+
+    // All tasks completed, regardless of dates
+    if (ticket.progress === 100) {
+        return { color: 'success', text: 'Tareas completadas', icon: Check };
     }
 
     if (!ticket.scheduled_start || !ticket.scheduled_end) {
@@ -61,6 +68,8 @@ const getHealthStatus = (ticket) => {
 
     const start = new Date(ticket.scheduled_start);
     const end = new Date(ticket.scheduled_end);
+    // Add 1 day to the end date — the ticket is overdue the day AFTER the due date
+    end.setDate(end.getDate() + 1);
     const now = new Date();
 
     // Past the end date
@@ -87,6 +96,17 @@ const getAssignedTechnicians = (ticket) => {
     return Array.from(techs.values());
 };
 
+const getTechDisplayName = (user) => {
+    let label = user.name;
+    if (user.technician) {
+        label += user.technician.is_internal ? ' (Interno)' : ' (Externo)';
+        if (user.technician.state) {
+            label += ` — ${user.technician.state}`;
+        }
+    }
+    return label;
+};
+
 // Devuelve "Sucursal - Unidad (Región, País)" a partir de la relación branch del ticket
 const getBranchDetails = (ticket) => {
     const b = ticket.branch;
@@ -101,6 +121,45 @@ const getBranchDetails = (ticket) => {
 
 const handleRowClick = (row) => {
     router.visit(route('tickets.show', row.id));
+};
+
+const handleImportantNote = (ticket) => {
+    ElMessageBox.prompt(
+        ticket.important_note ? 'Editar o eliminar la nota importante' : 'Agregar una nota importante',
+        'Nota importante',
+        {
+            confirmButtonText: ticket.important_note ? 'Actualizar' : 'Guardar',
+            cancelButtonText: ticket.important_note ? 'Eliminar nota' : 'Cancelar',
+            inputValue: ticket.important_note || '',
+            inputPlaceholder: 'Ej. Falta subir OC, Cotización pendiente...',
+            inputType: 'textarea',
+            inputValidator: (value) => {
+                if (value && value.length > 500) return 'Máximo 500 caracteres';
+                return true;
+            },
+            distinguishCancelAndClose: true,
+        }
+    )
+    .then(({ value }) => {
+        router.put(route('tickets.update-important-note', ticket.id), {
+            important_note: value || null,
+        }, {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => ElMessage.success('Nota importante actualizada.'),
+        });
+    })
+    .catch((action) => {
+        if (action === 'cancel' && ticket.important_note) {
+            router.put(route('tickets.update-important-note', ticket.id), {
+                important_note: null,
+            }, {
+                preserveScroll: true,
+                preserveState: true,
+                onSuccess: () => ElMessage.success('Nota importante eliminada.'),
+            });
+        }
+    });
 };
 
 const deleteTicket = (ticket) => {
@@ -119,6 +178,22 @@ const deleteTicket = (ticket) => {
         });
     })
     .catch(() => {});
+};
+
+const handleToggleOce = (ticket) => {
+    const previousValue = ticket.has_oc;
+    ticket.has_oc = !ticket.has_oc;
+
+    router.put(route('tickets.toggle-oc', ticket.id), {}, {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            ElMessage.success(ticket.has_oc ? 'OC marcada como adjunta.' : 'OC desmarcada.');
+        },
+        onError: () => {
+            ticket.has_oc = previousValue;
+        },
+    });
 };
 </script>
 
@@ -159,7 +234,7 @@ const deleteTicket = (ticket) => {
                             <el-tooltip 
                                 v-for="tech in getAssignedTechnicians(scope.row).slice(0, 4)" 
                                 :key="tech.id"
-                                :content="tech.name"
+                                :content="getTechDisplayName(tech)"
                                 placement="top"
                             >
                                 <el-avatar 
@@ -198,11 +273,78 @@ const deleteTicket = (ticket) => {
                                     </span>
                                 </div>
                             </div>
-                            <!-- Indicador de catálogo de costos -->
+                            <!-- Indicador de catálogo de costos y nota importante -->
                             <div class="flex items-center gap-2 mt-1.5">
-                                <el-tag v-if="scope.row.budget?.latest_catalog" size="small" type="success" effect="plain" class="!text-[10px] !h-5 !px-1.5">
+                                <el-tag
+                                    v-if="scope.row.budget?.latest_catalog"
+                                    size="small"
+                                    :type="scope.row.budget.latest_catalog.status === 'approved' ? 'success' : 'warning'"
+                                    effect="plain"
+                                    class="!text-[10px] !h-5 !px-1.5"
+                                >
                                     Catálogo v{{ scope.row.budget.latest_catalog.version }}
+                                    <span class="ml-1 opacity-70">
+                                        — {{ scope.row.budget.latest_catalog.status === 'approved' ? 'Aprobado' : 'Pendiente' }}
+                                    </span>
+                                    <span class="ml-1 opacity-60">{{ formatDate(scope.row.budget.latest_catalog.created_at) }}</span>
                                 </el-tag>
+                                <el-tag
+                                    v-else
+                                    size="small"
+                                    type="info"
+                                    effect="plain"
+                                    class="!text-[10px] !h-5 !px-1.5 !bg-gray-100 !text-gray-500 !border-gray-300 dark:!bg-gray-800 dark:!text-gray-400 dark:!border-gray-700"
+                                >
+                                    Sin catálogo
+                                </el-tag>
+                                <el-tooltip
+                                    v-if="scope.row.work_acceptance_report"
+                                    :content="scope.row.work_acceptance_report.is_signed ? 'Acta de recepción firmada' : 'Acta de recepción pendiente de firma'"
+                                    placement="top"
+                                >
+                                    <el-icon
+                                        :size="16"
+                                        :color="scope.row.work_acceptance_report.is_signed ? '#22c55e' : '#f59e0b'"
+                                    >
+                                        <DocumentChecked />
+                                    </el-icon>
+                                </el-tooltip>
+                                <el-tooltip
+                                    v-if="scope.row.important_note"
+                                    :content="scope.row.important_note"
+                                    placement="top"
+                                    :show-after="300"
+                                >
+                                    <el-button
+                                        type="warning"
+                                        :icon="ChatDotSquare"
+                                        size="small"
+                                        circle
+                                        class="!w-5 !h-5 !min-w-0 !p-0"
+                                        @click.stop="handleImportantNote(scope.row)"
+                                    />
+                                </el-tooltip>
+                                <el-button
+                                    v-else
+                                    :icon="ChatDotSquare"
+                                    size="small"
+                                    circle
+                                    class="!w-5 !h-5 !min-w-0 !p-0 !text-gray-300 dark:!text-gray-600 hover:!text-orange-500"
+                                    @click.stop="handleImportantNote(scope.row)"
+                                    title="Agregar nota importante"
+                                />
+                                <el-tooltip
+                                    :content="scope.row.has_oc ? 'OC adjuntada' : 'OC no adjuntada'"
+                                    placement="top"
+                                >
+                                    <el-checkbox
+                                        :model-value="scope.row.has_oc"
+                                        @click.stop
+                                        @change="handleToggleOce(scope.row)"
+                                    >
+                                        OC
+                                    </el-checkbox>
+                                </el-tooltip>
                             </div>
                         </div>
                     </template>
@@ -233,16 +375,40 @@ const deleteTicket = (ticket) => {
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-400">Fin:</span>
-                                <span class="text-gray-700 dark:text-gray-300 font-mono">{{ formatDate(scope.row.scheduled_end) }}</span>
+                                <span
+                                    :class="[
+                                        'font-mono',
+                                        getHealthStatus(scope.row).text === 'Vencido' 
+                                            ? 'text-red-500 font-bold' 
+                                            : 'text-gray-700 dark:text-gray-300'
+                                    ]"
+                                >
+                                    {{ formatDate(scope.row.scheduled_end) }}
+                                </span>
                             </div>
                         </div>
                     </template>
                 </el-table-column>
 
-                <el-table-column label="Salud" width="120" align="center">
+                <el-table-column label="Salud" width="135" align="center">
                     <template #default="scope">
                         <div class="flex flex-col items-center">
+                            <el-tooltip
+                                v-if="getHealthStatus(scope.row).text === 'Vencido'"
+                                content="Vence un día después de la fecha de fin programada"
+                                placement="top"
+                            >
+                                <el-tag 
+                                    :type="getHealthStatus(scope.row).color" 
+                                    effect="dark" 
+                                    size="small" 
+                                    class="w-full text-center border-none font-bold cursor-help"
+                                >
+                                    {{ getHealthStatus(scope.row).text }}
+                                </el-tag>
+                            </el-tooltip>
                             <el-tag 
+                                v-else
                                 :type="getHealthStatus(scope.row).color" 
                                 effect="dark" 
                                 size="small" 
@@ -316,7 +482,16 @@ const deleteTicket = (ticket) => {
                         <span class="font-mono text-gray-700 dark:text-gray-300 font-bold text-xs bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">
                             {{ ticket.folio }}
                         </span>
-                        <el-tag :type="getHealthStatus(ticket).color" size="small" effect="dark" class="!border-none !h-5 !text-[10px]">
+                        <el-tooltip
+                            v-if="getHealthStatus(ticket).text === 'Vencido'"
+                            content="Vence un día después de la fecha de fin programada"
+                            placement="top"
+                        >
+                            <el-tag :type="getHealthStatus(ticket).color" size="small" effect="dark" class="!border-none !h-5 !text-[10px] cursor-help">
+                                {{ getHealthStatus(ticket).text }}
+                            </el-tag>
+                        </el-tooltip>
+                        <el-tag v-else :type="getHealthStatus(ticket).color" size="small" effect="dark" class="!border-none !h-5 !text-[10px]">
                             {{ getHealthStatus(ticket).text }}
                         </el-tag>
                     </div>
@@ -373,7 +548,16 @@ const deleteTicket = (ticket) => {
                     
                     <div class="text-right">
                         <p class="text-[10px] text-gray-400 uppercase">Vence</p>
-                        <p class="text-xs font-bold text-gray-700 dark:text-gray-300">{{ formatDate(ticket.scheduled_end) }}</p>
+                        <p 
+                            :class="[
+                                'text-xs font-bold',
+                                getHealthStatus(ticket).text === 'Vencido' 
+                                    ? 'text-red-500' 
+                                    : 'text-gray-700 dark:text-gray-300'
+                            ]"
+                        >
+                            {{ formatDate(ticket.scheduled_end) }}
+                        </p>
                     </div>
                 </div>
             </div>

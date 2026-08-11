@@ -1,17 +1,24 @@
 ﻿<script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useForm, Link } from '@inertiajs/vue3';
+import { useForm, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { ChatDotSquare, WarningFilled } from '@element-plus/icons-vue';
 import { useCostsHelpers } from '@/Composables/useCostsHelpers';
 import MaterialsTable from '@/Components/Costs/MaterialsTable.vue';
 import LaborTable from '@/Components/Costs/LaborTable.vue';
 import EmpenoFacilTotals from '@/Components/Costs/EmpenoFacilTotals.vue';
 
-const props = defineProps({ budget: Object });
+const props = defineProps({ budget: Object, canCreateCatalog: Boolean, canApprove: Boolean, canTransfer: Boolean });
 const { formatCurrency, copyToClipboard } = useCostsHelpers();
 
 const currentVersion = ref(null);
+const editingReportNumber = ref(false);
+const reportNumberValue = ref('');
+const editingStartDate = ref(false);
+const startDateValue = ref('');
+const editingEndDate = ref(false);
+const endDateValue = ref('');
 
 const isEmpenoFacil = computed(() => props.budget?.ticket?.customer?.id === 2);
 
@@ -73,7 +80,8 @@ onMounted(() => {
         form.non_installation_labor = Number(props.budget.latest_catalog.non_installation_labor || 0);
         form.labor_utility = Number(props.budget.latest_catalog.labor_utility || 0);
     } else {
-        addItemRow('material');
+        userEditedNonInstallationLabor.value = false;
+        userEditedLaborUtility.value = false;
     }
     calculateTotals();
 });
@@ -127,6 +135,12 @@ function submitCatalog() {
             currentVersion.value = props.budget.latest_catalog?.version;
             ElMessage.success('Catálogo actualizado correctamente.');
         },
+        onError: (errors) => {
+            ElMessage.error('Ocurrió un error al guardar el catálogo.');
+        },
+        onFinish: () => {
+            // Processing is automatically reset by useForm
+        },
     });
 
     if (props.budget.latest_catalog) {
@@ -136,9 +150,40 @@ function submitCatalog() {
             { confirmButtonText: 'Sí, guardar', cancelButtonText: 'Cancelar', type: 'info' }
         ).then(doSubmit).catch(() => {});
     } else {
-        doSubmit();
+        Promise.resolve().then(doSubmit);
     }
 }
+
+// --- Transfer to special costs ---
+const transferDialogVisible = ref(false);
+const transferNotes = ref('');
+
+const openTransferDialog = () => {
+    transferNotes.value = '';
+    transferDialogVisible.value = true;
+};
+
+const submitTransfer = () => {
+    if (!transferNotes.value.trim()) {
+        ElMessage.warning('Por favor escribe una nota explicando el motivo de la transferencia.');
+        return;
+    }
+    router.post(
+        route('costs.transfer-to-special', { budget: props.budget.id, catalog: props.budget.latest_catalog?.id }),
+        { transfer_notes: transferNotes.value },
+        {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => {
+                ElMessage.success('Catálogo transferido a costos especiales para autorización.');
+                transferDialogVisible.value = false;
+            },
+            onError: () => {
+                ElMessage.error('Error al transferir el catálogo.');
+            },
+        }
+    );
+};
 
 function viewCatalogVersion(versionId) {
     const cat = props.budget.catalogs.find(c => c.id === versionId);
@@ -158,13 +203,88 @@ function viewCatalogVersion(versionId) {
     form.include_iva = Number(cat.iva) > 0;
     form.non_installation_labor = Number(cat.non_installation_labor || 0);
     form.labor_utility = Number(cat.labor_utility || 0);
-    userEditedNonInstallationLabor = true;
-    userEditedLaborUtility = true;
+    userEditedNonInstallationLabor.value = true;
+    userEditedLaborUtility.value = true;
     calculateTotals();
     ElMessage.info(`Mostrando la versión ${cat.version}`);
 }
 
 function openUrl(url) { window.open(url, '_blank'); }
+
+// --- Inline field editing ---
+function startEditReportNumber() {
+    reportNumberValue.value = props.budget.ticket?.report_number || '';
+    editingReportNumber.value = true;
+}
+
+function saveTicketField(field, value, editingRef, successMsg) {
+    router.put(route('tickets.update-field', props.budget.ticket.id), {
+        field: field,
+        value: value,
+    }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            editingRef.value = false;
+            ElMessage.success(successMsg);
+        },
+        onError: () => ElMessage.error('Error al actualizar.'),
+    });
+}
+
+function saveReportNumber() {
+    saveTicketField('report_number', reportNumberValue.value, editingReportNumber, 'Número de reporte actualizado.');
+}
+
+function startEditStartDate() {
+    startDateValue.value = props.budget.ticket?.scheduled_start || '';
+    editingStartDate.value = true;
+}
+
+function saveStartDate() {
+    saveTicketField('scheduled_start', startDateValue.value, editingStartDate, 'Fecha de inicio actualizada.');
+}
+
+function startEditEndDate() {
+    endDateValue.value = props.budget.ticket?.scheduled_end || '';
+    editingEndDate.value = true;
+}
+
+function saveEndDate() {
+    saveTicketField('scheduled_end', endDateValue.value, editingEndDate, 'Fecha de fin actualizada.');
+}
+
+function formatDateStr(dateStr) {
+    if (!dateStr) return '—';
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function approveCatalog() {
+    const catalogId = props.budget.latest_catalog?.id;
+    if (!catalogId) return;
+
+    ElMessageBox.confirm(
+        '¿Estás seguro de aprobar este catálogo de costos? Una vez aprobado, el asesor recibirá una notificación.',
+        'Aprobar catálogo',
+        {
+            confirmButtonText: 'Sí, aprobar',
+            cancelButtonText: 'Cancelar',
+            type: 'info',
+        }
+    ).then(() => {
+        router.post(route('costs.approve-catalog', { budget: props.budget.id, catalog: catalogId }), {}, {
+            preserveScroll: true,
+            onSuccess: () => {
+                ElMessage.success('Catálogo de costos aprobado correctamente.');
+            },
+            onError: () => {
+                ElMessage.error('Error al aprobar el catálogo.');
+            },
+        });
+    }).catch(() => {});
+}
+
 </script>
 
 <template>
@@ -181,6 +301,13 @@ function openUrl(url) { window.open(url, '_blank'); }
                             <span>{{ budget.ticket.folio }}</span>
                             <span class="text-gray-300 dark:text-gray-600">|</span>
                             <span>{{ budget.ticket.customer.name }}</span>
+                            <!-- Approval status badge -->
+                            <el-tag v-if="budget.latest_catalog" :type="budget.latest_catalog.is_approved ? 'success' : 'warning'" size="small" effect="dark">
+                                {{ budget.latest_catalog.status_label }}
+                            </el-tag>
+                            <span v-if="budget.latest_catalog?.approved_by_name" class="text-xs text-gray-400">
+                                por {{ budget.latest_catalog.approved_by_name }}
+                            </span>
                             <el-dropdown v-if="budget.catalogs.length > 0" trigger="click" @command="viewCatalogVersion">
                                 <span class="cursor-pointer text-sm text-green-600 hover:text-green-700 transition flex items-center gap-1 font-medium bg-green-50 px-2 py-0.5 rounded border border-green-200">
                                     Versión mostrada: {{ currentVersion }} <el-icon><ArrowDown /></el-icon>
@@ -194,6 +321,66 @@ function openUrl(url) { window.open(url, '_blank'); }
                                 </template>
                             </el-dropdown>
                             <el-tag v-else type="info" size="small" effect="plain">Sin catálogo previo</el-tag>
+                        </div>
+                        <!-- Important note from ticket -->
+                        <div v-if="budget.ticket.important_note" class="mt-3 p-3 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30">
+                            <p class="text-xs font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wide mb-1 flex items-center gap-1">
+                                <el-icon :size="14"><ChatDotSquare /></el-icon>
+                                Notas importantes
+                            </p>
+                            <p class="text-sm text-amber-800 dark:text-amber-200 leading-relaxed">
+                                {{ budget.ticket.important_note }}
+                            </p>
+                        </div>
+                        <!-- Approve & Transfer buttons -->
+                        <div v-if="budget.latest_catalog && !budget.latest_catalog.is_approved" class="mt-2 flex items-center gap-2">
+                            <span
+                                v-if="budget.latest_catalog.needs_special_authorization"
+                                class="text-sm text-orange-600 font-medium bg-orange-50 px-3 py-1 rounded border border-orange-200">
+                                En revisión por Dirección
+                            </span>
+                            <template v-else>
+                                <el-button v-if="canApprove" type="success" size="small" icon="Check" @click="approveCatalog">
+                                    Aprobar catálogo
+                                </el-button>
+                                <el-button v-if="canTransfer" type="warning" size="small" plain @click="openTransferDialog">
+                                    Enviar a costos especiales
+                                </el-button>
+                            </template>
+                        </div>
+                        <div class="flex items-center gap-2 text-sm text-gray-500 mt-1">
+                            <span class="text-gray-400">No. Reporte:</span>
+                            <template v-if="editingReportNumber">
+                                <el-input v-model="reportNumberValue" size="small" class="!w-48" placeholder="Número de reporte" @keyup.enter="saveReportNumber" @keyup.escape="editingReportNumber = false" />
+                                <el-button type="primary" size="small" circle icon="Check" @click="saveReportNumber" />
+                                <el-button size="small" circle icon="Close" @click="editingReportNumber = false" />
+                            </template>
+                            <template v-else>
+                                <span class="font-medium">{{ budget.ticket.report_number || '—' }}</span>
+                                <el-button text size="small" icon="Edit" class="!text-gray-400 hover:!text-blue-500" @click="startEditReportNumber" title="Editar número de reporte" />
+                            </template>
+                            <span class="text-gray-300 dark:text-gray-600 mx-1">|</span>
+                            <span class="text-gray-400">Inicio:</span>
+                            <template v-if="editingStartDate">
+                                <el-date-picker v-model="startDateValue" type="date" size="small" class="!w-40" placeholder="Fecha inicio" format="DD/MM/YYYY" value-format="YYYY-MM-DD" @keyup.escape="editingStartDate = false" />
+                                <el-button type="primary" size="small" circle icon="Check" @click="saveStartDate" />
+                                <el-button size="small" circle icon="Close" @click="editingStartDate = false" />
+                            </template>
+                            <template v-else>
+                                <span class="font-medium">{{ formatDateStr(budget.ticket.scheduled_start) }}</span>
+                                <el-button text size="small" icon="Edit" class="!text-gray-400 hover:!text-blue-500" @click="startEditStartDate" title="Editar fecha de inicio" />
+                            </template>
+                            <span class="text-gray-300 dark:text-gray-600 mx-1">|</span>
+                            <span class="text-gray-400">Fin:</span>
+                            <template v-if="editingEndDate">
+                                <el-date-picker v-model="endDateValue" type="date" size="small" class="!w-40" placeholder="Fecha fin" format="DD/MM/YYYY" value-format="YYYY-MM-DD" @keyup.escape="editingEndDate = false" />
+                                <el-button type="primary" size="small" circle icon="Check" @click="saveEndDate" />
+                                <el-button size="small" circle icon="Close" @click="editingEndDate = false" />
+                            </template>
+                            <template v-else>
+                                <span class="font-medium">{{ formatDateStr(budget.ticket.scheduled_end) }}</span>
+                                <el-button text size="small" icon="Edit" class="!text-gray-400 hover:!text-blue-500" @click="startEditEndDate" title="Editar fecha de fin" />
+                            </template>
                         </div>
                     </div>
                 </div>
@@ -273,6 +460,32 @@ function openUrl(url) { window.open(url, '_blank'); }
                 </div>
             </div>
 
+            <!-- Ticket files -->
+            <div v-if="budget.ticket_media?.length" class="bg-white dark:bg-[#1e1e20] rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] p-4">
+                <h3 class="text-md font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
+                    <el-icon><FolderOpened /></el-icon> Archivos subidos en el ticket
+                    <el-tag size="small" type="info" effect="plain">{{ budget.ticket_media.length }} archivos</el-tag>
+                </h3>
+                <p class="text-xs text-gray-400 mb-3">Archivos generales subidos al ticket (planos, permisos, documentos).</p>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    <div v-for="file in budget.ticket_media" :key="file.id"
+                        class="relative group border border-gray-200 dark:border-[#3f3f46] rounded-lg overflow-hidden bg-white dark:bg-[#252529]">
+                        <el-image v-if="file.mime_type?.startsWith('image/')" :src="file.url" fit="cover" class="w-full h-24 cursor-pointer"
+                            :preview-src-list="budget.ticket_media.filter(f => f.mime_type?.startsWith('image/')).map(f => f.url)"
+                            :initial-index="budget.ticket_media.filter(f => f.mime_type?.startsWith('image/')).findIndex(f => f.id === file.id)" hide-on-click-modal />
+                        <div v-else class="w-full h-24 bg-gray-100 dark:bg-[#18181b] flex items-center justify-center">
+                            <el-icon :size="32" class="text-gray-400"><Document /></el-icon>
+                        </div>
+                        <div class="p-1.5 flex items-center justify-between">
+                            <p class="text-[10px] text-gray-500 dark:text-gray-400 truncate flex-1" :title="file.file_name">{{ file.file_name }}</p>
+                            <a :href="file.url" target="_blank" download class="shrink-0 ml-1">
+                                <el-button circle size="small" icon="Download" type="info" plain class="!w-5 !h-5" />
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Task evidence -->
             <div v-if="budget.task_evidence?.length" class="bg-white dark:bg-[#1e1e20] rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] p-4">
                 <h3 class="text-md font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
@@ -307,6 +520,7 @@ function openUrl(url) { window.open(url, '_blank'); }
                 <MaterialsTable
                     :items="materialsItems"
                     :currency="budget.currency"
+                    :can-edit="canCreateCatalog"
                     @add="addItemRow('material')"
                     @remove="removeItemRow"
                     @calculate="calculateRowTotal"
@@ -321,6 +535,7 @@ function openUrl(url) { window.open(url, '_blank'); }
                 <LaborTable
                     :items="laborItems"
                     :currency="budget.currency"
+                    :can-edit="canCreateCatalog"
                     @add="addItemRow('labor')"
                     @remove="removeItemRow"
                     @calculate="calculateRowTotal"
@@ -340,6 +555,8 @@ function openUrl(url) { window.open(url, '_blank'); }
                     :iva="form.iva"
                     :total="form.total"
                     :include-iva="form.include_iva"
+                    :loading="form.processing"
+                    :can-edit="canCreateCatalog"
                     :currency="budget.currency"
                     @update:non-installation-labor="v => { form.non_installation_labor = v; userEditedNonInstallationLabor = true; calculateTotals(); }"
                     @update:labor-utility="v => { form.labor_utility = v; userEditedLaborUtility = true; calculateTotals(); }"
@@ -357,15 +574,21 @@ function openUrl(url) { window.open(url, '_blank'); }
                         <el-icon><List /></el-icon> Desglose de Catálogo (Costos)
                     </h3>
                     <div class="flex items-center gap-2">
-                        <el-button type="primary" plain size="small" icon="Plus" @click="addItemRow('material')">Agregar fila</el-button>
+                        <el-button v-if="canCreateCatalog" type="primary" plain size="small" icon="Plus" @click="addItemRow('material')">Agregar fila</el-button>
                         <el-button type="info" plain size="small" icon="Printer"
                             @click="$inertia.visit(route('costs.print', $props.budget.id))" :disabled="!currentVersion">
                             Imprimir catálogo
                         </el-button>
-                        <el-button type="primary" color="#f26c17" size="small" icon="Check" @click="submitCatalog" :loading="form.processing">
+                        <el-button v-if="canCreateCatalog" type="primary" color="#f26c17" size="small" icon="Check" @click="submitCatalog" :loading="form.processing">
                             Guardar versión
                         </el-button>
                     </div>
+                </div>
+                <div v-if="!canCreateCatalog" class="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-800">
+                    <p class="text-xs text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                        <el-icon><InfoFilled /></el-icon>
+                        No tienes permiso para crear versiones de catálogo. Los campos están deshabilitados.
+                    </p>
                 </div>
 
                 <div class="p-4 overflow-x-auto">
@@ -382,15 +605,15 @@ function openUrl(url) { window.open(url, '_blank'); }
                         </thead>
                         <tbody>
                             <tr v-for="(item, index) in form.items" :key="index" class="border-b dark:border-[#2b2b2e]">
-                                <td class="px-2 py-2"><el-input v-model="item.description" type="textarea" :rows="2" placeholder="Descripción detallada" /></td>
-                                <td class="px-2 py-2"><el-input v-model="item.unit" placeholder="Ej. PZA, ML, M2" /></td>
-                                <td class="px-2 py-2"><el-input-number v-model="item.quantity" :min="0.01" :step="1" :controls="false" class="!w-full text-right" @change="calculateRowTotal(item)" /></td>
-                                <td class="px-2 py-2"><el-input-number v-model="item.unit_price" :min="0" :step="0.01" :controls="false" class="!w-full text-right" @change="calculateRowTotal(item)" /></td>
+                                <td class="px-2 py-2"><el-input v-model="item.description" type="textarea" :rows="2" placeholder="Descripción detallada" :disabled="!canCreateCatalog" /></td>
+                                <td class="px-2 py-2"><el-input v-model="item.unit" placeholder="Ej. PZA, ML, M2" :disabled="!canCreateCatalog" /></td>
+                                <td class="px-2 py-2"><el-input-number v-model="item.quantity" :min="0.01" :step="1" :controls="false" class="!w-full text-right" @change="calculateRowTotal(item)" :disabled="!canCreateCatalog" /></td>
+                                <td class="px-2 py-2"><el-input-number v-model="item.unit_price" :min="0" :step="0.01" :controls="false" class="!w-full text-right" @change="calculateRowTotal(item)" :disabled="!canCreateCatalog" /></td>
                                 <td class="px-4 py-2 text-right font-mono font-bold text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-[#252529]">
                                     {{ formatCurrency(item.total, budget.currency) }}
                                 </td>
                                 <td class="px-2 py-2 text-center">
-                                    <el-button type="danger" plain circle icon="Delete" size="small" @click="removeItemRow(item)" />
+                                    <el-button v-if="canCreateCatalog" type="danger" plain circle icon="Delete" size="small" @click="removeItemRow(item)" />
                                 </td>
                             </tr>
                         </tbody>
@@ -404,7 +627,7 @@ function openUrl(url) { window.open(url, '_blank'); }
                             <tr>
                                 <td colspan="3"></td>
                                 <td class="px-4 py-3 text-right font-bold text-gray-600 dark:text-gray-400">
-                                    <el-checkbox v-model="form.include_iva" @change="calculateTotals" label="IVA (16%):" class="!mr-0" />
+                                    <el-checkbox v-model="form.include_iva" @change="calculateTotals" label="IVA (16%):" class="!mr-0" :disabled="!canCreateCatalog" />
                                 </td>
                                 <td class="px-4 py-3 text-right font-mono font-bold text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-[#252529]">{{ formatCurrency(form.iva, budget.currency) }}</td>
                                 <td></td>
@@ -420,6 +643,25 @@ function openUrl(url) { window.open(url, '_blank'); }
                 </div>
             </div>
 
+            <!-- Transfer Dialog -->
+            <el-dialog v-model="transferDialogVisible" title="Enviar a costos especiales" width="500px" @click.stop>
+                <el-form label-position="top">
+                    <el-form-item label="Nota de transferencia" required>
+                        <el-input
+                            v-model="transferNotes"
+                            type="textarea"
+                            :rows="4"
+                            placeholder="Explica por qué este catálogo requiere revisión de Dirección..."
+                            maxlength="2000"
+                            show-word-limit
+                        />
+                    </el-form-item>
+                </el-form>
+                <template #footer>
+                    <el-button @click="transferDialogVisible = false">Cancelar</el-button>
+                    <el-button type="primary" @click="submitTransfer">Enviar a costos especiales</el-button>
+                </template>
+            </el-dialog>
         </div>
     </AppLayout>
 </template>
