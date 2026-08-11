@@ -2,7 +2,7 @@
 import { computed, ref, reactive, watch, onMounted } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { OfficeBuilding, Document, UserFilled, Setting, Ticket } from '@element-plus/icons-vue';
+import { OfficeBuilding, Document, UserFilled, Setting, Ticket, Warning } from '@element-plus/icons-vue';
 import TaskTemplateModal from './TaskTemplateModal.vue';
 import QuickBranchModal from './QuickBranchModal.vue';
 import axios from 'axios';
@@ -152,6 +152,22 @@ const similarityTagType = (similarity) => {
     if (similarity >= 85) return 'danger';
     if (similarity >= 60) return 'warning';
     return 'info';
+};
+
+// Full-row highlight helpers so a potential duplicate is obvious without
+// relying on the similarity value.
+const rowClassName = ({ row }) => {
+    if (row.match_type === 'strong') return 'duplicate-row-strong';
+    if (row.match_type === 'fuzzy') return 'duplicate-row-fuzzy';
+    return '';
+};
+
+const isLikelyDuplicate = (row) => row.match_type === 'strong' || row.match_type === 'fuzzy';
+
+const duplicateBadgeLabel = (row) => {
+    if (row.match_type === 'strong') return 'Duplicado probable';
+    if (row.match_type === 'fuzzy') return 'Posible duplicado';
+    return '';
 };
 
 const formatDate = (dateString) => {
@@ -442,12 +458,19 @@ const getTechLabel = (user) => {
                 <el-empty v-if="!duplicateLoading && duplicateTickets.length === 0" description="Sin tickets registrados para este cliente" :image-size="60" />
                 
                 <div v-else class="overflow-x-auto">
-                    <el-table :data="duplicateTickets" size="small" max-height="260" stripe class="w-full">
-                        <el-table-column label="Folio" width="90">
+                    <el-table :data="duplicateTickets" size="small" max-height="260" stripe class="w-full" :row-class-name="rowClassName">
+                        <el-table-column label="Folio" width="150">
                             <template #default="scope">
-                                <a :href="route('tickets.show', scope.row.ticket.id)" target="_blank" class="text-primary font-mono font-bold hover:underline">
-                                    {{ scope.row.ticket.folio }}
-                                </a>
+                                <div class="flex items-center gap-1">
+                                    <a :href="route('tickets.show', scope.row.ticket.id)" target="_blank" class="text-primary font-mono font-bold hover:underline">
+                                        {{ scope.row.ticket.folio }}
+                                    </a>
+                                    <el-tooltip v-if="isLikelyDuplicate(scope.row)" :content="duplicateBadgeLabel(scope.row)" placement="top">
+                                        <el-icon :size="14" :color="scope.row.match_type === 'strong' ? '#ef4444' : '#f59e0b'" class="shrink-0">
+                                            <Warning />
+                                        </el-icon>
+                                    </el-tooltip>
+                                </div>
                             </template>
                         </el-table-column>
                         <el-table-column label="Proyecto / servicio" min-width="200">
@@ -475,12 +498,21 @@ const getTechLabel = (user) => {
                                 {{ scope.row.ticket.priority }}
                             </template>
                         </el-table-column>
-                        <el-table-column v-if="hasQuery" label="Similitud" width="110" align="center" sortable>
+                        <el-table-column v-if="hasQuery" label="Similitud" width="130" align="center" sortable>
                             <template #default="scope">
-                                <span v-if="scope.row.match_type === 'recent' && scope.row.similarity === 0" class="text-gray-400 text-xs">—</span>
-                                <el-tag v-else :type="similarityTagType(scope.row.similarity)" size="small">
-                                    {{ scope.row.similarity }}%
-                                </el-tag>
+                                <div class="flex flex-col items-center gap-1">
+                                    <span v-if="scope.row.match_type === 'recent' && scope.row.similarity === 0" class="text-gray-400 text-xs">—</span>
+                                    <el-tag v-else :type="similarityTagType(scope.row.similarity)" size="small">
+                                        {{ scope.row.similarity }}%
+                                    </el-tag>
+                                    <span
+                                        v-if="isLikelyDuplicate(scope.row)"
+                                        :class="scope.row.match_type === 'strong' ? 'text-red-600' : 'text-amber-600'"
+                                        class="text-[10px] font-bold whitespace-nowrap"
+                                    >
+                                        {{ duplicateBadgeLabel(scope.row) }}
+                                    </span>
+                                </div>
                             </template>
                         </el-table-column>
                         <el-table-column label="Creado" width="110">
@@ -810,3 +842,34 @@ const getTechLabel = (user) => {
         </el-dialog>
     </div>
 </template>
+
+<style>
+/* Full-row highlight for potential duplicates so the warning is visible
+   without reading the similarity percentage. */
+.el-table .duplicate-row-strong > td {
+    background-color: #fef2f2 !important;
+}
+.el-table .duplicate-row-strong:hover > td {
+    background-color: #fee2e2 !important;
+}
+.el-table .duplicate-row-fuzzy > td {
+    background-color: #fffbeb !important;
+}
+.el-table .duplicate-row-fuzzy:hover > td {
+    background-color: #fef3c7 !important;
+}
+
+/* Dark mode overrides */
+.dark .el-table .duplicate-row-strong > td {
+    background-color: rgba(239, 68, 68, 0.18) !important;
+}
+.dark .el-table .duplicate-row-strong:hover > td {
+    background-color: rgba(239, 68, 68, 0.28) !important;
+}
+.dark .el-table .duplicate-row-fuzzy > td {
+    background-color: rgba(245, 158, 11, 0.15) !important;
+}
+.dark .el-table .duplicate-row-fuzzy:hover > td {
+    background-color: rgba(245, 158, 11, 0.25) !important;
+}
+</style>
