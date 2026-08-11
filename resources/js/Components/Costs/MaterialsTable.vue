@@ -55,11 +55,11 @@ function onRemove(item) {
                         </td>
                         <td class="px-2 py-2">
                             <el-input-number v-model="item.quantity" :min="0.01" :step="1" :controls="false"
-                                class="!w-full text-right" @change="onRowTotal(item)" :disabled="!canEdit" />
+                                class="!w-full text-right" @update:model-value="onRowTotal(item)" :disabled="!canEdit" />
                         </td>
                         <td class="px-2 py-2">
                             <el-input-number v-model="item.unit_price" :min="0" :step="0.01" :controls="false"
-                                class="!w-full text-right" @change="onRowTotal(item)" :disabled="!canEdit" />
+                                class="!w-full text-right" @update:model-value="onRowTotal(item)" :disabled="!canEdit" />
                         </td>
                         <td class="px-2 py-2 text-right font-mono font-bold text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-[#252529]">
                             <el-button text size="small" class="!font-mono !font-bold !text-gray-700 dark:!text-gray-300"
