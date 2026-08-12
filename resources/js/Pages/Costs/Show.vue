@@ -13,6 +13,8 @@ const props = defineProps({ budget: Object, canCreateCatalog: Boolean, canApprov
 const { formatCurrency, copyToClipboard } = useCostsHelpers();
 
 const currentVersion = ref(null);
+const currentCatalogId = ref(null);
+const savingNotes = ref(false);
 const editingReportNumber = ref(false);
 const reportNumberValue = ref('');
 const editingStartDate = ref(false);
@@ -36,6 +38,7 @@ const form = useForm({
     include_iva: true,
     non_installation_labor: 0,
     labor_utility: 0,
+    customer_notes: '',
 });
 
 // Empeño Fácil computed
@@ -66,6 +69,7 @@ const autoLaborUtility = computed(() =>
 onMounted(() => {
     if (props.budget.latest_catalog?.items) {
         currentVersion.value = props.budget.latest_catalog.version;
+        currentCatalogId.value = props.budget.latest_catalog.id;
         form.items = props.budget.latest_catalog.items.map(item => ({
             type: item.type || 'material',
             description: item.description,
@@ -79,6 +83,7 @@ onMounted(() => {
         }));
         form.non_installation_labor = Number(props.budget.latest_catalog.non_installation_labor || 0);
         form.labor_utility = Number(props.budget.latest_catalog.labor_utility || 0);
+        form.customer_notes = props.budget.latest_catalog.customer_notes || '';
     } else {
         userEditedNonInstallationLabor.value = false;
         userEditedLaborUtility.value = false;
@@ -121,6 +126,34 @@ function calculateTotals() {
         form.iva = form.include_iva ? Number((form.subtotal * 0.16).toFixed(2)) : 0;
         form.total = Number((form.subtotal + form.iva).toFixed(2));
     }
+}
+
+// --- Save notes to the currently displayed version ---
+function saveNotesToCurrentVersion() {
+    if (!currentCatalogId.value) {
+        ElMessage.warning('Guarda primero una versión del catálogo.');
+        return;
+    }
+
+    savingNotes.value = true;
+    router.put(route('costs.update-catalog-notes', {
+        budget: props.budget.id,
+        catalog: currentCatalogId.value,
+    }), {
+        customer_notes: form.customer_notes,
+    }, {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            ElMessage.success('Notas actualizadas en la versión actual.');
+        },
+        onError: () => {
+            ElMessage.error('Error al guardar las notas.');
+        },
+        onFinish: () => {
+            savingNotes.value = false;
+        },
+    });
 }
 
 // --- Submit ---
@@ -189,6 +222,7 @@ function viewCatalogVersion(versionId) {
     const cat = props.budget.catalogs.find(c => c.id === versionId);
     if (!cat) return;
     currentVersion.value = cat.version;
+    currentCatalogId.value = cat.id;
     form.items = cat.items.map(item => ({
         type: item.type || 'material',
         description: item.description,
@@ -203,6 +237,7 @@ function viewCatalogVersion(versionId) {
     form.include_iva = Number(cat.iva) > 0;
     form.non_installation_labor = Number(cat.non_installation_labor || 0);
     form.labor_utility = Number(cat.labor_utility || 0);
+    form.customer_notes = cat.customer_notes || '';
     userEditedNonInstallationLabor.value = true;
     userEditedLaborUtility.value = true;
     calculateTotals();
@@ -547,6 +582,35 @@ function approveCatalog() {
                     </template>
                 </LaborTable>
 
+                <!-- Customer notes -->
+                <div class="bg-white dark:bg-[#1e1e20] rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-md font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                            <el-icon><ChatDotSquare /></el-icon> Notas para el cliente
+                        </h3>
+                        <el-button
+                            v-if="canCreateCatalog && currentCatalogId"
+                            type="primary"
+                            plain
+                            size="small"
+                            icon="Check"
+                            :loading="savingNotes"
+                            @click="saveNotesToCurrentVersion"
+                        >
+                            Guardar en versión actual
+                        </el-button>
+                    </div>
+                    <el-input
+                        v-model="form.customer_notes"
+                        type="textarea"
+                        :rows="4"
+                        placeholder="Notas que verá el cliente en la impresión del presupuesto..."
+                        maxlength="2000"
+                        show-word-limit
+                        :disabled="!canCreateCatalog"
+                    />
+                </div>
+
                 <EmpenoFacilTotals
                     :combined-subtotal="combinedSubtotal"
                     :materials-subtotal="materialsSubtotal"
@@ -640,6 +704,38 @@ function approveCatalog() {
                             </tr>
                         </tfoot>
                     </table>
+                </div>
+
+                <!-- Customer notes -->
+                <div v-if="canCreateCatalog || form.customer_notes" class="p-4 border-t border-gray-100 dark:border-[#2b2b2e]">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-md font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                            <el-icon><ChatDotSquare /></el-icon> Notas para el cliente
+                        </h3>
+                        <el-button
+                            v-if="canCreateCatalog && currentCatalogId"
+                            type="primary"
+                            plain
+                            size="small"
+                            icon="Check"
+                            :loading="savingNotes"
+                            @click="saveNotesToCurrentVersion"
+                        >
+                            Guardar en versión actual
+                        </el-button>
+                    </div>
+                    <el-input
+                        v-model="form.customer_notes"
+                        type="textarea"
+                        :rows="4"
+                        placeholder="Notas que verá el cliente en la impresión del presupuesto..."
+                        maxlength="2000"
+                        show-word-limit
+                        :disabled="!canCreateCatalog"
+                    />
+                    <div v-if="!canCreateCatalog" class="mt-2 text-xs text-gray-400">
+                        Notas visibles para el cliente en la impresión del presupuesto.
+                    </div>
                 </div>
             </div>
 
