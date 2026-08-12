@@ -27,6 +27,7 @@ class BudgetCatalog extends Model
         'total',
         'non_installation_labor',
         'labor_utility',
+        'customer_notes',
         'needs_special_authorization',
         'transfer_notes',
         'status',
