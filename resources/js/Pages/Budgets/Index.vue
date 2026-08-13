@@ -22,6 +22,7 @@ const search = ref(props.filters.search || '');
 const statusFilter = ref(props.filters.status || 'all');
 const perPage = ref(parseInt(props.filters.perPage) || 10);
 const branchFilter = ref(props.filters.branch || '');
+const catalogFilter = ref(props.filters.catalog || '');
 
 // Lógica de inicialización del filtro de usuarios
 // Si viene 'all' o vacío, el array es vacío (se ven todos).
@@ -53,6 +54,7 @@ const fetchData = debounce(() => {
         perPage: perPage.value,
         branch: branchFilter.value,
         user_id: userFilter.value.length > 0 ? userFilter.value : 'all',
+        catalog: catalogFilter.value,
     }, {
         preserveState: true,
         preserveScroll: true,
@@ -60,7 +62,7 @@ const fetchData = debounce(() => {
     });
 }, 300);
 
-watch([search, statusFilter, perPage, userFilter, branchFilter], fetchData);
+watch([search, statusFilter, perPage, userFilter, branchFilter, catalogFilter], fetchData);
 </script>
 
 <template>
@@ -113,6 +115,16 @@ watch([search, statusFilter, perPage, userFilter, branchFilter], fetchData);
                             clearable
                             prefix-icon="Search"
                         />
+                    </div>
+
+                    <div class="w-full sm:w-44">
+                        <el-select v-model="catalogFilter" placeholder="Catálogo" clearable class="w-full">
+                            <el-option label="Todos" value="" />
+                            <el-option label="Con catálogo" value="yes" />
+                            <el-option label="Con catálogo pendiente" value="pending" />
+                            <el-option label="Con catálogo aprobado" value="approved" />
+                            <el-option label="Sin catálogo" value="no" />
+                        </el-select>
                     </div>
                 </div>
 

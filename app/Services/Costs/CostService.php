@@ -10,6 +10,7 @@ class CostService
     public function getBudgetsForCosting(array $filters): LengthAwarePaginator
     {
         return Budget::with(['ticket.customer', 'ticket.branch', 'ticket.contact', 'latestCatalog.approver'])
+            ->whereHas('ticket', fn ($q) => $q->where('status', '!=', 'Cancelado'))
             ->when($filters['search'] ?? null, function ($query, $search) {
                 $query->whereHas('ticket', function ($q) use ($search) {
                     $q->where('name', 'like', '%' . $search . '%')
