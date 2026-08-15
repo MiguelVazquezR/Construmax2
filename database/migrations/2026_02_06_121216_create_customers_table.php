@@ -11,14 +11,15 @@ return new class extends Migration
         // Tabla de Clientes
         Schema::create('customers', function (Blueprint $table) {
             $table->id();
-            $table->string('name');             
-            $table->string('business_name');    
-            $table->string('rfc', 20);          
+            $table->string('type')->default('customer')->comment('customer, prospect');
+            $table->string('name');
+            $table->string('business_name');
+            $table->string('rfc', 20);
             $table->string('payment_condition');
-            $table->string('payment_method');   
-            $table->string('invoice_usage');    
-            $table->string('currency', 3);      
-            $table->unsignedSmallInteger('payment_days')->nullable(); 
+            $table->string('payment_method');
+            $table->string('invoice_usage');
+            $table->string('currency', 3);
+            $table->unsignedSmallInteger('payment_days')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
@@ -29,6 +30,7 @@ return new class extends Migration
             $table->foreignId('customer_id')->constrained()->onDelete('cascade');
             $table->string('country', 100);
             $table->string('region', 100);
+            $table->string('city', 100);
             $table->string('unit', 255);
             $table->string('branch_name', 255);
             $table->timestamps();
@@ -41,7 +43,7 @@ return new class extends Migration
             $table->string('name');
             $table->string('email');
             $table->string('phone');
-            $table->string('position'); 
+            $table->string('position');
             $table->timestamps();
         });
 
