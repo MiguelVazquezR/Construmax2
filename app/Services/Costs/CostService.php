@@ -138,20 +138,24 @@ class CostService
                 });
         }
 
-        // Collect all task evidence (media) across all tasks
+        // Collect all task evidence (media) across all tasks.
+        // Preserve task order (natural insertion order of the eager-loaded relationship)
+        // and, within each task, the manually recorded order_column.
         $taskEvidence = $budget->ticket->tasks->flatMap(function ($task) {
             return $task->media->map(function ($media) use ($task) {
                 return [
-                    'id'          => $media->id,
-                    'task_name'   => $task->name,
-                    'task_status' => $task->status,
-                    'file_name'   => $media->file_name,
-                    'mime_type'   => $media->mime_type,
-                    'url'         => $media->getUrl(),
-                    'created_at'  => $media->created_at?->toISOString(),
+                    'id'           => $media->id,
+                    'task_id'      => $task->id,
+                    'task_name'    => $task->name,
+                    'task_status'  => $task->status,
+                    'file_name'    => $media->file_name,
+                    'mime_type'    => $media->mime_type,
+                    'url'          => $media->getUrl(),
+                    'order_column' => $media->order_column,
+                    'created_at'   => $media->created_at?->toISOString(),
                 ];
             });
-        })->sortByDesc('created_at')->values();
+        })->values();
 
         $ticketMedia = $budget->ticket->media->map(function ($media) {
             return [
@@ -274,6 +278,15 @@ class CostService
                     'id'   => $media->id,
                     'name' => $media->file_name,
                     'url'  => $media->getUrl(),
+                ];
+            }),
+            'budget_files'   => $budget->getMedia('budget_files')->map(function ($media) {
+                return [
+                    'id'        => $media->id,
+                    'file_name' => $media->file_name,
+                    'mime_type' => $media->mime_type,
+                    'size'      => $media->size,
+                    'url'       => $media->getUrl(),
                 ];
             }),
             'task_evidence'  => $taskEvidence,

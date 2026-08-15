@@ -250,7 +250,7 @@ class BudgetController extends Controller
 
     public function edit(Budget $budget)
     {
-        $budget->load(['concepts', 'ticket.customer', 'ticket.contact', 'ticket.branch']);
+        $budget->load(['concepts', 'media', 'ticket.customer', 'ticket.contact', 'ticket.branch']);
 
         $tickets = Ticket::with(['customer', 'contact', 'branch'])
             ->where(function ($q) use ($budget) {
