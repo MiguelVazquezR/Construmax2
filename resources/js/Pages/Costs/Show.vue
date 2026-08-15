@@ -29,6 +29,39 @@ const conceptsTotal = computed(() => {
     return props.budget.concepts.reduce((sum, c) => sum + Number(c.amount || 0), 0);
 });
 
+// Group task evidence by task, preserving task order and each task's manual order_column.
+const taskEvidenceGroups = computed(() => {
+    const evidence = props.budget?.task_evidence || [];
+    if (!evidence.length) return [];
+
+    const groups = [];
+    const groupIndexById = new Map();
+
+    for (const ev of evidence) {
+        let group = groupIndexById.get(ev.task_id);
+        if (!group) {
+            group = { task_id: ev.task_id, task_name: ev.task_name, items: [], totalImages: 0 };
+            groupIndexById.set(ev.task_id, group);
+            groups.push(group);
+        }
+        group.items.push(ev);
+        if (ev.mime_type?.startsWith('image/')) {
+            group.totalImages += 1;
+        }
+    }
+
+    for (const group of groups) {
+        let imgIdx = 0;
+        group.items = group.items.map(ev => ({
+            ...ev,
+            imgIdx: ev.mime_type?.startsWith('image/') ? imgIdx++ : null,
+            totalInTask: group.totalImages,
+        }));
+    }
+
+    return groups;
+});
+
 // --- Form ---
 const form = useForm({
     items: [],
@@ -245,6 +278,42 @@ function viewCatalogVersion(versionId) {
 }
 
 function openUrl(url) { window.open(url, '_blank'); }
+
+// --- Preview en la misma vista (modal) ---
+const showPreviewModal = ref(false);
+const previewUrl = ref('');
+const previewType = ref('');
+const previewTitle = ref('');
+
+const openPreviewInPage = (file) => {
+    const mime = file.mime_type || '';
+
+    if (mime.startsWith('image/')) {
+        previewUrl.value = file.url;
+        previewType.value = 'image';
+        previewTitle.value = file.file_name;
+        showPreviewModal.value = true;
+        return;
+    }
+
+    if (mime === 'application/pdf') {
+        previewUrl.value = file.url;
+        previewType.value = 'pdf';
+        previewTitle.value = file.file_name;
+        showPreviewModal.value = true;
+        return;
+    }
+
+    // Otros formatos: abrir en pestaña nueva
+    window.open(file.url, '_blank');
+};
+
+function formatSize(bytes) {
+    if (!bytes) return '0 KB';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(2) + ' KB';
+    return (bytes / 1048576).toFixed(2) + ' MB';
+}
 
 // --- Inline field editing ---
 function startEditReportNumber() {
@@ -480,13 +549,51 @@ function approveCatalog() {
                     <h3 class="text-md font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
                         <el-icon><FolderOpened /></el-icon> Archivos del presupuesto
                     </h3>
-                    <div v-if="budget.survey_images.length > 0">
-                        <p class="text-xs text-gray-400 mb-3">Imágenes y documentos adjuntos al registrar el presupuesto.</p>
-                        <div class="flex flex-wrap gap-2">
-                            <el-image v-for="img in budget.survey_images" :key="img.id" :src="img.url"
-                                :preview-src-list="budget.survey_images.map(i => i.url)"
-                                :initial-index="budget.survey_images.findIndex(i => i.id === img.id)" fit="cover"
-                                class="w-24 h-24 rounded-md border border-gray-200 dark:border-gray-700 cursor-pointer" />
+                    <div v-if="budget.survey_images.length > 0 || budget.budget_files?.length > 0">
+                        <p class="text-xs text-gray-400 mb-3">Imágenes y documentos adjuntos al presupuesto.</p>
+
+                        <!-- Imágenes de levantamiento -->
+                        <div v-if="budget.survey_images.length > 0" class="mb-4">
+                            <div class="flex flex-wrap gap-2">
+                                <el-image v-for="img in budget.survey_images" :key="img.id" :src="img.url"
+                                    :preview-src-list="budget.survey_images.map(i => i.url)"
+                                    :initial-index="budget.survey_images.findIndex(i => i.id === img.id)" fit="cover"
+                                    class="w-24 h-24 rounded-md border border-gray-200 dark:border-gray-700 cursor-pointer" />
+                            </div>
+                        </div>
+
+                        <!-- Archivos de apoyo -->
+                        <div v-if="budget.budget_files?.length > 0">
+                            <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                                <el-icon class="text-green-500"><Document /></el-icon>
+                                Archivos adjuntos
+                                <el-tag size="small" round>{{ budget.budget_files.length }}</el-tag>
+                            </h4>
+                            <div class="space-y-2">
+                                <div
+                                    v-for="file in budget.budget_files"
+                                    :key="file.id"
+                                    class="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#252529] rounded-lg border border-gray-100 dark:border-[#3f3f46]"
+                                >
+                                    <div class="flex items-center gap-3 overflow-hidden min-w-0 cursor-pointer" @click="openPreviewInPage(file)">
+                                        <div class="bg-green-100 text-green-600 p-2 rounded shrink-0">
+                                            <el-icon><Document /></el-icon>
+                                        </div>
+                                        <div class="flex flex-col min-w-0">
+                                            <span class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate hover:text-primary transition-colors">
+                                                {{ file.file_name }}
+                                            </span>
+                                            <span class="text-xs text-gray-400">{{ formatSize(file.size) }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-2 shrink-0 ml-2">
+                                        <el-button circle size="small" type="primary" plain icon="View" @click="openPreviewInPage(file)" />
+                                        <a :href="file.url" target="_blank" download>
+                                            <el-button circle size="small" icon="Download" />
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div v-else class="text-center p-6 text-gray-400 bg-gray-50 dark:bg-[#252529] rounded-md border border-dashed border-gray-300 dark:border-gray-700">
@@ -527,22 +634,37 @@ function approveCatalog() {
                     <el-icon><Camera /></el-icon> Evidencias de campo (técnicos)
                     <el-tag size="small" type="success" effect="plain">{{ budget.task_evidence.length }} archivos</el-tag>
                 </h3>
-                <p class="text-xs text-gray-400 mb-3">Fotos y videos registrados por los técnicos durante la ejecución de las tareas.</p>
-                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                    <div v-for="ev in budget.task_evidence" :key="ev.id"
-                        class="relative group border border-gray-200 dark:border-[#3f3f46] rounded-lg overflow-hidden bg-white dark:bg-[#252529]">
-                        <el-image v-if="ev.mime_type?.startsWith('image/')" :src="ev.url" fit="cover" class="w-full h-24 cursor-pointer"
-                            :preview-src-list="budget.task_evidence.filter(e => e.mime_type?.startsWith('image/')).map(e => e.url)"
-                            :initial-index="budget.task_evidence.filter(e => e.mime_type?.startsWith('image/')).findIndex(e => e.id === ev.id)" hide-on-click-modal />
-                        <div v-else-if="ev.mime_type?.startsWith('video/')" class="w-full h-24 bg-gray-900 flex items-center justify-center cursor-pointer" @click="openUrl(ev.url)">
-                            <video class="w-full h-full object-cover" muted preload="metadata"><source :src="ev.url" /></video>
-                            <div class="absolute inset-0 flex items-center justify-center bg-black/30">
-                                <el-icon class="text-white" :size="28"><VideoPlay /></el-icon>
-                            </div>
+                <p class="text-xs text-gray-400 mb-4">Fotos y videos registrados por los técnicos durante la ejecución de las tareas, ordenados por tarea y por su posición registrada.</p>
+                <div class="space-y-4">
+                    <div v-for="group in taskEvidenceGroups" :key="group.task_id"
+                        class="border border-gray-100 dark:border-[#2b2b2e] rounded-lg p-3 bg-gray-50/60 dark:bg-[#252529]/60">
+                        <div class="flex items-center justify-between gap-2 mb-2">
+                            <p class="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate flex items-center gap-1.5">
+                                <el-icon :size="14"><List /></el-icon>
+                                <span class="truncate">{{ group.task_name }}</span>
+                            </p>
+                            <el-tag size="small" type="info" effect="plain" class="shrink-0">
+                                {{ group.items.length }} {{ group.items.length === 1 ? 'archivo' : 'archivos' }}
+                            </el-tag>
                         </div>
-                        <div class="p-1.5">
-                            <p class="text-[10px] text-gray-500 dark:text-gray-400 truncate" :title="ev.file_name">{{ ev.file_name }}</p>
-                            <p class="text-[9px] text-gray-400 dark:text-gray-500 truncate">Tarea: {{ ev.task_name }}</p>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                            <div v-for="ev in group.items" :key="ev.id"
+                                class="relative group border border-gray-200 dark:border-[#3f3f46] rounded-lg overflow-hidden bg-white dark:bg-[#252529]">
+                                <el-image v-if="ev.mime_type?.startsWith('image/')" :src="ev.url" fit="cover" class="w-full h-24 cursor-pointer"
+                                    :preview-src-list="budget.task_evidence.filter(e => e.mime_type?.startsWith('image/')).map(e => e.url)"
+                                    :initial-index="budget.task_evidence.filter(e => e.mime_type?.startsWith('image/')).findIndex(e => e.id === ev.id)" hide-on-click-modal />
+                                <div v-else-if="ev.mime_type?.startsWith('video/')" class="w-full h-24 bg-gray-900 flex items-center justify-center cursor-pointer" @click="openUrl(ev.url)">
+                                    <video class="w-full h-full object-cover" muted preload="metadata"><source :src="ev.url" /></video>
+                                    <div class="absolute inset-0 flex items-center justify-center bg-black/30">
+                                        <el-icon class="text-white" :size="28"><VideoPlay /></el-icon>
+                                    </div>
+                                </div>
+                                <div class="p-1.5">
+                                    <p class="text-[10px] text-gray-500 dark:text-gray-400 truncate" :title="ev.file_name">{{ ev.file_name }}</p>
+                                    <p v-if="ev.imgIdx !== null" class="text-[9px] text-gray-400 dark:text-gray-500">Imagen {{ ev.imgIdx + 1 }} de {{ ev.totalInTask }}</p>
+                                    <p v-else class="text-[9px] text-gray-400 dark:text-gray-500">Video</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -757,6 +879,33 @@ function approveCatalog() {
                     <el-button @click="transferDialogVisible = false">Cancelar</el-button>
                     <el-button type="primary" @click="submitTransfer">Enviar a costos especiales</el-button>
                 </template>
+            </el-dialog>
+
+            <!-- MODAL DE VISTA PREVIA (en la misma vista) -->
+            <el-dialog
+                v-model="showPreviewModal"
+                :title="previewTitle"
+                width="80%"
+                align-center
+            >
+                <div class="flex justify-center bg-gray-100 p-4 rounded min-h-[400px]">
+                    <img v-if="previewType === 'image'" :src="previewUrl" class="max-h-[70vh] object-contain" />
+
+                    <iframe
+                        v-else-if="previewType === 'pdf'"
+                        :src="previewUrl"
+                        class="w-full h-[70vh]"
+                        frameborder="0"
+                    ></iframe>
+
+                    <div v-else class="flex flex-col items-center justify-center text-gray-500">
+                        <el-icon :size="48"><Document /></el-icon>
+                        <p class="mt-4">Vista previa no disponible para este formato.</p>
+                        <a :href="previewUrl" target="_blank" class="mt-2 text-primary hover:underline">
+                            Descargar archivo
+                        </a>
+                    </div>
+                </div>
             </el-dialog>
         </div>
     </AppLayout>
