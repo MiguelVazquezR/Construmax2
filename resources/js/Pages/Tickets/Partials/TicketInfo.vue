@@ -2,6 +2,9 @@
 import { computed } from 'vue';
 import { useForm, router, Link } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { useCatalogStatus } from '@/Composables/useCatalogStatus';
+
+const { catalogStatusLabel, catalogStatusType, catalogUpdatedTooltip, isCatalogPendingUpdate } = useCatalogStatus();
 
 const props = defineProps({
     ticket: Object,
@@ -131,14 +134,20 @@ const deleteEvidence = (mediaId) => {
                             <el-tag v-if="ticket.budget?.latest_catalog" type="success" size="small" effect="dark">
                                 V{{ ticket.budget.latest_catalog.version }}
                             </el-tag>
-                            <el-tag
+                            <el-tooltip
                                 v-if="ticket.budget?.latest_catalog"
-                                :type="ticket.budget.latest_catalog.status === 'approved' ? 'success' : 'warning'"
-                                size="small"
-                                effect="plain"
+                                :disabled="!isCatalogPendingUpdate(ticket.budget.latest_catalog.status)"
+                                :content="catalogUpdatedTooltip"
+                                placement="top"
                             >
-                                {{ ticket.budget.latest_catalog.status === 'approved' ? 'Aprobado' : 'Pendiente de aprobación' }}
-                            </el-tag>
+                                <el-tag
+                                    :type="catalogStatusType(ticket.budget.latest_catalog.status)"
+                                    size="small"
+                                    effect="plain"
+                                >
+                                    {{ catalogStatusLabel(ticket.budget.latest_catalog.status) }}
+                                </el-tag>
+                            </el-tooltip>
                             <el-tag v-else type="info" size="small" effect="plain">Sin catálogo</el-tag>
                         </div>
                     </div>

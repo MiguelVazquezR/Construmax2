@@ -3,6 +3,9 @@ import { ref, computed, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { OfficeBuilding, Timer, Location, UserFilled, DocumentChecked } from '@element-plus/icons-vue';
+import { useCatalogStatus } from '@/Composables/useCatalogStatus';
+
+const { catalogStatusType, catalogStatusCompactLabel, catalogUpdatedTooltip, isCatalogPendingUpdate } = useCatalogStatus();
 
 const props = defineProps({
     tickets: Object,
@@ -230,18 +233,24 @@ const getTechDisplayName = (user) => {
 
                             <!-- Catalog indicator -->
                             <div class="flex items-center gap-1.5 mb-2">
-                                <el-tag
+                                <el-tooltip
                                     v-if="ticket.budget?.latest_catalog"
-                                    size="small"
-                                    :type="ticket.budget.latest_catalog.status === 'approved' ? 'success' : 'warning'"
-                                    effect="plain"
-                                    class="!text-[10px] !h-5 !px-1"
+                                    :disabled="!isCatalogPendingUpdate(ticket.budget.latest_catalog.status)"
+                                    :content="catalogUpdatedTooltip"
+                                    placement="top"
                                 >
-                                    v{{ ticket.budget.latest_catalog.version }}
-                                    <span class="ml-0.5 opacity-70">
-                                        — {{ ticket.budget.latest_catalog.status === 'approved' ? 'Aprobado' : 'Pendiente' }}
-                                    </span>
-                                </el-tag>
+                                    <el-tag
+                                        size="small"
+                                        :type="catalogStatusType(ticket.budget.latest_catalog.status)"
+                                        effect="plain"
+                                        class="!text-[10px] !h-5 !px-1"
+                                    >
+                                        v{{ ticket.budget.latest_catalog.version }}
+                                        <span class="ml-0.5 opacity-70">
+                                            — {{ catalogStatusCompactLabel(ticket.budget.latest_catalog.status) }}
+                                        </span>
+                                    </el-tag>
+                                </el-tooltip>
                                 <el-tag
                                     v-else
                                     size="small"

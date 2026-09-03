@@ -13,10 +13,12 @@ class BudgetCatalog extends Model
 
     public const STATUS_PENDING_APPROVAL = 'pending_approval';
     public const STATUS_APPROVED = 'approved';
+    public const STATUS_PENDING_UPDATE = 'pending_update';
 
     public const STATUS_LABELS = [
         self::STATUS_PENDING_APPROVAL => 'Pendiente de aprobación',
         self::STATUS_APPROVED         => 'Aprobado',
+        self::STATUS_PENDING_UPDATE   => 'Pendiente de actualización',
     ];
 
     protected $fillable = [
@@ -63,6 +65,11 @@ class BudgetCatalog extends Model
     public function isPendingApproval(): bool
     {
         return $this->status === self::STATUS_PENDING_APPROVAL;
+    }
+
+    public function isPendingUpdate(): bool
+    {
+        return $this->status === self::STATUS_PENDING_UPDATE;
     }
 
     public function approve(int $userId): void

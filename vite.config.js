@@ -27,12 +27,12 @@ export default defineConfig({
         }),
     ],
     // comentar los siguientes bloques si no se usa el dominio construmax.test
-    server: {
-        detectTls: 'construmax.test',
-        // 💡 Añade este bloque hmr para corregir el WebSocket de Vite:
-        hmr: {
-            host: 'construmax.test',
-            protocol: 'wss',
-        },
-    },
+    // server: {
+    //     detectTls: 'construmax.test',
+    //     // 💡 Añade este bloque hmr para corregir el WebSocket de Vite:
+    //     hmr: {
+    //         host: 'construmax.test',
+    //         protocol: 'wss',
+    //     },
+    // },
 });

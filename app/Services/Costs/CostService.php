@@ -31,8 +31,9 @@ class CostService
                 });
             })
             ->when(true, function ($query) use ($filters) {
-                // Normalize: accept string or array, default to ['pending']
-                $catalogValues = $filters['catalog'] ?? ['pending'];
+                // Normalize: accept string or array, default to the same 3 states
+                // the UI shows selected by default (without, pending, update)
+                $catalogValues = $filters['catalog'] ?? ['without', 'pending', 'update'];
                 $catalogValues = (array) $catalogValues;
                 $catalogValues = array_filter($catalogValues);
 
@@ -48,6 +49,9 @@ class CostService
                             'without'  => $q->orWhereDoesntHave('catalogs'),
                             'pending'  => $q->orWhereHas('latestCatalog', function ($sub) {
                                 $sub->where('status', \App\Models\BudgetCatalog::STATUS_PENDING_APPROVAL);
+                            }),
+                            'update', 'pending_update' => $q->orWhereHas('latestCatalog', function ($sub) {
+                                $sub->where('status', \App\Models\BudgetCatalog::STATUS_PENDING_UPDATE);
                             }),
                             'approved' => $q->orWhereHas('latestCatalog', function ($sub) {
                                 $sub->where('status', \App\Models\BudgetCatalog::STATUS_APPROVED);
