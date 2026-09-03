@@ -29,6 +29,9 @@ return new class extends Migration
             // Especialidades (Guardadas como JSON para filtrado rápido: ["Plomería", "Electricidad"])
             $table->json('specialties')->nullable();
             
+            // Nivel del técnico
+            $table->string('level', 30)->default('Encargado');
+            
             // Datos Fiscales
             $table->string('legal_name')->nullable(); // Razón Social
             $table->string('rfc')->nullable();
@@ -43,7 +46,8 @@ return new class extends Migration
             // 'Inactivo': Temporalmente fuera
             // 'En revisión': Documentación pendiente
             // 'Vetado': Lista negra
-            $table->enum('status', ['Activo', 'Inactivo', 'En revisión', 'Vetado'])->default('En revisión');
+            // 'Eliminado': Eliminado
+            $table->enum('status', ['Activo', 'Inactivo', 'En revisión', 'Vetado', 'Eliminado'])->default('En revisión');
             
             // Sistema de Calificación
             $table->decimal('rating_avg', 3, 2)->default(0.00); // Promedio 1.00 a 5.00

@@ -82,6 +82,14 @@ class TicketController extends Controller
             $catalogFilter = $request->input('has_catalog');
             if ($catalogFilter === 'yes') {
                 $query->whereHas('budget.latestCatalog');
+            } elseif ($catalogFilter === 'pending') {
+                $query->whereHas('budget.latestCatalog', function ($b) {
+                    $b->where('status', \App\Models\BudgetCatalog::STATUS_PENDING_APPROVAL);
+                });
+            } elseif ($catalogFilter === 'approved') {
+                $query->whereHas('budget.latestCatalog', function ($b) {
+                    $b->where('status', \App\Models\BudgetCatalog::STATUS_APPROVED);
+                });
             } elseif ($catalogFilter === 'no') {
                 $query->where(function ($q) {
                     $q->doesntHave('budget')
@@ -118,7 +126,7 @@ class TicketController extends Controller
         } elseif ($sort === 'delay') {
             $query->orderByRaw("CASE WHEN status IN ('Ejecutado', 'Facturado', 'Pagado', 'Cancelado') THEN 2 ELSE 1 END")
                   ->orderBy('scheduled_end', 'asc');
-        } elseif ($request->filled('has_catalog') && $request->input('has_catalog') === 'yes') {
+        } elseif ($request->filled('has_catalog') && in_array($request->input('has_catalog'), ['yes', 'pending', 'approved'], true)) {
             // When filtering by catalog, sort by latest catalog creation date (newest first)
             $query->orderBy(
                 \App\Models\BudgetCatalog::select('budget_catalogs.created_at')

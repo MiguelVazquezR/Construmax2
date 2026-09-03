@@ -202,6 +202,8 @@ watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilt
                     <el-select v-model="catalogFilter" placeholder="Catálogo" clearable class="w-full">
                         <el-option label="Todos" value="" />
                         <el-option label="Con catálogo" value="yes" />
+                        <el-option label="Con catálogo pendiente" value="pending" />
+                        <el-option label="Con catálogo aprobado" value="approved" />
                         <el-option label="Sin catálogo" value="no" />
                     </el-select>
 

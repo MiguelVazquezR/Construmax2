@@ -39,6 +39,22 @@ const getTicketStatusColor = (status) => {
     return map[status] || 'info';
 };
 
+const getCatalogStatusColor = (status) => {
+    const map = {
+        'pending_approval': 'warning',
+        'approved': 'success',
+    };
+    return map[status] || 'info';
+};
+
+const getCatalogStatusLabel = (status) => {
+    const map = {
+        'pending_approval': 'Pendiente de aprobación',
+        'approved': 'Aprobado',
+    };
+    return map[status] || 'Sin registro';
+};
+
 const handlePageChange = (val) => {
     router.visit(route('budgets.index', { ...route().params, page: val }), {
         preserveState: true,
@@ -144,6 +160,20 @@ const deleteBudget = (budget) => {
                     </template>
                 </el-table-column>
 
+                <el-table-column label="Catálogo" width="170" align="center">
+                    <template #default="scope">
+                        <div v-if="scope.row.latest_catalog" class="flex flex-col items-center gap-0.5">
+                            <el-tag :type="getCatalogStatusColor(scope.row.latest_catalog.status)" size="small" effect="light">
+                                {{ getCatalogStatusLabel(scope.row.latest_catalog.status) }}
+                            </el-tag>
+                            <span class="text-[10px] text-gray-400">v{{ scope.row.latest_catalog.version }}</span>
+                        </div>
+                        <el-tag v-else type="info" size="small" effect="light" class="text-gray-500">
+                            Sin registro
+                        </el-tag>
+                    </template>
+                </el-table-column>
+
                 <el-table-column label="Total costo" width="200" align="right">
                     <template #default="scope">
                          <div class="flex flex-col items-end leading-tight">
@@ -199,7 +229,13 @@ const deleteBudget = (budget) => {
             <div v-for="item in budgets.data" :key="item.id" class="p-4 border-b border-gray-100 dark:border-[#2b2b2e] last:border-0 hover:bg-gray-50 dark:hover:bg-[#252529] cursor-pointer" @click="handleRowClick(item)">
                 <div class="flex justify-between items-start mb-2">
                     <span class="font-mono text-xs text-gray-400">#{{ item.id }}</span>
-                    <el-tag :type="getTicketStatusColor(item.ticket?.status)" size="small">{{ item.ticket?.status || 'N/A' }}</el-tag>
+                    <div class="flex items-center gap-1.5">
+                        <el-tag v-if="item.latest_catalog" :type="getCatalogStatusColor(item.latest_catalog.status)" size="small">
+                            {{ getCatalogStatusLabel(item.latest_catalog.status) }}
+                        </el-tag>
+                        <el-tag v-else type="info" size="small">Sin registro</el-tag>
+                        <el-tag :type="getTicketStatusColor(item.ticket?.status)" size="small">{{ item.ticket?.status || 'N/A' }}</el-tag>
+                    </div>
                 </div>
                 <h3 class="font-bold text-gray-800 dark:text-gray-200 text-sm mb-1">{{ item.ticket?.name }}</h3>
                 

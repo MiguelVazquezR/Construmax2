@@ -153,21 +153,28 @@ const handlePrint = () => {
                 </tbody>
                 <tfoot v-if="catalog">
                     <tr>
-                        <td colspan="4" class="border-t-2 border-[#b9b9b9] border-b-0 border-l-0"></td>
+                        <!-- Customer notes (beside the cost breakdown) -->
+                        <td v-if="catalog.customer_notes" rowspan="3" colspan="4" class="border border-[#b9b9b9] p-2 align-top">
+                            <div class="border-2 border-[#b9b9b9] bg-orange-50 h-full">
+                                <div class="bg-[#b9b9b9] text-white px-2 py-0.5 font-bold text-center uppercase text-[10px]">Notas para el cliente</div>
+                                <div class="p-2 text-[10px] font-bold whitespace-pre-wrap text-gray-900 leading-relaxed">{{ catalog.customer_notes }}</div>
+                            </div>
+                        </td>
+                        <td v-else colspan="4" class="border-t-2 border-[#b9b9b9] border-b-0 border-l-0"></td>
                         <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-white bg-[#b9b9b9] text-center">SUB-TOTAL</td>
                         <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-right bg-[#b9b9b9] text-white">
                             <div class="flex justify-between w-full"><span>$</span><span>{{ formatCurrency(catalog.subtotal) }}</span></div>
                         </td>
                     </tr>
                     <tr>
-                        <td colspan="4" class="border-none"></td>
+                        <td v-if="!catalog.customer_notes" colspan="4" class="border-none"></td>
                         <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-white bg-[#b9b9b9] text-center">IVA</td>
                         <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-right bg-[#b9b9b9] text-white">
                             <div class="flex justify-between w-full"><span>$</span><span>{{ formatCurrency(catalog.iva) }}</span></div>
                         </td>
                     </tr>
                     <tr>
-                        <td colspan="4" class="border-none"></td>
+                        <td v-if="!catalog.customer_notes" colspan="4" class="border-none"></td>
                         <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-white bg-[#b9b9b9] text-center">TOTAL</td>
                         <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-right bg-[#f26c17] text-white">
                             <div class="flex justify-between w-full"><span>$</span><span>{{ formatCurrency(catalog.total) }}</span></div>

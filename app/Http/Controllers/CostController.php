@@ -61,6 +61,7 @@ class CostController extends Controller
             'total' => 'required|numeric|min:0',
             'non_installation_labor' => 'nullable|numeric|min:0',
             'labor_utility' => 'nullable|numeric|min:0',
+            'customer_notes' => 'nullable|string|max:2000',
             'items' => 'required|array|min:1',
             'items.*.type' => 'nullable|string|in:material,labor',
             'items.*.description' => 'required|string',
@@ -82,6 +83,7 @@ class CostController extends Controller
             'total' => $validated['total'],
             'non_installation_labor' => $validated['non_installation_labor'] ?? 0,
             'labor_utility' => $validated['labor_utility'] ?? 0,
+            'customer_notes' => $validated['customer_notes'] ?? null,
             'status' => \App\Models\BudgetCatalog::STATUS_PENDING_APPROVAL,
         ]);
 
@@ -93,6 +95,26 @@ class CostController extends Controller
         }
 
         return back()->with('success', 'Nueva versión del catálogo guardada correctamente. Queda pendiente de aprobación.');
+    }
+
+    /**
+     * Update customer notes on the currently displayed catalog version.
+     */
+    public function updateCatalogNotes(Request $request, Budget $budget, \App\Models\BudgetCatalog $catalog): RedirectResponse
+    {
+        if (!$request->user()->can('costs.create')) {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'customer_notes' => 'nullable|string|max:2000',
+        ]);
+
+        $catalog->update([
+            'customer_notes' => $validated['customer_notes'] ?? null,
+        ]);
+
+        return back()->with('success', 'Notas para el cliente actualizadas en la versión actual.');
     }
 
     /**

@@ -27,7 +27,7 @@ class BudgetController extends Controller
     {
         $perPage = $request->input('perPage', 10);
         
-        $filters = $request->only(['search', 'status', 'perPage', 'user_id', 'branch']);
+        $filters = $request->only(['search', 'status', 'perPage', 'user_id', 'branch', 'catalog']);
 
         if (!$request->has('user_id') && !$request->has('search') && !$request->has('status') && !$request->has('page') && !$request->has('branch')) {
             $filters['user_id'] = [auth()->id()];
@@ -250,7 +250,7 @@ class BudgetController extends Controller
 
     public function edit(Budget $budget)
     {
-        $budget->load(['concepts', 'ticket.customer', 'ticket.contact', 'ticket.branch']);
+        $budget->load(['concepts', 'media', 'ticket.customer', 'ticket.contact', 'ticket.branch']);
 
         $tickets = Ticket::with(['customer', 'contact', 'branch'])
             ->where(function ($q) use ($budget) {

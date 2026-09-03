@@ -267,6 +267,16 @@ const handlePrint = () => {
                 </tfoot>
             </table>
 
+            <!-- ============================================================ -->
+            <!-- NOTAS PARA EL CLIENTE                                        -->
+            <!-- ============================================================ -->
+            <div v-if="catalog?.customer_notes" class="mt-4 border-2 border-[#b9b9b9]">
+                <div class="bg-[#b9b9b9] text-white text-center font-bold py-1 uppercase text-[10px]">Notas para el cliente</div>
+                <div class="p-3 text-[11px] font-bold whitespace-pre-wrap text-gray-900 leading-relaxed bg-orange-50">
+                    {{ catalog.customer_notes }}
+                </div>
+            </div>
+
             <div class="mt-2 text-[10px] text-right font-bold text-[#b9b9b9] uppercase">
                 MONEDA: {{ budget.currency }}
             </div>

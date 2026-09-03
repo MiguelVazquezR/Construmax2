@@ -149,6 +149,14 @@ class Budget extends Model implements HasMedia
                     ->orWhere('unit', 'like', '%' . $branch . '%')
                     ->orWhere('country', 'like', '%' . $branch . '%');
             });
+        })->when($filters['catalog'] ?? null, function ($query, $catalog) {
+            match ($catalog) {
+                'yes'      => $query->whereHas('latestCatalog'),
+                'no'       => $query->whereDoesntHave('latestCatalog'),
+                'pending'  => $query->whereHas('latestCatalog', fn ($q) => $q->where('status', BudgetCatalog::STATUS_PENDING_APPROVAL)),
+                'approved' => $query->whereHas('latestCatalog', fn ($q) => $q->where('status', BudgetCatalog::STATUS_APPROVED)),
+                default    => null,
+            };
         });
     }
 }

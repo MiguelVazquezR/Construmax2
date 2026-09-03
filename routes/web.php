@@ -76,6 +76,23 @@ Route::middleware([
         return back()->with('success', 'Firmas migradas correctamente. Se han liberado los datos base64 de la base de datos.');
     })->name('tools.migrate-signatures');
 
+    // --- Herramienta: Reparar totales de catálogos de costos ---
+    Route::post('/tools/repair-catalog-totals', function () {
+        if (!auth()->user()?->can('manage roles-permissions')) {
+            abort(403);
+        }
+
+        $dryRun = request()->boolean('dry-run');
+
+        Artisan::call($dryRun ? 'catalog:repair-totals --dry-run' : 'catalog:repair-totals');
+
+        $message = $dryRun
+            ? 'Previsualización completada. Revisa la salida del comando.'
+            : 'Totales de catálogos reparados correctamente.';
+
+        return back()->with('success', $message);
+    })->name('tools.repair-catalog-totals');
+
     // --- Herramienta: Desplegar build de Vite ---
     Route::get('/tools/deploy-build', [DeployBuildController::class, 'showForm'])->name('tools.deploy-build.form');
     Route::post('/tools/deploy-build', [DeployBuildController::class, 'deploy'])->name('tools.deploy-build.deploy');

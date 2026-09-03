@@ -14,6 +14,8 @@ return new class extends Migration
         Schema::create('technician_bank_accounts', function (Blueprint $table) {
             $table->id();
             $table->foreignId('technician_id')->constrained()->cascadeOnDelete();
+            $table->string('bank_name')->nullable();
+            $table->string('card_owner_name')->nullable();
             $table->string('account_number')->nullable();
             $table->string('card_number')->nullable();
             $table->string('clabe')->nullable();

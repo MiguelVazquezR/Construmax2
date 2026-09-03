@@ -13,6 +13,8 @@ const props = defineProps({ budget: Object, canCreateCatalog: Boolean, canApprov
 const { formatCurrency, copyToClipboard } = useCostsHelpers();
 
 const currentVersion = ref(null);
+const currentCatalogId = ref(null);
+const savingNotes = ref(false);
 const editingReportNumber = ref(false);
 const reportNumberValue = ref('');
 const editingStartDate = ref(false);
@@ -27,6 +29,39 @@ const conceptsTotal = computed(() => {
     return props.budget.concepts.reduce((sum, c) => sum + Number(c.amount || 0), 0);
 });
 
+// Group task evidence by task, preserving task order and each task's manual order_column.
+const taskEvidenceGroups = computed(() => {
+    const evidence = props.budget?.task_evidence || [];
+    if (!evidence.length) return [];
+
+    const groups = [];
+    const groupIndexById = new Map();
+
+    for (const ev of evidence) {
+        let group = groupIndexById.get(ev.task_id);
+        if (!group) {
+            group = { task_id: ev.task_id, task_name: ev.task_name, items: [], totalImages: 0 };
+            groupIndexById.set(ev.task_id, group);
+            groups.push(group);
+        }
+        group.items.push(ev);
+        if (ev.mime_type?.startsWith('image/')) {
+            group.totalImages += 1;
+        }
+    }
+
+    for (const group of groups) {
+        let imgIdx = 0;
+        group.items = group.items.map(ev => ({
+            ...ev,
+            imgIdx: ev.mime_type?.startsWith('image/') ? imgIdx++ : null,
+            totalInTask: group.totalImages,
+        }));
+    }
+
+    return groups;
+});
+
 // --- Form ---
 const form = useForm({
     items: [],
@@ -36,6 +71,7 @@ const form = useForm({
     include_iva: true,
     non_installation_labor: 0,
     labor_utility: 0,
+    customer_notes: '',
 });
 
 // Empeño Fácil computed
@@ -66,6 +102,7 @@ const autoLaborUtility = computed(() =>
 onMounted(() => {
     if (props.budget.latest_catalog?.items) {
         currentVersion.value = props.budget.latest_catalog.version;
+        currentCatalogId.value = props.budget.latest_catalog.id;
         form.items = props.budget.latest_catalog.items.map(item => ({
             type: item.type || 'material',
             description: item.description,
@@ -79,6 +116,7 @@ onMounted(() => {
         }));
         form.non_installation_labor = Number(props.budget.latest_catalog.non_installation_labor || 0);
         form.labor_utility = Number(props.budget.latest_catalog.labor_utility || 0);
+        form.customer_notes = props.budget.latest_catalog.customer_notes || '';
     } else {
         userEditedNonInstallationLabor.value = false;
         userEditedLaborUtility.value = false;
@@ -121,6 +159,34 @@ function calculateTotals() {
         form.iva = form.include_iva ? Number((form.subtotal * 0.16).toFixed(2)) : 0;
         form.total = Number((form.subtotal + form.iva).toFixed(2));
     }
+}
+
+// --- Save notes to the currently displayed version ---
+function saveNotesToCurrentVersion() {
+    if (!currentCatalogId.value) {
+        ElMessage.warning('Guarda primero una versión del catálogo.');
+        return;
+    }
+
+    savingNotes.value = true;
+    router.put(route('costs.update-catalog-notes', {
+        budget: props.budget.id,
+        catalog: currentCatalogId.value,
+    }), {
+        customer_notes: form.customer_notes,
+    }, {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            ElMessage.success('Notas actualizadas en la versión actual.');
+        },
+        onError: () => {
+            ElMessage.error('Error al guardar las notas.');
+        },
+        onFinish: () => {
+            savingNotes.value = false;
+        },
+    });
 }
 
 // --- Submit ---
@@ -189,6 +255,7 @@ function viewCatalogVersion(versionId) {
     const cat = props.budget.catalogs.find(c => c.id === versionId);
     if (!cat) return;
     currentVersion.value = cat.version;
+    currentCatalogId.value = cat.id;
     form.items = cat.items.map(item => ({
         type: item.type || 'material',
         description: item.description,
@@ -203,6 +270,7 @@ function viewCatalogVersion(versionId) {
     form.include_iva = Number(cat.iva) > 0;
     form.non_installation_labor = Number(cat.non_installation_labor || 0);
     form.labor_utility = Number(cat.labor_utility || 0);
+    form.customer_notes = cat.customer_notes || '';
     userEditedNonInstallationLabor.value = true;
     userEditedLaborUtility.value = true;
     calculateTotals();
@@ -210,6 +278,42 @@ function viewCatalogVersion(versionId) {
 }
 
 function openUrl(url) { window.open(url, '_blank'); }
+
+// --- Preview en la misma vista (modal) ---
+const showPreviewModal = ref(false);
+const previewUrl = ref('');
+const previewType = ref('');
+const previewTitle = ref('');
+
+const openPreviewInPage = (file) => {
+    const mime = file.mime_type || '';
+
+    if (mime.startsWith('image/')) {
+        previewUrl.value = file.url;
+        previewType.value = 'image';
+        previewTitle.value = file.file_name;
+        showPreviewModal.value = true;
+        return;
+    }
+
+    if (mime === 'application/pdf') {
+        previewUrl.value = file.url;
+        previewType.value = 'pdf';
+        previewTitle.value = file.file_name;
+        showPreviewModal.value = true;
+        return;
+    }
+
+    // Otros formatos: abrir en pestaña nueva
+    window.open(file.url, '_blank');
+};
+
+function formatSize(bytes) {
+    if (!bytes) return '0 KB';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(2) + ' KB';
+    return (bytes / 1048576).toFixed(2) + ' MB';
+}
 
 // --- Inline field editing ---
 function startEditReportNumber() {
@@ -445,13 +549,51 @@ function approveCatalog() {
                     <h3 class="text-md font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
                         <el-icon><FolderOpened /></el-icon> Archivos del presupuesto
                     </h3>
-                    <div v-if="budget.survey_images.length > 0">
-                        <p class="text-xs text-gray-400 mb-3">Imágenes y documentos adjuntos al registrar el presupuesto.</p>
-                        <div class="flex flex-wrap gap-2">
-                            <el-image v-for="img in budget.survey_images" :key="img.id" :src="img.url"
-                                :preview-src-list="budget.survey_images.map(i => i.url)"
-                                :initial-index="budget.survey_images.findIndex(i => i.id === img.id)" fit="cover"
-                                class="w-24 h-24 rounded-md border border-gray-200 dark:border-gray-700 cursor-pointer" />
+                    <div v-if="budget.survey_images.length > 0 || budget.budget_files?.length > 0">
+                        <p class="text-xs text-gray-400 mb-3">Imágenes y documentos adjuntos al presupuesto.</p>
+
+                        <!-- Imágenes de levantamiento -->
+                        <div v-if="budget.survey_images.length > 0" class="mb-4">
+                            <div class="flex flex-wrap gap-2">
+                                <el-image v-for="img in budget.survey_images" :key="img.id" :src="img.url"
+                                    :preview-src-list="budget.survey_images.map(i => i.url)"
+                                    :initial-index="budget.survey_images.findIndex(i => i.id === img.id)" fit="cover"
+                                    class="w-24 h-24 rounded-md border border-gray-200 dark:border-gray-700 cursor-pointer" />
+                            </div>
+                        </div>
+
+                        <!-- Archivos de apoyo -->
+                        <div v-if="budget.budget_files?.length > 0">
+                            <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                                <el-icon class="text-green-500"><Document /></el-icon>
+                                Archivos adjuntos
+                                <el-tag size="small" round>{{ budget.budget_files.length }}</el-tag>
+                            </h4>
+                            <div class="space-y-2">
+                                <div
+                                    v-for="file in budget.budget_files"
+                                    :key="file.id"
+                                    class="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#252529] rounded-lg border border-gray-100 dark:border-[#3f3f46]"
+                                >
+                                    <div class="flex items-center gap-3 overflow-hidden min-w-0 cursor-pointer" @click="openPreviewInPage(file)">
+                                        <div class="bg-green-100 text-green-600 p-2 rounded shrink-0">
+                                            <el-icon><Document /></el-icon>
+                                        </div>
+                                        <div class="flex flex-col min-w-0">
+                                            <span class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate hover:text-primary transition-colors">
+                                                {{ file.file_name }}
+                                            </span>
+                                            <span class="text-xs text-gray-400">{{ formatSize(file.size) }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-2 shrink-0 ml-2">
+                                        <el-button circle size="small" type="primary" plain icon="View" @click="openPreviewInPage(file)" />
+                                        <a :href="file.url" target="_blank" download>
+                                            <el-button circle size="small" icon="Download" />
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div v-else class="text-center p-6 text-gray-400 bg-gray-50 dark:bg-[#252529] rounded-md border border-dashed border-gray-300 dark:border-gray-700">
@@ -492,22 +634,37 @@ function approveCatalog() {
                     <el-icon><Camera /></el-icon> Evidencias de campo (técnicos)
                     <el-tag size="small" type="success" effect="plain">{{ budget.task_evidence.length }} archivos</el-tag>
                 </h3>
-                <p class="text-xs text-gray-400 mb-3">Fotos y videos registrados por los técnicos durante la ejecución de las tareas.</p>
-                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                    <div v-for="ev in budget.task_evidence" :key="ev.id"
-                        class="relative group border border-gray-200 dark:border-[#3f3f46] rounded-lg overflow-hidden bg-white dark:bg-[#252529]">
-                        <el-image v-if="ev.mime_type?.startsWith('image/')" :src="ev.url" fit="cover" class="w-full h-24 cursor-pointer"
-                            :preview-src-list="budget.task_evidence.filter(e => e.mime_type?.startsWith('image/')).map(e => e.url)"
-                            :initial-index="budget.task_evidence.filter(e => e.mime_type?.startsWith('image/')).findIndex(e => e.id === ev.id)" hide-on-click-modal />
-                        <div v-else-if="ev.mime_type?.startsWith('video/')" class="w-full h-24 bg-gray-900 flex items-center justify-center cursor-pointer" @click="openUrl(ev.url)">
-                            <video class="w-full h-full object-cover" muted preload="metadata"><source :src="ev.url" /></video>
-                            <div class="absolute inset-0 flex items-center justify-center bg-black/30">
-                                <el-icon class="text-white" :size="28"><VideoPlay /></el-icon>
-                            </div>
+                <p class="text-xs text-gray-400 mb-4">Fotos y videos registrados por los técnicos durante la ejecución de las tareas, ordenados por tarea y por su posición registrada.</p>
+                <div class="space-y-4">
+                    <div v-for="group in taskEvidenceGroups" :key="group.task_id"
+                        class="border border-gray-100 dark:border-[#2b2b2e] rounded-lg p-3 bg-gray-50/60 dark:bg-[#252529]/60">
+                        <div class="flex items-center justify-between gap-2 mb-2">
+                            <p class="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate flex items-center gap-1.5">
+                                <el-icon :size="14"><List /></el-icon>
+                                <span class="truncate">{{ group.task_name }}</span>
+                            </p>
+                            <el-tag size="small" type="info" effect="plain" class="shrink-0">
+                                {{ group.items.length }} {{ group.items.length === 1 ? 'archivo' : 'archivos' }}
+                            </el-tag>
                         </div>
-                        <div class="p-1.5">
-                            <p class="text-[10px] text-gray-500 dark:text-gray-400 truncate" :title="ev.file_name">{{ ev.file_name }}</p>
-                            <p class="text-[9px] text-gray-400 dark:text-gray-500 truncate">Tarea: {{ ev.task_name }}</p>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                            <div v-for="ev in group.items" :key="ev.id"
+                                class="relative group border border-gray-200 dark:border-[#3f3f46] rounded-lg overflow-hidden bg-white dark:bg-[#252529]">
+                                <el-image v-if="ev.mime_type?.startsWith('image/')" :src="ev.url" fit="cover" class="w-full h-24 cursor-pointer"
+                                    :preview-src-list="budget.task_evidence.filter(e => e.mime_type?.startsWith('image/')).map(e => e.url)"
+                                    :initial-index="budget.task_evidence.filter(e => e.mime_type?.startsWith('image/')).findIndex(e => e.id === ev.id)" hide-on-click-modal />
+                                <div v-else-if="ev.mime_type?.startsWith('video/')" class="w-full h-24 bg-gray-900 flex items-center justify-center cursor-pointer" @click="openUrl(ev.url)">
+                                    <video class="w-full h-full object-cover" muted preload="metadata"><source :src="ev.url" /></video>
+                                    <div class="absolute inset-0 flex items-center justify-center bg-black/30">
+                                        <el-icon class="text-white" :size="28"><VideoPlay /></el-icon>
+                                    </div>
+                                </div>
+                                <div class="p-1.5">
+                                    <p class="text-[10px] text-gray-500 dark:text-gray-400 truncate" :title="ev.file_name">{{ ev.file_name }}</p>
+                                    <p v-if="ev.imgIdx !== null" class="text-[9px] text-gray-400 dark:text-gray-500">Imagen {{ ev.imgIdx + 1 }} de {{ ev.totalInTask }}</p>
+                                    <p v-else class="text-[9px] text-gray-400 dark:text-gray-500">Video</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -546,6 +703,35 @@ function approveCatalog() {
                         </el-button>
                     </template>
                 </LaborTable>
+
+                <!-- Customer notes -->
+                <div class="bg-white dark:bg-[#1e1e20] rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-md font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                            <el-icon><ChatDotSquare /></el-icon> Notas para el cliente
+                        </h3>
+                        <el-button
+                            v-if="canCreateCatalog && currentCatalogId"
+                            type="primary"
+                            plain
+                            size="small"
+                            icon="Check"
+                            :loading="savingNotes"
+                            @click="saveNotesToCurrentVersion"
+                        >
+                            Guardar en versión actual
+                        </el-button>
+                    </div>
+                    <el-input
+                        v-model="form.customer_notes"
+                        type="textarea"
+                        :rows="4"
+                        placeholder="Notas que verá el cliente en la impresión del presupuesto..."
+                        maxlength="2000"
+                        show-word-limit
+                        :disabled="!canCreateCatalog"
+                    />
+                </div>
 
                 <EmpenoFacilTotals
                     :combined-subtotal="combinedSubtotal"
@@ -607,8 +793,8 @@ function approveCatalog() {
                             <tr v-for="(item, index) in form.items" :key="index" class="border-b dark:border-[#2b2b2e]">
                                 <td class="px-2 py-2"><el-input v-model="item.description" type="textarea" :rows="2" placeholder="Descripción detallada" :disabled="!canCreateCatalog" /></td>
                                 <td class="px-2 py-2"><el-input v-model="item.unit" placeholder="Ej. PZA, ML, M2" :disabled="!canCreateCatalog" /></td>
-                                <td class="px-2 py-2"><el-input-number v-model="item.quantity" :min="0.01" :step="1" :controls="false" class="!w-full text-right" @change="calculateRowTotal(item)" :disabled="!canCreateCatalog" /></td>
-                                <td class="px-2 py-2"><el-input-number v-model="item.unit_price" :min="0" :step="0.01" :controls="false" class="!w-full text-right" @change="calculateRowTotal(item)" :disabled="!canCreateCatalog" /></td>
+                                <td class="px-2 py-2"><el-input-number v-model="item.quantity" :min="0.01" :step="1" :controls="false" class="!w-full text-right" @update:model-value="calculateRowTotal(item)" :disabled="!canCreateCatalog" /></td>
+                                <td class="px-2 py-2"><el-input-number v-model="item.unit_price" :min="0" :step="0.01" :controls="false" class="!w-full text-right" @update:model-value="calculateRowTotal(item)" :disabled="!canCreateCatalog" /></td>
                                 <td class="px-4 py-2 text-right font-mono font-bold text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-[#252529]">
                                     {{ formatCurrency(item.total, budget.currency) }}
                                 </td>
@@ -641,6 +827,38 @@ function approveCatalog() {
                         </tfoot>
                     </table>
                 </div>
+
+                <!-- Customer notes -->
+                <div v-if="canCreateCatalog || form.customer_notes" class="p-4 border-t border-gray-100 dark:border-[#2b2b2e]">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-md font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                            <el-icon><ChatDotSquare /></el-icon> Notas para el cliente
+                        </h3>
+                        <el-button
+                            v-if="canCreateCatalog && currentCatalogId"
+                            type="primary"
+                            plain
+                            size="small"
+                            icon="Check"
+                            :loading="savingNotes"
+                            @click="saveNotesToCurrentVersion"
+                        >
+                            Guardar en versión actual
+                        </el-button>
+                    </div>
+                    <el-input
+                        v-model="form.customer_notes"
+                        type="textarea"
+                        :rows="4"
+                        placeholder="Notas que verá el cliente en la impresión del presupuesto..."
+                        maxlength="2000"
+                        show-word-limit
+                        :disabled="!canCreateCatalog"
+                    />
+                    <div v-if="!canCreateCatalog" class="mt-2 text-xs text-gray-400">
+                        Notas visibles para el cliente en la impresión del presupuesto.
+                    </div>
+                </div>
             </div>
 
             <!-- Transfer Dialog -->
@@ -661,6 +879,33 @@ function approveCatalog() {
                     <el-button @click="transferDialogVisible = false">Cancelar</el-button>
                     <el-button type="primary" @click="submitTransfer">Enviar a costos especiales</el-button>
                 </template>
+            </el-dialog>
+
+            <!-- MODAL DE VISTA PREVIA (en la misma vista) -->
+            <el-dialog
+                v-model="showPreviewModal"
+                :title="previewTitle"
+                width="80%"
+                align-center
+            >
+                <div class="flex justify-center bg-gray-100 p-4 rounded min-h-[400px]">
+                    <img v-if="previewType === 'image'" :src="previewUrl" class="max-h-[70vh] object-contain" />
+
+                    <iframe
+                        v-else-if="previewType === 'pdf'"
+                        :src="previewUrl"
+                        class="w-full h-[70vh]"
+                        frameborder="0"
+                    ></iframe>
+
+                    <div v-else class="flex flex-col items-center justify-center text-gray-500">
+                        <el-icon :size="48"><Document /></el-icon>
+                        <p class="mt-4">Vista previa no disponible para este formato.</p>
+                        <a :href="previewUrl" target="_blank" class="mt-2 text-primary hover:underline">
+                            Descargar archivo
+                        </a>
+                    </div>
+                </div>
             </el-dialog>
         </div>
     </AppLayout>

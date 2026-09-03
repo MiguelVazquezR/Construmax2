@@ -28,6 +28,7 @@ return new class extends Migration
 
             // --- Signature data ---
             $table->longText('signature_data')->nullable();       // base64 PNG from canvas
+            $table->string('signature_path')->nullable();
             $table->string('signatory_name')->nullable();         // name typed at signing
             $table->timestamp('signed_at')->nullable();           // when the signature was captured
 

@@ -39,6 +39,8 @@ return new class extends Migration
             $table->foreignId('budget_id')->constrained('budgets')->onDelete('cascade');
             $table->string('concept');
             $table->decimal('amount', 12, 2); // Aumenté precisión por si son montos grandes
+            $table->boolean('paid_to_technician')->default(false);
+            $table->date('payment_date')->nullable();
             $table->timestamps();
         });
 

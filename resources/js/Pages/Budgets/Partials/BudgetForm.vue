@@ -1,8 +1,8 @@
 <script setup>
 import { ref, reactive, computed, watch } from 'vue';
-import { useForm, Link, usePage } from '@inertiajs/vue3';
-import { ElMessage } from 'element-plus';
-import { Money, Loading, Delete, Plus, OfficeBuilding, Camera, ZoomIn } from '@element-plus/icons-vue';
+import { useForm, Link, usePage, router } from '@inertiajs/vue3';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { Money, Loading, Delete, Plus, OfficeBuilding, Camera, ZoomIn, View, Download, Document, FolderOpened } from '@element-plus/icons-vue';
 import axios from 'axios';
 
 const props = defineProps({
@@ -211,6 +211,42 @@ const removeSurveyImage = (index) => {
 const previewSurveyImage = (file) => {
     const url = file.url || URL.createObjectURL(file.raw);
     window.open(url, '_blank');
+};
+
+// --- AVISO DE GUARDADO DE ARCHIVOS ---
+
+const filesSaveHint = computed(() => isEdit
+    ? 'Los archivos seleccionados se guardarán solo cuando guardes los cambios del presupuesto.'
+    : 'Los archivos seleccionados se guardarán solo cuando guardes el presupuesto.'
+);
+
+// --- ARCHIVOS DE APOYO EXISTENTES (EDIT) ---
+
+const existingSupportFiles = computed(() => {
+    if (!isEdit || !props.budget?.media) return [];
+    return props.budget.media.filter(m => m.collection_name === 'budget_files');
+});
+
+const formatSize = (bytes) => {
+    if (!bytes) return '0 KB';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(2) + ' KB';
+    return (bytes / 1048576).toFixed(2) + ' MB';
+};
+
+const openFilePreview = (file) => {
+    window.open(file.original_url, '_blank');
+};
+
+const deleteExistingFile = (mediaId) => {
+    ElMessageBox.confirm('¿Eliminar este archivo permanentemente?', 'Confirmar', {
+        type: 'warning',
+    }).then(() => {
+        router.delete(route('budgets.files.destroy', mediaId), {
+            preserveScroll: true,
+            onSuccess: () => ElMessage.success('Archivo eliminado'),
+        });
+    }).catch(() => {});
 };
 
 defineExpose({ form });
@@ -460,6 +496,42 @@ defineExpose({ form });
                     <p class="text-sm text-gray-500 mb-4">
                         Sube planos, cotizaciones, órdenes de compra o cualquier documento relacionado con este presupuesto.
                     </p>
+
+                    <!-- Archivos ya subidos (solo edición) -->
+                    <div v-if="isEdit && existingSupportFiles.length > 0" class="mb-5">
+                        <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                            <el-icon class="text-green-500"><Document /></el-icon>
+                            Archivos adjuntos
+                            <el-tag size="small" round>{{ existingSupportFiles.length }}</el-tag>
+                        </h4>
+                        <div class="space-y-2">
+                            <div
+                                v-for="file in existingSupportFiles"
+                                :key="file.id"
+                                class="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#252529] rounded-lg border border-gray-100 dark:border-[#3f3f46]"
+                            >
+                                <div class="flex items-center gap-3 overflow-hidden cursor-pointer min-w-0" @click="openFilePreview(file)">
+                                    <div class="bg-green-100 text-green-600 p-2 rounded shrink-0">
+                                        <el-icon><Document /></el-icon>
+                                    </div>
+                                    <div class="flex flex-col min-w-0">
+                                        <span class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate hover:text-primary transition-colors">
+                                            {{ file.file_name }}
+                                        </span>
+                                        <span class="text-xs text-gray-400">{{ formatSize(file.size) }}</span>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2 shrink-0 ml-2">
+                                    <el-button circle size="small" type="primary" plain :icon="View" @click="openFilePreview(file)" />
+                                    <a :href="file.original_url" target="_blank" download>
+                                        <el-button circle size="small" :icon="Download" />
+                                    </a>
+                                    <el-button circle size="small" type="danger" :icon="Delete" plain @click="deleteExistingFile(file.id)" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <el-upload
                         ref="supportUploadRef"
                         :auto-upload="false"
@@ -486,6 +558,14 @@ defineExpose({ form });
                             {{ f.name }}
                         </el-tag>
                     </div>
+                    <el-alert
+                        v-if="form.support_files.length > 0"
+                        class="mt-3"
+                        :title="filesSaveHint"
+                        type="warning"
+                        :closable="false"
+                        show-icon
+                    />
                 </div>
 
                 <!-- Tarjeta: Imágenes de levantamiento -->
@@ -540,6 +620,14 @@ defineExpose({ form });
                             </div>
                         </template>
                     </el-upload>
+                    <el-alert
+                        v-if="form.survey_images.length > 0"
+                        class="mt-3"
+                        :title="filesSaveHint"
+                        type="warning"
+                        :closable="false"
+                        show-icon
+                    />
                 </div>
 
             </div>
