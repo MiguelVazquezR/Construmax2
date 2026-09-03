@@ -5,12 +5,14 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { ChatDotSquare, WarningFilled } from '@element-plus/icons-vue';
 import { useCostsHelpers } from '@/Composables/useCostsHelpers';
+import { useCatalogStatus } from '@/Composables/useCatalogStatus';
 import MaterialsTable from '@/Components/Costs/MaterialsTable.vue';
 import LaborTable from '@/Components/Costs/LaborTable.vue';
 import EmpenoFacilTotals from '@/Components/Costs/EmpenoFacilTotals.vue';
 
 const props = defineProps({ budget: Object, canCreateCatalog: Boolean, canApprove: Boolean, canTransfer: Boolean });
 const { formatCurrency, copyToClipboard } = useCostsHelpers();
+const { catalogStatusLabel, catalogStatusType, isCatalogPendingUpdate, catalogUpdatedTooltip } = useCatalogStatus();
 
 const currentVersion = ref(null);
 const currentCatalogId = ref(null);
@@ -406,9 +408,16 @@ function approveCatalog() {
                             <span class="text-gray-300 dark:text-gray-600">|</span>
                             <span>{{ budget.ticket.customer.name }}</span>
                             <!-- Approval status badge -->
-                            <el-tag v-if="budget.latest_catalog" :type="budget.latest_catalog.is_approved ? 'success' : 'warning'" size="small" effect="dark">
-                                {{ budget.latest_catalog.status_label }}
-                            </el-tag>
+                            <el-tooltip
+                                v-if="budget.latest_catalog"
+                                :disabled="!isCatalogPendingUpdate(budget.latest_catalog.status)"
+                                :content="catalogUpdatedTooltip"
+                                placement="top"
+                            >
+                                <el-tag :type="catalogStatusType(budget.latest_catalog.status)" size="small" effect="dark">
+                                    {{ catalogStatusLabel(budget.latest_catalog.status) }}
+                                </el-tag>
+                            </el-tooltip>
                             <span v-if="budget.latest_catalog?.approved_by_name" class="text-xs text-gray-400">
                                 por {{ budget.latest_catalog.approved_by_name }}
                             </span>
@@ -438,8 +447,15 @@ function approveCatalog() {
                         </div>
                         <!-- Approve & Transfer buttons -->
                         <div v-if="budget.latest_catalog && !budget.latest_catalog.is_approved" class="mt-2 flex items-center gap-2">
+                            <template v-if="isCatalogPendingUpdate(budget.latest_catalog.status)">
+                                <el-tooltip :content="catalogUpdatedTooltip" placement="top">
+                                    <span class="text-sm text-orange-600 font-medium bg-orange-50 px-3 py-1 rounded border border-orange-200">
+                                        Pendiente de actualización
+                                    </span>
+                                </el-tooltip>
+                            </template>
                             <span
-                                v-if="budget.latest_catalog.needs_special_authorization"
+                                v-else-if="budget.latest_catalog.needs_special_authorization"
                                 class="text-sm text-orange-600 font-medium bg-orange-50 px-3 py-1 rounded border border-orange-200">
                                 En revisión por Dirección
                             </span>

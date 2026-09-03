@@ -141,9 +141,7 @@ const rules = reactive({
     exchange_rate: [{ required: true, message: 'Requerido', trigger: 'blur' }],
 });
 
-const submit = (sendToCosts = false) => {
-    form.send_to_costs = sendToCosts;
-
+const doSubmit = (sendToCosts = false) => {
     if (!formRef.value) return;
 
     formRef.value.validate((valid) => {
@@ -186,6 +184,30 @@ const submit = (sendToCosts = false) => {
             ElMessage.error('Completa los campos obligatorios.');
         }
     });
+};
+
+const submit = (sendToCosts = false) => {
+    form.send_to_costs = sendToCosts;
+
+    // When editing a budget that already went through the costs area and the
+    // user sends it back to costs, warn that the costs team will be notified
+    // because the current catalog requires an update.
+    const needsCostsUpdateNotice = isEdit && sendToCosts && Boolean(props.budget?.latest_catalog);
+
+    if (!needsCostsUpdateNotice) {
+        doSubmit(sendToCosts);
+        return;
+    }
+
+    ElMessageBox.confirm(
+        'Se notificará al área de costos que la información del presupuesto cambió y que el catálogo requiere actualización.',
+        'Enviar a costos',
+        {
+            confirmButtonText: 'Aceptar',
+            cancelButtonText: 'Cancelar',
+            type: 'warning',
+        }
+    ).then(() => doSubmit(sendToCosts)).catch(() => {});
 };
 
 // --- IMÁGENES DE LEVANTAMIENTO ---

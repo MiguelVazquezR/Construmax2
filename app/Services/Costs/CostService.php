@@ -49,6 +49,9 @@ class CostService
                             'pending'  => $q->orWhereHas('latestCatalog', function ($sub) {
                                 $sub->where('status', \App\Models\BudgetCatalog::STATUS_PENDING_APPROVAL);
                             }),
+                            'update', 'pending_update' => $q->orWhereHas('latestCatalog', function ($sub) {
+                                $sub->where('status', \App\Models\BudgetCatalog::STATUS_PENDING_UPDATE);
+                            }),
                             'approved' => $q->orWhereHas('latestCatalog', function ($sub) {
                                 $sub->where('status', \App\Models\BudgetCatalog::STATUS_APPROVED);
                             }),

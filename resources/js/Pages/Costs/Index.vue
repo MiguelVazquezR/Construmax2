@@ -4,10 +4,12 @@ import { router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { debounce } from 'lodash';
 import { usePermissions } from '@/Composables/usePermissions';
+import { useCatalogStatus } from '@/Composables/useCatalogStatus';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { ChatDotSquare } from '@element-plus/icons-vue';
 
 const { can } = usePermissions();
+const { catalogStatusType, catalogUpdatedTooltip } = useCatalogStatus();
 
 const props = defineProps({
     budgets: Object,
@@ -16,9 +18,9 @@ const props = defineProps({
 });
 
 const normalizeCatalogFilter = (value) => {
-    if (!value) return ['pending'];
+    if (!value) return ['pending', 'update'];
     if (Array.isArray(value)) return value;
-    if (value === 'all') return ['without', 'pending', 'approved'];
+    if (value === 'all') return ['without', 'pending', 'approved', 'update'];
     return [value];
 };
 
@@ -62,13 +64,7 @@ const getStatusColor = (status) => {
     return map[status] || 'info';
 };
 
-const getCatalogStatusColor = (status) => {
-    const map = {
-        'pending_approval': 'warning',
-        'approved': 'success',
-    };
-    return map[status] || 'info';
-};
+const getCatalogStatusColor = (status) => catalogStatusType(status);
 
 const handlePageChange = (val) => {
     router.visit(route('costs.index', { ...route().params, page: val }), {
@@ -166,6 +162,7 @@ const submitTransfer = () => {
                     <el-select v-model="catalogFilter" placeholder="Filtro de catálogo" multiple collapse-tags class="lg:!w-1/3">
                         <el-option label="Sin catálogo" value="without" />
                         <el-option label="Pendientes de aprobación" value="pending" />
+                        <el-option label="Pendientes de actualización" value="update" />
                         <el-option label="Aprobados" value="approved" />
                     </el-select>
                 </div>
@@ -274,9 +271,15 @@ const submitTransfer = () => {
                     <el-table-column label="Catálogo" width="160" align="center">
                         <template #default="scope">
                             <div v-if="scope.row.has_catalog" class="flex flex-col items-center gap-1">
-                                <el-tag :type="getCatalogStatusColor(scope.row.catalog_status)" size="small" effect="light">
-                                    {{ scope.row.catalog_status_label }}
-                                </el-tag>
+                                <el-tooltip
+                                    :disabled="scope.row.catalog_status !== 'pending_update'"
+                                    :content="catalogUpdatedTooltip"
+                                    placement="top"
+                                >
+                                    <el-tag :type="getCatalogStatusColor(scope.row.catalog_status)" size="small" effect="light">
+                                        {{ scope.row.catalog_status_label }}
+                                    </el-tag>
+                                </el-tooltip>
                                 <span class="text-[10px] text-gray-400">v{{ scope.row.latest_version }}</span>
                                 <span v-if="scope.row.catalog_approved_by" class="text-[10px] text-gray-400">
                                     por {{ scope.row.catalog_approved_by }}
@@ -313,6 +316,12 @@ const submitTransfer = () => {
                                     @click="approveCatalog(scope.row, $event)">
                                     Aprobar
                                 </el-button>
+                                <span
+                                    v-else-if="scope.row.has_catalog && scope.row.catalog_status === 'pending_update'"
+                                    class="text-xs text-orange-600 font-medium bg-orange-50 px-2 py-1 rounded border border-orange-200"
+                                >
+                                    Actualizar catálogo
+                                </span>
                                 <el-button
                                     v-if="scope.row.has_catalog && scope.row.catalog_status === 'pending_approval' && !scope.row.needs_special_authorization && canTransfer"
                                     type="warning" size="small" plain
