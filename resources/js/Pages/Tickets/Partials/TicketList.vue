@@ -7,8 +7,10 @@ import {
     Timer, Check, Location, ChatDotSquare, DocumentChecked
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
+import { useCatalogStatus } from '@/Composables/useCatalogStatus';
 
 const { can } = usePermissions();
+const { catalogStatusType, catalogStatusCompactLabel, catalogUpdatedTooltip, isCatalogPendingUpdate } = useCatalogStatus();
 
 const props = defineProps({
     tickets: Object, 
@@ -275,19 +277,25 @@ const handleToggleOce = (ticket) => {
                             </div>
                             <!-- Indicador de catálogo de costos y nota importante -->
                             <div class="flex items-center gap-2 mt-1.5">
-                                <el-tag
+                                <el-tooltip
                                     v-if="scope.row.budget?.latest_catalog"
-                                    size="small"
-                                    :type="scope.row.budget.latest_catalog.status === 'approved' ? 'success' : 'warning'"
-                                    effect="plain"
-                                    class="!text-[10px] !h-5 !px-1.5"
+                                    :disabled="!isCatalogPendingUpdate(scope.row.budget.latest_catalog.status)"
+                                    :content="catalogUpdatedTooltip"
+                                    placement="top"
                                 >
-                                    Catálogo v{{ scope.row.budget.latest_catalog.version }}
-                                    <span class="ml-1 opacity-70">
-                                        — {{ scope.row.budget.latest_catalog.status === 'approved' ? 'Aprobado' : 'Pendiente' }}
-                                    </span>
-                                    <span class="ml-1 opacity-60">{{ formatDate(scope.row.budget.latest_catalog.created_at) }}</span>
-                                </el-tag>
+                                    <el-tag
+                                        size="small"
+                                        :type="catalogStatusType(scope.row.budget.latest_catalog.status)"
+                                        effect="plain"
+                                        class="!text-[10px] !h-5 !px-1.5"
+                                    >
+                                        Catálogo v{{ scope.row.budget.latest_catalog.version }}
+                                        <span class="ml-1 opacity-70">
+                                            — {{ catalogStatusCompactLabel(scope.row.budget.latest_catalog.status) }}
+                                        </span>
+                                        <span class="ml-1 opacity-60">{{ formatDate(scope.row.budget.latest_catalog.created_at) }}</span>
+                                    </el-tag>
+                                </el-tooltip>
                                 <el-tag
                                     v-else
                                     size="small"
