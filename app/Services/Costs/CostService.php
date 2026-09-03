@@ -31,8 +31,9 @@ class CostService
                 });
             })
             ->when(true, function ($query) use ($filters) {
-                // Normalize: accept string or array, default to ['pending']
-                $catalogValues = $filters['catalog'] ?? ['pending'];
+                // Normalize: accept string or array, default to the same 3 states
+                // the UI shows selected by default (without, pending, update)
+                $catalogValues = $filters['catalog'] ?? ['without', 'pending', 'update'];
                 $catalogValues = (array) $catalogValues;
                 $catalogValues = array_filter($catalogValues);
 
