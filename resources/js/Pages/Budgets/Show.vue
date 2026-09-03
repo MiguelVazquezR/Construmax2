@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { usePermissions } from '@/Composables/usePermissions';
+import { useCatalogStatus } from '@/Composables/useCatalogStatus';
 import { Document, Printer, Tickets } from '@element-plus/icons-vue';
 import BudgetDetailHeader from '@/Pages/Budgets/Partials/BudgetDetailHeader.vue';
 import BudgetScopeCard from '@/Pages/Budgets/Partials/BudgetScopeCard.vue';
@@ -14,6 +15,7 @@ import BudgetClientCard from '@/Pages/Budgets/Partials/BudgetClientCard.vue';
 import BudgetFinanceCard from '@/Pages/Budgets/Partials/BudgetFinanceCard.vue';
 
 const { can } = usePermissions();
+const { catalogStatusLabel, catalogStatusType, catalogUpdatedTooltip } = useCatalogStatus();
 
 const props = defineProps({
     budget: Object,
@@ -115,13 +117,19 @@ const getTicketStatusColor = (status) => {
                                                 <span class="text-sm text-gray-500">
                                                     Versión {{ budget.latest_catalog.version }}
                                                 </span>
-                                                <el-tag
-                                                    :type="budget.latest_catalog.status === 'approved' ? 'success' : 'warning'"
-                                                    size="small"
-                                                    effect="plain"
+                                                <el-tooltip
+                                                    :disabled="budget.latest_catalog.status !== 'pending_update'"
+                                                    :content="catalogUpdatedTooltip"
+                                                    placement="top"
                                                 >
-                                                    {{ budget.latest_catalog.status === 'approved' ? 'Aprobado' : 'Pendiente de aprobación' }}
-                                                </el-tag>
+                                                    <el-tag
+                                                        :type="catalogStatusType(budget.latest_catalog.status)"
+                                                        size="small"
+                                                        effect="plain"
+                                                    >
+                                                        {{ catalogStatusLabel(budget.latest_catalog.status) }}
+                                                    </el-tag>
+                                                </el-tooltip>
                                             </div>
                                             <div class="flex gap-2">
                                                 <Link :href="route('costs.show', budget.id)">

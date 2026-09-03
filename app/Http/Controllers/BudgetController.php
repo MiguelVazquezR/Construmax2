@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Budget;
+use App\Models\BudgetCatalog;
 use App\Models\BudgetPayment;
 use App\Models\Calendar;
 use App\Models\Customer;
@@ -250,7 +251,7 @@ class BudgetController extends Controller
 
     public function edit(Budget $budget)
     {
-        $budget->load(['concepts', 'media', 'ticket.customer', 'ticket.contact', 'ticket.branch']);
+        $budget->load(['concepts', 'media', 'latestCatalog', 'ticket.customer', 'ticket.contact', 'ticket.branch']);
 
         $tickets = Ticket::with(['customer', 'contact', 'branch'])
             ->where(function ($q) use ($budget) {
@@ -321,6 +322,24 @@ class BudgetController extends Controller
         // ticket that has already advanced to a later stage.
         if ($request->boolean('send_to_costs') && $budget->ticket && $budget->ticket->status !== 'Catálogo') {
             $budget->ticket->update(['status' => 'Catálogo']);
+        }
+
+        // When an edited budget is re-sent to the costs area and it already
+        // had a catalog, invalidate the current catalog so the costs team
+        // knows the catalog must be reviewed and a new version saved. Any
+        // previous approval or special-authorization data is cleared because
+        // it no longer reflects the edited budget.
+        if ($request->boolean('send_to_costs')) {
+            $budget->loadMissing('latestCatalog');
+            if ($budget->latestCatalog && !$budget->latestCatalog->isPendingUpdate()) {
+                $budget->latestCatalog->update([
+                    'status' => BudgetCatalog::STATUS_PENDING_UPDATE,
+                    'approved_by' => null,
+                    'approved_at' => null,
+                    'needs_special_authorization' => false,
+                    'transfer_notes' => null,
+                ]);
+            }
         }
 
         if ($request->hasFile('survey_images')) {
