@@ -18,7 +18,7 @@ const props = defineProps({
 });
 
 const normalizeCatalogFilter = (value) => {
-    if (!value) return ['pending', 'update'];
+    if (!value) return ['without', 'pending', 'update'];
     if (Array.isArray(value)) return value;
     if (value === 'all') return ['without', 'pending', 'approved', 'update'];
     return [value];
