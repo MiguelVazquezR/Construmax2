@@ -9,6 +9,7 @@ use App\Models\NotificationSetting;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Notifications\CatalogApproved;
+use App\Notifications\CatalogNeedsUpdate;
 use App\Notifications\DepositPendingApproval;
 use App\Notifications\InvoiceOverdue;
 use App\Notifications\TicketNeedsCatalog;
@@ -59,6 +60,19 @@ class DispatchNotificationAction
         if ($seller && $seller->email) {
             $seller->notify(new CatalogApproved($catalog));
         }
+    }
+
+    /**
+     * Notify the costs team when an edited budget invalidates its catalog and
+     * a new version must be saved (catalog status = pending_update).
+     * Recipients: active users with the costs.receive-catalog-update-notifications permission.
+     */
+    public function catalogNeedsUpdate(BudgetCatalog $catalog): void
+    {
+        $this->notificationService->notifyUsersWithPermissions(
+            ['costs.receive-catalog-update-notifications'],
+            new CatalogNeedsUpdate($catalog)
+        );
     }
 
     /**

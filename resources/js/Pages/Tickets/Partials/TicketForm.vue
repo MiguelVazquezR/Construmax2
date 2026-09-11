@@ -134,6 +134,7 @@ defineExpose({
 const getStatusColor = (status) => {
     const map = {
         'Borrador': 'info',
+        'Por programar': 'info',
         'Programado': 'info',
         'Levantamiento': 'warning',
         'Catálogo': 'primary',
@@ -255,6 +256,7 @@ const handleTemplateSaved = () => {
 
 const statuses = [
     'Borrador',
+    'Por programar',
     'Programado',
     'Levantamiento', 
     'Catálogo', 

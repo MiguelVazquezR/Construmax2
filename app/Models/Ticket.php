@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Support\Str;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
@@ -199,8 +200,8 @@ class Ticket extends Model implements HasMedia
         } elseif ($completed === $total) {
             $newStatus = 'Ejecutado';
         } else {
-            // If tasks exist but none completed, and ticket was Borrador or Programado
-            if ($completed === 0 && in_array($currentStatus, ['Borrador', 'Programado'])) {
+            // If tasks exist but none completed, and ticket was Borrador, Por programar or Programado
+            if ($completed === 0 && in_array($currentStatus, ['Borrador', 'Por programar', 'Programado'])) {
                 $newStatus = $currentStatus;
             } else {
                 $newStatus = 'Proceso de ejecución';
@@ -210,6 +211,22 @@ class Ticket extends Model implements HasMedia
         if ($newStatus !== $currentStatus) {
             $this->update(['status' => $newStatus]);
         }
+    }
+
+    /**
+     * Check whether a branch region matches the expected region/state.
+     *
+     * The comparison ignores case, accents and surrounding whitespace, so
+     * "jalisco", "JALISCO" and " Jálisco " all match "Jalisco".
+     */
+    public static function regionMatches(?string $branchRegion, string $expectedRegion): bool
+    {
+        return self::normalizeRegion($branchRegion) === self::normalizeRegion($expectedRegion);
+    }
+
+    private static function normalizeRegion(?string $region): string
+    {
+        return Str::lower(Str::ascii(trim((string) $region)));
     }
 
     // --- SCOPES ---

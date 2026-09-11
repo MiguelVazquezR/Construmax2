@@ -67,6 +67,7 @@ const getTechLabel = (user) => {
 
 const statuses = [
     'Borrador',
+    'Por programar',
     'Programado',
     'Levantamiento', 
     'Catálogo',
@@ -79,7 +80,7 @@ const statuses = [
     'Cancelado',
 ];
 
-const defaultStatuses = ['Borrador', 'Programado', 'Levantamiento', 'Catálogo', 'Pendiente de aprobación', 'Proceso de ejecución', 'Ejecutado'];
+const defaultStatuses = ['Borrador', 'Por programar', 'Programado', 'Levantamiento', 'Catálogo', 'Pendiente de aprobación', 'Proceso de ejecución', 'Ejecutado'];
 
 // Status filter uses an array for multi-select support
 const rawStatus = getFilter('status', defaultStatuses);
