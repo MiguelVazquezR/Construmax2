@@ -1,7 +1,7 @@
 # Construmax2 ERP — 13: Notifications Module
 
 > **Purpose:** In-app and email notifications for key business events — subscriber management, notification bell with polling, automated cron-triggered checks.  
-> **Context file covers:** 5 notification types, dispatch orchestration, subscriber settings, notification bell.
+> **Context file covers:** 6 notification types, dispatch orchestration, subscriber settings, notification bell.
 
 ---
 
@@ -9,10 +9,11 @@
 
 | Layer | File | Purpose |
 |-------|------|---------|
-| Action | `DispatchNotificationAction.php` | Centralized dispatch for all 5 event types |
+| Action | `DispatchNotificationAction.php` | Centralized dispatch for all 6 event types |
 | Service | `NotificationService.php` | Notify subscribers for a given notification type |
 | Model | `NotificationSetting.php` | Per-user toggles for each notification type |
 | Notification | `CatalogApproved.php` | Mail + database |
+| Notification | `CatalogNeedsUpdate.php` | Mail + database |
 | Notification | `DepositPendingApproval.php` | Database only |
 | Notification | `InvoiceOverdue.php` | Mail + database |
 | Notification | `TicketNeedsCatalog.php` | Mail + database |
@@ -45,12 +46,13 @@ DELETE /config/notifications/user/{user}       config.notifications.delete-user
 
 ---
 
-## Five notification types
+## Six notification types
 
 | Type key | Trigger | Channels | Who receives it |
 |----------|---------|----------|----------------|
 | `ticket.needs-catalog` | Ticket status → `Catálogo` | mail + database | All subscribers |
 | `catalog.approved` | BudgetCatalog approved | mail + database | **Only the ticket's seller**, if they have the setting active |
+| `catalog.needs-update` | Edited budget re-sent to costs with an existing catalog (status → `pending_update`) | mail + database | **Active users with `costs.receive-catalog-update-notifications`** (not configurable) |
 | `ticket.needs-invoice` | Ticket status → `Finalizado` | mail + database | All subscribers |
 | `invoice.overdue` | Cron detects due date reached | mail + database | All subscribers |
 | `deposit.pending-approval` | Deposit created | database only | All subscribers |
@@ -63,15 +65,23 @@ DELETE /config/notifications/user/{user}       config.notifications.delete-user
 Centralized class injected into:
 - `Ticket` model (booted::updated) — for `ticketNeedsInvoice` (status → Finalizado)
 - `CostController::approveCatalog()` — for `catalogApproved` (when catalog is approved)
+- `BudgetController::update()` — for `catalogNeedsUpdate` (when an edited budget re-sent to costs invalidates its catalog)
 - `CheckOverdueInvoices` command — for `invoiceOverdue`
 - Controllers that create deposits — for `depositPendingApproval`
 
 ### Special case: `catalogApproved`
 Unlike other notifications that go to all subscribers, catalog approval only notifies the **ticket's seller** — and only if they have the `catalog.approved` notification setting active. This uses an explicit `NotificationSetting` check rather than the `notifySubscribers` helper. The notification fires when a user with `costs.approve` permission approves the catalog, not when the catalog is created.
 
+### Special case: `catalogNeedsUpdate`
+This notification targets the costs team directly and has **no subscriber configuration** — it isn't part of `NotificationSetting::TYPES`. Recipients are resolved from permissions: **active users holding the dedicated `costs.receive-catalog-update-notifications` permission** (granted directly or through a role, category `Costos`). It uses `NotificationService::notifyUsersWithPermissions()` instead of `notifySubscribers()`.
+
 ### `NotificationService::notifySubscribers(string $type, Notification $notification)`
 - Queries `NotificationSetting::subscribersFor($type)` — returns users with active setting and valid email
 - Sends the notification to each subscriber via Laravel's `Notification::send()`
+
+### `NotificationService::notifyUsersWithPermissions(array $permissions, Notification $notification)`
+- Queries active users with a valid email that hold **any** of the given permissions, via Spatie's `permission()` scope (includes permissions granted through roles)
+- Sends the notification to each user
 
 ---
 
@@ -106,6 +116,7 @@ All notification emails are written in **Spanish** (user-facing content) with En
 - **Users** (`03`): `NotificationSetting` is per-user; subscribers filtered by valid email
 - **Tickets** (`06`): `ticketNeedsCatalog`, `ticketNeedsInvoice` triggered by status changes
 - **Budgets** (`07`): Catalog approval triggers `catalogApproved`
+- **Costs** (`08`): Edited budget re-sent to costs invalidates the catalog (`pending_update`) and triggers `catalogNeedsUpdate`
 - **Deposits** (`11`): Deposit creation triggers `depositPendingApproval`
 - **Invoices** (`12`): Cron command triggers `invoiceOverdue`
 
@@ -113,7 +124,8 @@ All notification emails are written in **Spanish** (user-facing content) with En
 
 ## Known limitations / cautions
 
-- **`catalogApproved` is an exception:** Unlike the other 4 types, it doesn't use `notifySubscribers` — it manually checks the seller's setting. If you want to change who receives catalog approval notifications, edit `DispatchNotificationAction::catalogApproved`.
+- **`catalogApproved` is an exception:** Unlike the subscriber-based types, it doesn't use `notifySubscribers` — it manually checks the seller's setting. If you want to change who receives catalog approval notifications, edit `DispatchNotificationAction::catalogApproved`.
+- **`catalog.needs-update` is permission-based, not configurable:** It isn't listed in `NotificationSetting::TYPES`, so it never appears in the notification settings page. Recipients are users with the dedicated `costs.receive-catalog-update-notifications` permission (via role or direct assignment); to change the permission used, edit `DispatchNotificationAction::catalogNeedsUpdate`.
 - **No notification for calendar events:** Participant invitations exist in the data model but aren't wired to notifications
 - **30-second polling:** The bell polls every 30s — if many users are active, this generates constant requests. Consider WebSockets (Laravel Reverb/Echo) for scale.
 - **`deposit.pending-approval` is database-only:** No email is sent for deposit approvals — admins must check the notification bell

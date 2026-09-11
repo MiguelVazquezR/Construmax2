@@ -265,6 +265,11 @@ class PermissionSeeder extends Seeder
                 'category' => 'Costos',
                 'description' => 'Transferir catálogos a costos especiales para autorización'
             ],
+            [
+                'name' => 'costs.receive-catalog-update-notifications',
+                'category' => 'Costos',
+                'description' => 'Recibir notificaciones cuando un presupuesto actualizado requiere un nuevo catálogo'
+            ],
 
             // --- MÓDULO: COSTOS ESPECIALES ---
             [

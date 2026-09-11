@@ -37,6 +37,24 @@ class NotificationService
     }
 
     /**
+     * Dispatch a notification to all active users holding any of the given
+     * permissions (granted directly or through a role).
+     */
+    public function notifyUsersWithPermissions(array $permissions, $notification): void
+    {
+        $users = User::query()
+            ->where('is_active', true)
+            ->whereNotNull('email')
+            ->where('email', '!=', '')
+            ->permission($permissions)
+            ->get();
+
+        foreach ($users as $user) {
+            $user->notify($notification);
+        }
+    }
+
+    /**
      * Create or update notification settings for a user.
      */
     public function syncSettings(int $userId, array $settings): void

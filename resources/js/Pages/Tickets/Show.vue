@@ -9,8 +9,10 @@ import TicketInfo from '@/Pages/Tickets/Partials/TicketInfo.vue';
 import TicketTimeline from '@/Pages/Tickets/Partials/TicketTimeline.vue';
 import TicketBudgetCard from '@/Pages/Tickets/Partials/TicketBudgetCard.vue';
 import { usePermissions } from '@/Composables/usePermissions';
+import { useSchedulingRegion } from '@/Composables/useSchedulingRegion';
 
 const { can } = usePermissions();
+const { isTicketInSchedulingRegion, schedulingRegionMessage } = useSchedulingRegion();
 
 const props = defineProps({
     ticket: Object,
@@ -21,6 +23,7 @@ const activeTab = ref('tasks');
 
 const statusOptions = [
     { label: 'Borrador', value: 'Borrador', color: '#9ca3af' },
+    { label: 'Por programar', value: 'Por programar', color: '#818cf8' },
     { label: 'Programado', value: 'Programado', color: '#6366f1' },
     { label: 'Levantamiento', value: 'Levantamiento', color: '#0d9488' },
     { label: 'Cotización (Catálogo)', value: 'Catálogo', color: '#3b82f6' },
@@ -39,6 +42,7 @@ const hasBudget = computed(() => !!props.ticket.budget);
 const getStatusColor = (status) => {
     const map = {
         'Borrador': 'secondary',
+        'Por programar': 'info',
         'Programado': 'info',
         'Levantamiento': 'info',
         'Catálogo': 'primary',
@@ -80,6 +84,13 @@ async function handleStatusChange(newStatus) {
         }
     }
 
+    // "Por programar" solo está disponible para tickets de la región/estado de Jalisco
+    if (newStatus === 'Por programar' && !isTicketInSchedulingRegion(props.ticket)) {
+        currentStatus.value = props.ticket.status;
+        ElMessage.warning(schedulingRegionMessage);
+        return;
+    }
+
     router.put(route('tickets.update-status', props.ticket.id), {
         status: newStatus
     }, {
@@ -88,9 +99,9 @@ async function handleStatusChange(newStatus) {
         onSuccess: () => {
             ElMessage.success('Estatus actualizado correctamente.');
         },
-        onError: () => {
+        onError: (errors) => {
             currentStatus.value = props.ticket.status;
-            ElMessage.error('Error al actualizar el estatus.');
+            ElMessage.error(errors?.status || 'Error al actualizar el estatus.');
         }
     });
 }
