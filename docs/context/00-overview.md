@@ -44,7 +44,7 @@ Construmax2/
 │   │   └── Requests/     # Form Requests (all validation lives here)
 │   │       ├── FieldWork/ # Store|UpdateFieldWorkScheduleRequest
 │   ├── Models/           # 23 Eloquent models with rich relationships/scopes
-│   ├── Notifications/    # 5 notification classes (mail + database)
+│   ├── Notifications/    # 6 notification classes (mail + database)
 │   ├── Providers/        # AppServiceProvider, Fortify, Jetstream
 │   └── Services/         # Reusable business logic (per module)
 │       ├── Costs/        # CostService
@@ -105,7 +105,7 @@ Construmax2/
 | 10 | Calendar | `10-module-calendar.md` | Dual-mode calendar: personal events with participant invitations + field work scheduling with task timestamp automation, Day/Week/Month views |
 | 11 | Deposits | `11-module-deposits.md` | Deposit tracking: creation, approval workflow, bank accounts, public signed-URL views, shift management |
 | 12 | Invoices | `12-module-invoices.md` | Invoice upload, tracking overdue invoices, status syncing with tickets |
-| 13 | Notifications | `13-module-notifications.md` | 5 event types, subscriber management, notification bell with polling, cron-triggered overdue checks |
+| 13 | Notifications | `13-module-notifications.md` | 6 event types, subscriber management, notification bell with polling, cron-triggered overdue checks |
 | 14 | Service Types | `06-module-tickets.md` | Simple CRUD for service type taxonomy used by tickets |
 | 15 | Tutorials | `04-module-dashboard.md` | Hardcoded video tutorial gallery page |
 | 16 | Work Acceptance Reports | `14-module-work-acceptance-reports.md` | Digital "Acta de recepción": technician data entry, electronic signature, PDF export, locking mechanism |

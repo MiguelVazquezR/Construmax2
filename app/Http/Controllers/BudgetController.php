@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Notifications\DispatchNotificationAction;
 use App\Models\Budget;
 use App\Models\BudgetCatalog;
 use App\Models\BudgetPayment;
@@ -22,6 +23,7 @@ class BudgetController extends Controller
 {
     public function __construct(
         private readonly ImageOptimizerService $imageOptimizer,
+        private readonly DispatchNotificationAction $dispatchNotification,
     ) {}
 
     public function index(Request $request)
@@ -339,6 +341,8 @@ class BudgetController extends Controller
                     'needs_special_authorization' => false,
                     'transfer_notes' => null,
                 ]);
+
+                $this->dispatchNotification->catalogNeedsUpdate($budget->latestCatalog);
             }
         }
 

@@ -4,8 +4,10 @@ import { router } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { OfficeBuilding, Timer, Location, UserFilled, DocumentChecked } from '@element-plus/icons-vue';
 import { useCatalogStatus } from '@/Composables/useCatalogStatus';
+import { useSchedulingRegion } from '@/Composables/useSchedulingRegion';
 
 const { catalogStatusType, catalogStatusCompactLabel, catalogUpdatedTooltip, isCatalogPendingUpdate } = useCatalogStatus();
+const { isTicketInSchedulingRegion, schedulingRegionMessage } = useSchedulingRegion();
 
 const props = defineProps({
     tickets: Object,
@@ -21,6 +23,7 @@ watch(() => props.tickets.data, (newVal) => {
 
 const columns = [
     { id: 'Borrador', label: 'Borrador', color: '#9ca3af' },
+    { id: 'Por programar', label: 'Por programar', color: '#818cf8' },
     { id: 'Programado', label: 'Programado', color: '#6366f1' },
     { id: 'Levantamiento', label: 'Levantamiento', color: '#0d9488' },
     { id: 'Catálogo', label: 'Cotización (Catálogo)', color: '#3b82f6' },
@@ -108,6 +111,13 @@ const onDrop = async (e, targetStatus) => {
         return;
     }
 
+    // "Por programar" solo está disponible para tickets de la región/estado de Jalisco
+    if (targetStatus === 'Por programar' && !isTicketInSchedulingRegion(ticket)) {
+        ElMessage.warning(schedulingRegionMessage);
+        draggedItem.value = null;
+        return;
+    }
+
     updateStatus(ticket.id, targetStatus);
     draggedItem.value = null;
 };
@@ -123,9 +133,9 @@ const updateStatus = (ticketId, newStatus) => {
     }, {
         preserveScroll: true,
         preserveState: true,
-        onError: () => {
+        onError: (errors) => {
             router.reload({ only: ['tickets'] });
-            ElMessage.error('Error al actualizar el estado del ticket.');
+            ElMessage.error(errors?.status || 'Error al actualizar el estado del ticket.');
         }
     });
 };
@@ -161,6 +171,17 @@ const getTechDisplayName = (user) => {
         }
     }
     return label;
+};
+
+// Branch location label for the card: "Jalisco · Sucursal Central · UN-01".
+// The region/state goes first so it stays visible if the text gets truncated.
+const getBranchLabel = (ticket) => {
+    const branch = ticket.branch;
+    if (!branch) return '';
+    return [branch.region, branch.branch_name, branch.unit]
+        .map(value => (value || '').trim())
+        .filter(Boolean)
+        .join(' · ');
 };
 </script>
 
@@ -227,7 +248,7 @@ const getTechDisplayName = (user) => {
 
                             <div v-if="ticket.branch" class="text-xs text-gray-400 dark:text-gray-500 mb-3 flex items-center gap-1 pr-2 mt-0.5">
                                 <el-icon :size="12"><Location /></el-icon>
-                                <span class="truncate">{{ [ticket.branch.branch_name, ticket.branch.unit].filter(Boolean).join(' · ') }}</span>
+                                <span class="truncate" :title="getBranchLabel(ticket)">{{ getBranchLabel(ticket) }}</span>
                             </div>
                             <div v-else class="mb-3"></div>
 
