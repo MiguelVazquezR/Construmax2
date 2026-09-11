@@ -127,7 +127,7 @@ POST /costs/{budget}/catalog/{catalog}/approve      costs.approve-catalog
 - **Budgets** (`07`): Catalogs belong to budgets; budget's `total_cost` falls back to catalog total; `Budgets/Show.vue` shows approval status tag
 - **Tickets** (`06`): Ticket folio, customer, branch info displayed; report number editing updates ticket; `TicketInfo.vue` shows catalog approval status; ticket status changes to `Pendiente de aprobación` on catalog save
 - **Customers** (`05`): Customer ID #2 is the Empeño Fácil customer
-- **Notifications** (`13`): `CatalogApproved` notification dispatched on catalog approval
+- **Notifications** (`13`): `CatalogApproved` notification dispatched on catalog approval; `CatalogNeedsUpdate` dispatched when an edited budget is re-sent to costs and invalidates its catalog (`pending_update`), sent to active users with the `costs.receive-catalog-update-notifications` permission
 
 ---
 

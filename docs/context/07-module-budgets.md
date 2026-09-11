@@ -69,7 +69,7 @@ DELETE /budgets/files/{media}                        budgets.files.destroy
 | `index` | List with search, status, user/branch filters; default filtered to current user |
 | `store` | Creates budget + concepts, handles `survey_images` and `support_files` uploads; supports `quick_create` for JSON response from ticket flow; auto-sets ticket status to `Catálogo` |
 | `show` | Loads with all relations and media for detail tabs |
-| `update` | Updates budget + concepts + images (deletes and recreates concepts); handles `survey_images` and `support_files` uploads |
+| `update` | Updates budget + concepts + images (deletes and recreates concepts); handles `survey_images` and `support_files` uploads; when `send_to_costs` is true and a catalog exists, invalidates it (`pending_update`, clears approval) and dispatches the `catalog.needs-update` notification |
 | `storePayment` | Records client payment with proof; auto-marks ticket as "Pagado" when fully paid |
 | `destroyPayment` | Deletes payment; if total paid drops below total cost and ticket was `Pagado`, reverts ticket to `Facturado` |
 | `storeTechnicianPayment` | Records payment to technician (proof mandatory) |

@@ -142,6 +142,38 @@ class TicketControllerTest extends TestCase
         ]);
     }
 
+    public function test_update_status_allows_por_programar_for_jalisco_tickets(): void
+    {
+        $customer = Customer::factory()->create();
+        $branch = CustomerBranch::factory()->create(['customer_id' => $customer->id, 'region' => 'jalisco']);
+        $ticket = Ticket::factory()->create(['status' => 'Borrador', 'customer_branch_id' => $branch->id]);
+
+        $this->actingAs($this->user)
+            ->put(route('tickets.update-status', $ticket), ['status' => 'Por programar'])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket->id,
+            'status' => 'Por programar',
+        ]);
+    }
+
+    public function test_update_status_blocks_por_programar_for_non_jalisco_tickets(): void
+    {
+        $customer = Customer::factory()->create();
+        $branch = CustomerBranch::factory()->create(['customer_id' => $customer->id, 'region' => 'Nuevo León']);
+        $ticket = Ticket::factory()->create(['status' => 'Borrador', 'customer_branch_id' => $branch->id]);
+
+        $this->actingAs($this->user)
+            ->put(route('tickets.update-status', $ticket), ['status' => 'Por programar'])
+            ->assertSessionHasErrors('status');
+
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket->id,
+            'status' => 'Borrador',
+        ]);
+    }
+
     // --- edit ---
 
     public function test_edit_renders_form(): void

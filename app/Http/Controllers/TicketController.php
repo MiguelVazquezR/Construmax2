@@ -5,11 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Models\Customer;
+use App\Models\CustomerBranch;
 use App\Models\ServiceType;
 use App\Models\TaskTemplate;
 use App\Services\Media\ImageOptimizerService;
 use App\Services\Tickets\TicketDuplicateService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\URL;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
@@ -101,7 +103,7 @@ class TicketController extends Controller
         }
 
         // Default active statuses (exclude finalized/completed)
-        $defaultStatuses = ['Borrador', 'Programado', 'Levantamiento', 'Catálogo', 'Pendiente de aprobación', 'Proceso de ejecución', 'Ejecutado', 'Finalizado'];
+        $defaultStatuses = ['Borrador', 'Por programar', 'Programado', 'Levantamiento', 'Catálogo', 'Pendiente de aprobación', 'Proceso de ejecución', 'Ejecutado', 'Finalizado'];
 
         if ($request->has('status')) {
             $statusFilter = $request->input('status', []);
@@ -294,8 +296,34 @@ class TicketController extends Controller
     public function updateStatus(Request $request, Ticket $ticket)
     {
         $request->validate(['status' => 'required|string']);
+
+        $this->ensureTicketCanAdoptStatus(['status' => $request->status], $ticket);
+
         $ticket->update(['status' => $request->status]);
+
         return back()->with('success', 'Estatus actualizado.');
+    }
+
+    /**
+     * The "Por programar" status is reserved for tickets whose branch is
+     * located in the allowed region/state (Jalisco). Ensures the requested
+     * status change respects that rule.
+     */
+    private function ensureTicketCanAdoptStatus(array $data, Ticket $ticket): void
+    {
+        if (($data['status'] ?? null) !== 'Por programar') {
+            return;
+        }
+
+        $branch = array_key_exists('customer_branch_id', $data)
+            ? ($data['customer_branch_id'] ? CustomerBranch::find($data['customer_branch_id']) : null)
+            : $ticket->branch;
+
+        if (!$branch || !Ticket::regionMatches($branch->region, 'Jalisco')) {
+            throw ValidationException::withMessages([
+                'status' => 'Solo los tickets del estado de Jalisco pueden estar en el estatus "Por programar". Verifica que la región/estado de la sucursal esté bien escrita.',
+            ]);
+        }
     }
 
     public function updateReportNumber(Request $request, Ticket $ticket)
@@ -456,6 +484,8 @@ class TicketController extends Controller
             'instructions' => 'nullable|string',
             'task_template_id' => 'nullable|exists:task_templates,id',
         ]);
+
+        $this->ensureTicketCanAdoptStatus($validated, $ticket);
 
         $oldTechnicians = $ticket->technicians ?? [];
         $ticket->update($validated);

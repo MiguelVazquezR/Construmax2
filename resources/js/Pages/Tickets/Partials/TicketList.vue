@@ -28,6 +28,7 @@ const formatDate = (dateString) => {
 const getStatusColor = (status) => {
     const map = {
         'Borrador': 'info',
+        'Por programar': 'info',
         'Programado': 'info',
         'Levantamiento': 'warning',
         'Catálogo': 'primary',

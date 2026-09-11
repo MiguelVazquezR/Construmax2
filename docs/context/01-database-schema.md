@@ -424,7 +424,7 @@ Per-user toggles for notification types.
 | Column | Type |
 |--------|------|
 | `id` | bigint PK |
-| `notification_type` | string (ticket.needs-catalog, catalog.created, ticket.needs-invoice, invoice.overdue, deposit.pending-approval) |
+| `notification_type` | string (ticket.needs-catalog, catalog.created, catalog.approved, ticket.needs-invoice, invoice.overdue, deposit.pending-approval) |
 | `user_id` | FK → users.id |
 | `is_active` | boolean |
 
