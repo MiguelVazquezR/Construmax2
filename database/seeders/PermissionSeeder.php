@@ -326,6 +326,33 @@ class PermissionSeeder extends Seeder
                 'category' => 'Depósitos',
                 'description' => 'Gestionar el catálogo de tipos de depósito'
             ],
+
+            // --- MÓDULO: CONTROL DE GASTOS ---
+            [
+                'name' => 'expenses.index',
+                'category' => 'Control de gastos',
+                'description' => 'Ver el listado y el resumen de gastos'
+            ],
+            [
+                'name' => 'expenses.create',
+                'category' => 'Control de gastos',
+                'description' => 'Registrar nuevos gastos'
+            ],
+            [
+                'name' => 'expenses.edit',
+                'category' => 'Control de gastos',
+                'description' => 'Editar gastos existentes'
+            ],
+            [
+                'name' => 'expenses.delete',
+                'category' => 'Control de gastos',
+                'description' => 'Eliminar gastos del sistema'
+            ],
+            [
+                'name' => 'expenses.categories.manage',
+                'category' => 'Control de gastos',
+                'description' => 'Gestionar el catálogo de categorías de gasto'
+            ],
         ];
 
         foreach ($permissions as $permission) {
