@@ -8,6 +8,7 @@ import { Document, Printer, Tickets } from '@element-plus/icons-vue';
 import BudgetDetailHeader from '@/Pages/Budgets/Partials/BudgetDetailHeader.vue';
 import BudgetScopeCard from '@/Pages/Budgets/Partials/BudgetScopeCard.vue';
 import BudgetConceptsTable from '@/Pages/Budgets/Partials/BudgetConceptsTable.vue';
+import BudgetExpensesCard from '@/Pages/Budgets/Partials/BudgetExpensesCard.vue';
 import BudgetTechniciansSection from '@/Pages/Budgets/Partials/BudgetTechniciansSection.vue';
 import BudgetFilesSection from '@/Pages/Budgets/Partials/BudgetFilesSection.vue';
 import BudgetTicketCard from '@/Pages/Budgets/Partials/BudgetTicketCard.vue';
@@ -163,6 +164,7 @@ const getTicketStatusColor = (status) => {
                                 </div>
                             </div>
                             <BudgetConceptsTable :budget="budget" />
+                            <BudgetExpensesCard :budget="budget" />
                             <BudgetScopeCard :budget="budget" />
                         </div>
                     </el-tab-pane>

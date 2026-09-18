@@ -5,6 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { ChatDotSquare, WarningFilled } from '@element-plus/icons-vue';
 import { useCostsHelpers } from '@/Composables/useCostsHelpers';
+import { useCostType } from '@/Composables/useCostType';
 
 const props = defineProps({
     catalog: Object,
@@ -20,6 +21,7 @@ const props = defineProps({
 });
 
 const { formatCurrency, copyToClipboard } = useCostsHelpers();
+const { costTypeLabel, costTypeTagType } = useCostType();
 
 const currentVersion = ref(null);
 const editingReportNumber = ref(false);
@@ -337,6 +339,19 @@ function openUrl(url) { window.open(url, '_blank'); }
                 </h3>
                 <el-table :data="concepts" size="small" border class="w-full">
                     <el-table-column prop="concept" label="Concepto comercial" min-width="200" />
+                    <el-table-column label="Categoría" width="130" align="center">
+                        <template #default="scope">
+                            <el-tag
+                                v-if="costTypeLabel(scope.row.type)"
+                                :type="costTypeTagType(scope.row.type)"
+                                size="small"
+                                effect="plain"
+                            >
+                                {{ costTypeLabel(scope.row.type) }}
+                            </el-tag>
+                            <span v-else class="text-xs text-gray-400">—</span>
+                        </template>
+                    </el-table-column>
                     <el-table-column label="Monto referencial" width="140" align="right">
                         <template #default="scope">{{ formatCurrency(scope.row.amount) }}</template>
                     </el-table-column>

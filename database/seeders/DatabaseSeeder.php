@@ -80,6 +80,7 @@ class DatabaseSeeder extends Seeder
             PermissionSeeder::class,
             ServiceTypeSeeder::class,
             DepositTypeSeeder::class,
+            ExpenseCategorySeeder::class,
         ]);
 
         $this->seedCustomersWithBranchesAndContacts();

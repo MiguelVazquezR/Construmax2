@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Actions\Deposits\ApproveDepositAction;
 use App\Actions\Deposits\CompleteDepositAction;
+use App\Actions\Expenses\SyncDepositExpenseAction;
 use App\Actions\Notifications\DispatchNotificationAction;
 use App\Http\Requests\Deposits\CompleteDepositRequest;
 use App\Http\Requests\Deposits\StoreDepositRequest;
@@ -26,6 +27,7 @@ class DepositController extends Controller
         private readonly DispatchNotificationAction $dispatchNotification,
         private readonly ApproveDepositAction $approveDepositAction,
         private readonly CompleteDepositAction $completeDepositAction,
+        private readonly SyncDepositExpenseAction $syncDepositExpenseAction,
     ) {}
 
     /**
@@ -123,9 +125,10 @@ class DepositController extends Controller
         // If a voucher is provided, register the deposit as completed immediately
         // (skipping the approval process) and create the technician payment.
         if ($voucher) {
+            // Completing the deposit also mirrors it in the expenses module.
             $this->completeDepositAction->execute($deposit, ['voucher' => $voucher]);
         } else {
-            // Dispatch approval notification
+            // Pending deposits are mirrored once they get approved.
             $this->dispatchNotification->depositPendingApproval($deposit);
         }
 
@@ -165,6 +168,9 @@ class DepositController extends Controller
 
         $deposit->update($data);
 
+        // Keep the mirror expense in the expenses module up to date.
+        $this->syncDepositExpenseAction->execute($deposit->fresh());
+
         return redirect()->route('deposits.index')
             ->with('success', 'Depósito actualizado correctamente.');
     }
@@ -181,6 +187,9 @@ class DepositController extends Controller
             return redirect()->route('deposits.index')
                 ->with('error', 'No se puede eliminar un depósito completado.');
         }
+
+        // Remove the mirror expense before deleting the deposit.
+        $deposit->expense?->delete();
 
         $deposit->delete();
 

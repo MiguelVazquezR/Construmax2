@@ -67,6 +67,14 @@ class Budget extends Model implements HasMedia
         return $this->hasMany(BudgetPayment::class);
     }
 
+    /**
+     * Expenses paid against this budget (breakdown concepts, extras and commissions).
+     */
+    public function expenses(): HasMany
+    {
+        return $this->hasMany(Expense::class);
+    }
+
     // --- NUEVA RELACIÓN ---
     public function technicianPayments(): HasMany
     {

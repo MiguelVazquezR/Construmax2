@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
@@ -94,6 +95,14 @@ class Deposit extends Model implements HasMedia
     public function technicianPayment(): BelongsTo
     {
         return $this->belongsTo(TechnicianPayment::class);
+    }
+
+    /**
+     * Expense mirrored in the expenses module for this deposit.
+     */
+    public function expense(): HasOne
+    {
+        return $this->hasOne(Expense::class);
     }
 
     // --- Accessors ---
