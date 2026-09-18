@@ -275,6 +275,7 @@ class CostService
                     'id'      => $concept->id,
                     'concept' => $concept->concept,
                     'amount'  => $concept->amount,
+                    'type'    => $concept->type,
                 ];
             }),
             'survey_images'  => $budget->getMedia('survey_images')->map(function ($media) {

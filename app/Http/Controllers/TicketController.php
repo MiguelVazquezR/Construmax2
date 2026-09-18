@@ -8,33 +8,153 @@ use App\Models\Customer;
 use App\Models\CustomerBranch;
 use App\Models\ServiceType;
 use App\Models\TaskTemplate;
+use App\Services\Export\XlsxWriterService;
 use App\Services\Media\ImageOptimizerService;
 use App\Services\Tickets\TicketDuplicateService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\URL;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class TicketController extends Controller
 {
     public function __construct(
         private readonly ImageOptimizerService $imageOptimizer,
         private readonly TicketDuplicateService $ticketDuplicateService,
+        private readonly XlsxWriterService $xlsxWriter,
     ) {}
+
+    /**
+     * Statuses shown by default when the request carries no status filter.
+     */
+    private const DEFAULT_ACTIVE_STATUSES = [
+        'Borrador',
+        'Por programar',
+        'Programado',
+        'Levantamiento',
+        'Catálogo',
+        'Pendiente de aprobación',
+        'Proceso de ejecución',
+        'Ejecutado',
+        'Finalizado',
+    ];
+
     public function index(Request $request)
     {
         $perPage = $request->input('perPage', 20);
-        $sort = $request->input('sort', 'created_at'); 
+        $sort = $request->input('sort', 'created_at');
 
+        $query = $this->filteredTicketsQuery($request, $sort);
+
+        return Inertia::render('Tickets/Index', [
+            'tickets' => $query->paginate($perPage)->withQueryString(),
+            'customers' => Customer::where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'technicians' => User::whereHas('technician')->with('technician')->orderBy('name')->get(['id', 'name']),
+            'sellers' => User::whereHas('ticketsAsSeller')->orderBy('name')->get(['id', 'name']),
+            'canViewAll' => $request->user()->can('tickets.index-all'),
+            'filters' => [
+                'folio' => $request->input('folio'),
+                'customer' => $request->input('customer'),
+                'region' => $request->input('region'),
+                'priority' => $request->input('priority'),
+                'technician' => $request->input('technician'),
+                'seller' => $request->input('seller'),
+                'status' => $request->input('status', self::DEFAULT_ACTIVE_STATUSES),
+                'has_catalog' => $request->input('has_catalog'),
+                'perPage' => $perPage,
+                'sort' => $sort,
+            ],
+        ]);
+    }
+
+    /**
+     * Excel report with the same filters and sorting selected on the index.
+     */
+    public function export(Request $request): BinaryFileResponse
+    {
+        $sort = $request->input('sort', 'created_at');
+
+        $tickets = $this->filteredTicketsQuery($request, $sort)->get();
+
+        $technicianNames = $this->technicianNamesMap($tickets);
+
+        $headers = [
+            'Folio',
+            'Proyecto',
+            'Tipo de servicio',
+            'Cliente',
+            'Sucursal',
+            'Asesor',
+            'Técnicos',
+            'Prioridad',
+            'Estatus',
+            'Salud',
+            'Progreso (%)',
+            'Fecha de creación',
+            'Inicio programado',
+            'Fin programado',
+            'OC',
+            'Catálogo',
+            'Número de reporte',
+            'Nota importante',
+        ];
+
+        $rows = $tickets->map(fn (Ticket $ticket) => [
+            $ticket->folio,
+            $ticket->name ?: $ticket->service_type,
+            $ticket->service_type,
+            $ticket->customer?->name,
+            $this->branchLabel($ticket->branch),
+            $ticket->seller?->name,
+            $this->technicianLabel($ticket, $technicianNames),
+            $ticket->priority,
+            $ticket->status,
+            $this->healthLabel($ticket),
+            (int) $ticket->progress,
+            $ticket->created_at?->format('Y-m-d'),
+            $ticket->scheduled_start?->format('Y-m-d'),
+            $ticket->scheduled_end?->format('Y-m-d'),
+            $ticket->has_oc ? 'Sí' : 'No',
+            $this->catalogLabel($ticket),
+            $ticket->report_number,
+            $ticket->important_note,
+        ])->all();
+
+        $path = $this->xlsxWriter->generate(
+            'Tickets',
+            $headers,
+            $rows,
+            [16, 40, 22, 26, 42, 22, 36, 12, 26, 18, 12, 16, 16, 16, 8, 30, 16, 40],
+            [
+                ['Total de tickets', $tickets->count()],
+            ],
+        );
+
+        return response()
+            ->download($path, 'reporte-tickets-' . now()->format('Y-m-d') . '.xlsx', [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ])
+            ->deleteFileAfterSend();
+    }
+
+    /**
+     * Query shared by the index listing and the Excel report: applies the
+     * seller scoping, every available filter and the requested sorting.
+     */
+    private function filteredTicketsQuery(Request $request, string $sort): Builder
+    {
         $query = Ticket::with(['customer', 'contact', 'branch', 'tasks.assignee', 'budget.latestCatalog', 'seller', 'workAcceptanceReport']);
 
-        // FILTRO POR ASESOR: si no tiene permiso de ver todos, solo muestra sus tickets
+        // SELLER SCOPING: users without the index-all permission only see their own tickets
         if (!$request->user()->can('tickets.index-all')) {
             $query->where('seller_id', $request->user()->id);
         }
 
-        // BÚSQUEDA POR FOLIO
+        // SEARCH BY FOLIO
         if ($request->filled('folio')) {
             $folio = $request->input('folio');
             preg_match('/\d+/', $folio, $matches);
@@ -43,7 +163,7 @@ class TicketController extends Controller
             }
         }
 
-        // FILTROS AVANZADOS
+        // ADVANCED FILTERS
         if ($request->filled('customer')) {
             $query->where('customer_id', $request->input('customer'));
         }
@@ -51,7 +171,7 @@ class TicketController extends Controller
         if ($request->filled('region')) {
             $like = '%' . $request->input('region') . '%';
 
-            // utf8mb4_unicode_ci es insensible a acentos y mayúsculas, así que un solo LIKE basta
+            // utf8mb4_unicode_ci is accent and case insensitive, so a single LIKE is enough
             $query->whereHas('branch', function($q) use ($like) {
                 $q->whereRaw('region COLLATE utf8mb4_unicode_ci LIKE ?', [$like])
                   ->orWhereRaw('branch_name COLLATE utf8mb4_unicode_ci LIKE ?', [$like])
@@ -79,7 +199,7 @@ class TicketController extends Controller
             $query->where('seller_id', $request->input('seller'));
         }
 
-        // FILTRO POR CATÁLOGO
+        // CATALOG FILTER
         if ($request->filled('has_catalog')) {
             $catalogFilter = $request->input('has_catalog');
             if ($catalogFilter === 'yes') {
@@ -102,9 +222,6 @@ class TicketController extends Controller
             }
         }
 
-        // Default active statuses (exclude finalized/completed)
-        $defaultStatuses = ['Borrador', 'Por programar', 'Programado', 'Levantamiento', 'Catálogo', 'Pendiente de aprobación', 'Proceso de ejecución', 'Ejecutado', 'Finalizado'];
-
         if ($request->has('status')) {
             $statusFilter = $request->input('status', []);
             if (is_array($statusFilter) && !empty($statusFilter)) {
@@ -115,14 +232,14 @@ class TicketController extends Controller
                 }
             } else {
                 // Empty or invalid: use default active statuses
-                $query->whereIn('status', $defaultStatuses);
+                $query->whereIn('status', self::DEFAULT_ACTIVE_STATUSES);
             }
         } else {
             // Default: show only active statuses
-            $query->whereIn('status', $defaultStatuses);
+            $query->whereIn('status', self::DEFAULT_ACTIVE_STATUSES);
         }
 
-        // ORDENAMIENTO
+        // SORTING
         if ($sort === 'start_date') {
             $query->orderBy('scheduled_start', 'desc');
         } elseif ($sort === 'delay') {
@@ -143,25 +260,115 @@ class TicketController extends Controller
             $query->orderBy('created_at', 'desc');
         }
 
-        return Inertia::render('Tickets/Index', [
-            'tickets' => $query->paginate($perPage)->withQueryString(),
-            'customers' => Customer::where('is_active', true)->orderBy('name')->get(['id', 'name']),
-            'technicians' => User::whereHas('technician')->with('technician')->orderBy('name')->get(['id', 'name']),
-            'sellers' => User::whereHas('ticketsAsSeller')->orderBy('name')->get(['id', 'name']),
-            'canViewAll' => $request->user()->can('tickets.index-all'),
-            'filters' => [
-                'folio' => $request->input('folio'),
-                'customer' => $request->input('customer'),
-                'region' => $request->input('region'),
-                'priority' => $request->input('priority'),
-                'technician' => $request->input('technician'),
-                'seller' => $request->input('seller'),
-                'status' => $request->input('status', $defaultStatuses),
-                'has_catalog' => $request->input('has_catalog'),
-                'perPage' => $perPage,
-                'sort' => $sort,
-            ],
-        ]);
+        return $query;
+    }
+
+    /**
+     * Branch label as shown on the ticket list: "Sucursal - Unidad (Ciudad, Región, País)".
+     */
+    private function branchLabel(?CustomerBranch $branch): string
+    {
+        if (!$branch) {
+            return 'Sucursal no especificada';
+        }
+
+        $head = implode(' - ', array_filter([$branch->branch_name, $branch->unit]));
+        $location = implode(', ', array_filter([$branch->city, $branch->region, $branch->country]));
+
+        if ($head && $location) {
+            return "{$head} ({$location})";
+        }
+
+        return $head ?: $location ?: 'Sucursal no especificada';
+    }
+
+    /**
+     * Unique names of the people assigned to a ticket: lead and assistant
+     * technicians plus every task assignee.
+     *
+     * @param array<int, string> $namesById
+     */
+    private function technicianLabel(Ticket $ticket, array $namesById): string
+    {
+        $ids = array_unique(array_merge(
+            array_map('intval', $ticket->technicians ?? []),
+            array_map('intval', $ticket->assistant_technicians ?? []),
+            $ticket->tasks->pluck('user_id')->filter()->map(fn ($id) => (int) $id)->all(),
+        ));
+
+        $names = array_values(array_filter(array_map(fn ($id) => $namesById[$id] ?? null, $ids)));
+        sort($names);
+
+        return $names === [] ? 'Sin asignar' : implode(', ', $names);
+    }
+
+    /**
+     * Name map for every user involved in the given tickets (avoids N+1 queries).
+     *
+     * @param Collection<int, Ticket> $tickets
+     * @return array<int, string>
+     */
+    private function technicianNamesMap(Collection $tickets): array
+    {
+        $ids = [];
+
+        foreach ($tickets as $ticket) {
+            $ids = array_merge(
+                $ids,
+                array_map('intval', $ticket->technicians ?? []),
+                array_map('intval', $ticket->assistant_technicians ?? []),
+                $ticket->tasks->pluck('user_id')->filter()->map(fn ($id) => (int) $id)->all(),
+            );
+        }
+
+        $ids = array_values(array_unique(array_filter($ids)));
+
+        return $ids === [] ? [] : User::whereIn('id', $ids)->pluck('name', 'id')->all();
+    }
+
+    /**
+     * Health label mirroring the "Salud" column on the index: a ticket is
+     * overdue the day after its scheduled end date.
+     */
+    private function healthLabel(Ticket $ticket): string
+    {
+        if (in_array($ticket->status, ['Finalizado', 'Facturado', 'Pagado', 'Cancelado'], true)) {
+            return 'Finalizado';
+        }
+
+        if ((int) $ticket->progress >= 100) {
+            return 'Tareas completadas';
+        }
+
+        if (!$ticket->scheduled_start || !$ticket->scheduled_end) {
+            return 'Sin fechas';
+        }
+
+        $now = now();
+
+        if ($now->greaterThan($ticket->scheduled_end->copy()->addDay())) {
+            return 'Vencido';
+        }
+
+        if ($now->lessThan($ticket->scheduled_start)) {
+            return 'Programado';
+        }
+
+        return 'A tiempo';
+    }
+
+    /**
+     * Latest cost catalog version with its status, or "Sin catálogo".
+     */
+    private function catalogLabel(Ticket $ticket): string
+    {
+        $catalog = $ticket->budget?->latestCatalog;
+
+        if (!$catalog) {
+            return 'Sin catálogo';
+        }
+
+        return "v{$catalog->version} — {$catalog->statusLabel()}";
     }
 
     /**

@@ -3,7 +3,7 @@ import { ref, watch } from 'vue';
 import { router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { debounce } from 'lodash';
-import { Plus, Sort, DataBoard, List as ListIcon, Location, Search, Money } from '@element-plus/icons-vue';
+import { Plus, Sort, DataBoard, List as ListIcon, Location, Search, Money, Download } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import TicketList from './Partials/TicketList.vue';
 import TicketKanban from './Partials/TicketKanban.vue';
@@ -143,6 +143,26 @@ const handlePageChange = (val) => {
     });
 };
 
+const downloadReport = () => {
+    // Same filters as the listing, without pagination. Empty values are
+    // dropped so the report falls back to the server-side defaults.
+    const params = Object.fromEntries(
+        Object.entries({
+            folio: folioFilter.value,
+            customer: customerFilter.value,
+            region: regionFilter.value,
+            priority: priorityFilter.value,
+            technician: technicianFilter.value,
+            seller: sellerFilter.value,
+            status: statusFilter.value,
+            has_catalog: catalogFilter.value,
+            sort: sortFilter.value,
+        }).filter(([, value]) => value !== undefined && value !== null && value !== '' && !(Array.isArray(value) && value.length === 0))
+    );
+
+    window.location.href = route('tickets.export', params);
+};
+
 watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilter, sellerFilter, statusFilter, catalogFilter, sortFilter], fetchData);
 </script>
 
@@ -244,6 +264,10 @@ watch([folioFilter, customerFilter, regionFilter, priorityFilter, technicianFilt
                             @click="showPendingPaymentsModal = true"
                         >
                             Pagos pendientes
+                        </el-button>
+
+                        <el-button :icon="Download" @click="downloadReport">
+                            Descargar reporte
                         </el-button>
 
                         <Link v-if="can('tickets.create')" :href="route('tickets.create')">

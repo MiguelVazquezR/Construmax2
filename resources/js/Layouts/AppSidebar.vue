@@ -36,6 +36,9 @@ const activeMenu = computed(() => {
     // Invoices
     if (route().current('invoices.*')) return 'invoices.index';
 
+    // Control de gastos
+    if (route().current('expenses.*')) return 'expenses.index';
+
         // Tutoriales
         if (route().current('tutorials.*')) return 'tutorials.index';
 
@@ -163,6 +166,14 @@ const activeMenu = computed(() => {
                     <el-menu-item class="!bg-dark" index="deposits.index">
                        <el-icon><Coin /></el-icon>
                         <template #title><span>Depósitos</span></template>
+                    </el-menu-item>
+                </Link>
+
+                <!-- Control de gastos -->
+                <Link v-if="can('expenses.index')" :href="route('expenses.index')">
+                    <el-menu-item class="!bg-dark" index="expenses.index">
+                        <el-icon><Wallet /></el-icon>
+                        <template #title><span>Control de gastos</span></template>
                     </el-menu-item>
                 </Link>
 

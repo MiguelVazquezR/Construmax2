@@ -120,6 +120,11 @@ class Ticket extends Model implements HasMedia
         return $this->hasMany(Deposit::class);
     }
 
+    public function expenses(): HasMany
+    {
+        return $this->hasMany(Expense::class);
+    }
+
     // --- LÓGICA DE NEGOCIO ---
 
     public function generateTasksFromTemplate($templateId, array $technicianIds)
