@@ -12,7 +12,8 @@ class UpdateExpenseRequest extends StoreExpenseRequest
     public function rules(): array
     {
         return array_merge(parent::rules(), [
-            'remove_receipt' => ['nullable', 'boolean'],
+            'remove_receipt_ids' => ['nullable', 'array'],
+            'remove_receipt_ids.*' => ['integer'],
         ]);
     }
 }

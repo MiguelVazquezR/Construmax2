@@ -6,18 +6,23 @@ import { debounce } from 'lodash';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
     Check,
+    CircleCheck,
     CreditCard,
     Delete,
+    Document,
     DocumentChecked,
+    Download,
     Edit,
     Money,
     MoreFilled,
     Promotion,
-    View,
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import ExpenseSummaryCards from './Partials/ExpenseSummaryCards.vue';
 import ExpenseFormDialog from './Partials/ExpenseFormDialog.vue';
+import ExpenseTypeDialog from './Partials/ExpenseTypeDialog.vue';
+import BudgetPickerDialog from './Partials/BudgetPickerDialog.vue';
+import CompleteDepositDialog from './Partials/CompleteDepositDialog.vue';
 
 const { can } = usePermissions();
 
@@ -25,12 +30,19 @@ const props = defineProps({
     expenses: Object,
     stats: Object,
     categories: Array,
+    budgets: Array,
     filters: Object,
 });
 
 const search = ref(props.filters.search || '');
+const folioFilter = ref(props.filters.folio || '');
 const categoryFilter = ref(props.filters.category_id ? Number(props.filters.category_id) : null);
 const statusFilter = ref(props.filters.status || '');
+const paymentMethodFilter = ref(props.filters.payment_method || '');
+const typeFilter = ref(props.filters.type || '');
+const budgetFilter = ref(props.filters.budget_id ? Number(props.filters.budget_id) : null);
+const sortBy = ref(props.filters.sort_by || '');
+const sortDir = ref(props.filters.sort_dir || '');
 const dateRange = ref(
     props.filters.from && props.filters.to
         ? [props.filters.from, props.filters.to]
@@ -43,15 +55,39 @@ const statusOptions = [
     { value: 'cancelled', label: 'Cancelado' },
 ];
 
+const typeOptions = [
+    { value: 'general', label: 'Gasto general' },
+    { value: 'budget', label: 'Gasto de presupuesto' },
+    { value: 'commission', label: 'Comisiones' },
+    { value: 'deposit', label: 'Depósitos' },
+];
+
+const paymentMethodOptions = [
+    { value: 'cash', label: 'Efectivo' },
+    { value: 'transfer', label: 'Transferencia' },
+    { value: 'card', label: 'Tarjeta' },
+    { value: 'check', label: 'Cheque' },
+    { value: 'other', label: 'Otro' },
+];
+
+const showTypeDialog = ref(false);
+const showBudgetPicker = ref(false);
 const showFormDialog = ref(false);
 const editingExpense = ref(null);
+const formBudget = ref(null);
 
 const buildParams = () => ({
     search: search.value || undefined,
+    folio: folioFilter.value || undefined,
     category_id: categoryFilter.value || undefined,
     status: statusFilter.value || undefined,
+    payment_method: paymentMethodFilter.value || undefined,
+    type: typeFilter.value || undefined,
+    budget_id: budgetFilter.value || undefined,
     from: dateRange.value?.[0] || undefined,
     to: dateRange.value?.[1] || undefined,
+    sort_by: sortBy.value || undefined,
+    sort_dir: sortDir.value || undefined,
 });
 
 const refreshData = () => {
@@ -64,23 +100,48 @@ const refreshData = () => {
 
 const fetchData = debounce(refreshData, 300);
 
-watch([search, categoryFilter, statusFilter, dateRange], fetchData);
+watch([search, folioFilter, categoryFilter, statusFilter, paymentMethodFilter, typeFilter, budgetFilter, dateRange], fetchData);
 
 const clearFilters = () => {
     search.value = '';
+    folioFilter.value = '';
     categoryFilter.value = null;
     statusFilter.value = '';
+    paymentMethodFilter.value = '';
+    typeFilter.value = '';
+    budgetFilter.value = null;
     dateRange.value = [];
 };
 
 const openCreateDialog = () => {
+    showTypeDialog.value = true;
+};
+
+const onTypeSelected = (type) => {
+    if (type === 'budget') {
+        showBudgetPicker.value = true;
+
+        return;
+    }
+
     editingExpense.value = null;
+    formBudget.value = null;
     showFormDialog.value = true;
 };
 
 const openEditDialog = (expense) => {
     editingExpense.value = expense;
+    formBudget.value = null;
     showFormDialog.value = true;
+};
+
+// --- Complete deposit (mirror expenses) ---
+const showCompleteDepositDialog = ref(false);
+const completingExpense = ref(null);
+
+const openCompleteDepositDialog = (expense) => {
+    completingExpense.value = expense;
+    showCompleteDepositDialog.value = true;
 };
 
 const onFormSaved = () => {
@@ -136,6 +197,32 @@ const handlePageChange = (page) => {
     });
 };
 
+const downloadReport = () => {
+    const params = Object.fromEntries(
+        Object.entries(buildParams()).filter(([, value]) => value !== undefined && value !== '')
+    );
+
+    window.location.href = route('expenses.export', params);
+};
+
+const handleSortChange = ({ prop, order }) => {
+    if (!order) {
+        sortBy.value = '';
+        sortDir.value = '';
+    } else {
+        sortBy.value = prop;
+        sortDir.value = order === 'ascending' ? 'asc' : 'desc';
+    }
+
+    refreshData();
+};
+
+const budgetOptionLabel = (budget) => {
+    const label = [budget.folio, budget.name].filter(Boolean).join(' — ');
+
+    return budget.customer_name ? `${label} (${budget.customer_name})` : label;
+};
+
 const formatCurrency = (value) => {
     return new Intl.NumberFormat('es-MX', {
         style: 'currency',
@@ -182,7 +269,7 @@ const paymentMethodColors = {
     other: 'text-gray-400',
 };
 
-const isCategoryTruncated = (name) => (name || '').length > 16;
+const isTextTruncated = (value) => (value || '').length > 16;
 
 // --- Row actions (dropdown) ---
 const handleRowCommand = (command, expense) => {
@@ -209,9 +296,16 @@ const handleRowCommand = (command, expense) => {
                     </div>
                 </div>
 
-                <el-button v-if="can('expenses.create')" type="primary" @click="openCreateDialog">
-                    Registrar gasto
-                </el-button>
+                <div class="flex items-center gap-2">
+                    <el-button @click="downloadReport">
+                        <el-icon class="mr-1"><Download /></el-icon>
+                        Descargar reporte
+                    </el-button>
+
+                    <el-button v-if="can('expenses.create')" type="primary" @click="openCreateDialog">
+                        Registrar gasto
+                    </el-button>
+                </div>
             </div>
 
             <!-- Summary -->
@@ -220,11 +314,11 @@ const handleRowCommand = (command, expense) => {
             <!-- Filters -->
             <div
                 class="bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] flex flex-col lg:flex-row flex-wrap gap-3">
-                <div class="w-full lg:w-72">
-                    <el-input v-model="search" placeholder="Buscar folio, concepto o referencia..." clearable prefix-icon="Search" />
-                </div>
+                <el-input v-model="search" placeholder="Buscar concepto o referencia..." clearable prefix-icon="Search" class="w-full lg:!w-64" />
 
-                <el-select v-model="categoryFilter" placeholder="Categoría" clearable filterable class="w-full lg:!w-52">
+                <el-input v-model="folioFilter" placeholder="Folio (GAS-0001)" clearable prefix-icon="Search" class="w-full lg:!w-44" />
+
+                <el-select v-model="categoryFilter" placeholder="Categoría" clearable filterable class="w-full lg:!w-48">
                     <el-option
                         v-for="category in categories"
                         :key="category.id"
@@ -233,12 +327,39 @@ const handleRowCommand = (command, expense) => {
                     />
                 </el-select>
 
-                <el-select v-model="statusFilter" placeholder="Estatus" clearable class="w-full lg:!w-40">
+                <el-select v-model="statusFilter" placeholder="Estatus" clearable class="w-full lg:!w-44">
                     <el-option
                         v-for="option in statusOptions"
                         :key="option.value"
                         :label="option.label"
                         :value="option.value"
+                    />
+                </el-select>
+
+                <el-select v-model="paymentMethodFilter" placeholder="Método de pago" clearable class="w-full lg:!w-44">
+                    <el-option
+                        v-for="option in paymentMethodOptions"
+                        :key="option.value"
+                        :label="option.label"
+                        :value="option.value"
+                    />
+                </el-select>
+
+                <el-select v-model="typeFilter" placeholder="Tipo de gasto" clearable class="w-full lg:!w-44">
+                    <el-option
+                        v-for="option in typeOptions"
+                        :key="option.value"
+                        :label="option.label"
+                        :value="option.value"
+                    />
+                </el-select>
+
+                <el-select v-model="budgetFilter" placeholder="Presupuesto" clearable filterable class="w-full lg:!w-64">
+                    <el-option
+                        v-for="budget in budgets"
+                        :key="budget.id"
+                        :label="budgetOptionLabel(budget)"
+                        :value="budget.id"
                     />
                 </el-select>
 
@@ -258,14 +379,14 @@ const handleRowCommand = (command, expense) => {
             <!-- Table -->
             <div
                 class="bg-white dark:bg-[#1e1e20] rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
-                <el-table :data="expenses.data" style="width: 100%" stripe>
-                    <el-table-column label="Folio" width="80">
+                <el-table :data="expenses.data" style="width: 100%" stripe @sort-change="handleSortChange">
+                    <el-table-column label="Folio" prop="folio" width="80" sortable="custom">
                         <template #default="scope">
                             <span class="font-mono text-xs text-gray-600 dark:text-gray-400">{{ scope.row.folio }}</span>
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Fecha" width="110">
+                    <el-table-column label="Fecha" prop="expense_date" width="110" sortable="custom">
                         <template #default="scope">
                             <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(scope.row.expense_date) }}</span>
                         </template>
@@ -274,7 +395,11 @@ const handleRowCommand = (command, expense) => {
                     <el-table-column label="Concepto" min-width="220" show-overflow-tooltip>
                         <template #default="scope">
                             <div class="flex flex-col">
-                                <span class="font-medium text-gray-800 dark:text-gray-200 text-sm">{{ scope.row.concept }}</span>
+                                <div class="flex items-center gap-1">
+                                    <span class="font-medium text-gray-800 dark:text-gray-200 text-sm">{{ scope.row.concept }}</span>
+                                    <el-tag v-if="scope.row.is_commission" type="warning" size="small" effect="plain">Comisión</el-tag>
+                                    <el-tag v-if="scope.row.deposit_id" type="info" size="small" effect="plain">Depósito</el-tag>
+                                </div>
                                 <span v-if="scope.row.reference" class="text-xs text-gray-400">Ref: {{ scope.row.reference }}</span>
                             </div>
                         </template>
@@ -286,7 +411,7 @@ const handleRowCommand = (command, expense) => {
                                 v-if="scope.row.category_name"
                                 :content="scope.row.category_name"
                                 placement="top"
-                                :disabled="!isCategoryTruncated(scope.row.category_name)"
+                                :disabled="!isTextTruncated(scope.row.category_name)"
                             >
                                 <span class="block w-full truncate text-sm text-gray-600 dark:text-gray-400">
                                     {{ scope.row.category_name }}
@@ -296,52 +421,45 @@ const handleRowCommand = (command, expense) => {
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Ticket" width="140">
+                    <el-table-column label="Presupuesto" prop="budget_id" width="110" sortable="custom">
                         <template #default="scope">
                             <Link
-                                v-if="scope.row.ticket_id && can('tickets.index')"
-                                :href="route('tickets.show', scope.row.ticket_id)"
+                                v-if="scope.row.budget_id"
+                                :href="route('expenses.budgets.show', scope.row.budget_id)"
                                 class="font-mono text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
                             >
-                                {{ scope.row.ticket_folio }}
+                                {{ scope.row.budget_folio }}
                             </Link>
-                            <span v-else-if="scope.row.ticket_id" class="font-mono text-xs text-gray-500">{{ scope.row.ticket_folio }}</span>
                             <span v-else class="text-xs text-gray-400">—</span>
                         </template>
                     </el-table-column>
 
                     <el-table-column label="Monto" width="150" align="right">
                         <template #default="scope">
-                            <div class="flex items-center justify-end gap-2">
-                                <el-tooltip
-                                    v-if="scope.row.payment_method"
-                                    :content="scope.row.payment_method_label"
-                                    placement="top"
-                                >
-                                    <el-icon :class="paymentMethodColors[scope.row.payment_method] || 'text-gray-400'">
-                                        <component :is="paymentMethodIcons[scope.row.payment_method]" />
-                                    </el-icon>
-                                </el-tooltip>
-
-                                <el-tooltip v-if="scope.row.receipt_url" content="Ver comprobante" placement="top">
-                                    <a
-                                        :href="scope.row.receipt_url"
-                                        target="_blank"
-                                        rel="noopener"
-                                        class="text-blue-500 hover:text-blue-700 dark:text-blue-400 shrink-0"
+                            <div class="flex flex-col items-end">
+                                <div class="flex items-center justify-end gap-2">
+                                    <el-tooltip
+                                        v-if="scope.row.payment_method"
+                                        :content="scope.row.payment_method_label"
+                                        placement="top"
                                     >
-                                        <el-icon><View /></el-icon>
-                                    </a>
-                                </el-tooltip>
+                                        <el-icon :class="paymentMethodColors[scope.row.payment_method] || 'text-gray-400'">
+                                            <component :is="paymentMethodIcons[scope.row.payment_method]" />
+                                        </el-icon>
+                                    </el-tooltip>
 
-                                <span class="font-mono text-sm font-semibold text-gray-700 dark:text-gray-300">
-                                    {{ formatCurrency(scope.row.amount) }}
+                                    <span class="font-mono text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                        {{ formatCurrency(scope.row.amount) }}
+                                    </span>
+                                </div>
+                                <span v-if="scope.row.commission_amount > 0" class="text-xs text-amber-600">
+                                    + {{ formatCurrency(scope.row.commission_amount) }} comisión
                                 </span>
                             </div>
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Estatus" width="120" align="center">
+                    <el-table-column label="Estatus" prop="status" width="150" align="center" sortable="custom">
                         <template #default="scope">
                             <el-tag :type="statusTagType(scope.row.status)" size="small" effect="light">
                                 {{ scope.row.status_label }}
@@ -349,43 +467,82 @@ const handleRowCommand = (command, expense) => {
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Registró" min-width="140">
+                    <el-table-column label="Registró" width="140">
                         <template #default="scope">
-                            <span class="text-sm text-gray-600 dark:text-gray-400">{{ scope.row.created_by }}</span>
+                            <el-tooltip
+                                v-if="scope.row.created_by"
+                                :content="scope.row.created_by"
+                                placement="top"
+                                :disabled="!isTextTruncated(scope.row.created_by)"
+                            >
+                                <span class="block w-full truncate text-sm text-gray-600 dark:text-gray-400">
+                                    {{ scope.row.created_by }}
+                                </span>
+                            </el-tooltip>
+                            <span v-else class="text-xs text-gray-400">—</span>
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Acciones" width="90" align="center" fixed="right">
+                    <el-table-column label="Acciones" width="170" align="center" fixed="right">
                         <template #default="scope">
-                            <el-dropdown
-                                v-if="can('expenses.edit') || can('expenses.delete')"
-                                trigger="click"
-                                @command="(command) => handleRowCommand(command, scope.row)"
-                            >
-                                <el-button link :icon="MoreFilled" />
-                                <template #dropdown>
-                                    <el-dropdown-menu>
-                                        <el-dropdown-item
-                                            v-if="scope.row.status === 'pending' && can('expenses.edit')"
-                                            command="mark-paid"
-                                            :icon="Check"
+                            <div class="flex items-center justify-center gap-2">
+                                <el-button
+                                    v-if="scope.row.deposit_id && scope.row.status === 'pending' && can('expenses.edit')"
+                                    size="small"
+                                    type="primary"
+                                    :icon="CircleCheck"
+                                    @click="openCompleteDepositDialog(scope.row)"
+                                >
+                                    Realizado
+                                </el-button>
+
+                                <span class="inline-flex w-4 justify-center">
+                                    <el-tooltip
+                                        v-if="scope.row.receipt_url"
+                                        :content="(scope.row.receipts?.length || 1) > 1 ? `${scope.row.receipts.length} comprobantes` : 'Ver comprobante'"
+                                        placement="top"
+                                    >
+                                        <a
+                                            :href="scope.row.receipt_url"
+                                            target="_blank"
+                                            rel="noopener"
+                                            class="text-blue-500 hover:text-blue-700 dark:text-blue-400"
                                         >
-                                            Marcar como pagado
-                                        </el-dropdown-item>
-                                        <el-dropdown-item v-if="can('expenses.edit')" command="edit" :icon="Edit">
-                                            Editar
-                                        </el-dropdown-item>
-                                        <el-dropdown-item
-                                            v-if="can('expenses.delete')"
-                                            command="delete"
-                                            :icon="Delete"
-                                            divided
-                                        >
-                                            Eliminar
-                                        </el-dropdown-item>
-                                    </el-dropdown-menu>
-                                </template>
-                            </el-dropdown>
+                                            <el-icon><Document /></el-icon>
+                                        </a>
+                                    </el-tooltip>
+                                </span>
+
+                                <el-dropdown
+                                    v-if="can('expenses.edit') || (can('expenses.delete') && !scope.row.deposit_id)"
+                                    trigger="click"
+                                    @command="(command) => handleRowCommand(command, scope.row)"
+                                >
+                                    <el-button link :icon="MoreFilled" />
+                                    <template #dropdown>
+                                        <el-dropdown-menu>
+                                            <el-dropdown-item
+                                                v-if="scope.row.status === 'pending' && !scope.row.deposit_id && can('expenses.edit')"
+                                                command="mark-paid"
+                                                :icon="Check"
+                                            >
+                                                Marcar como pagado
+                                            </el-dropdown-item>
+                                            <el-dropdown-item v-if="can('expenses.edit')" command="edit" :icon="Edit">
+                                                Editar
+                                            </el-dropdown-item>
+                                            <el-dropdown-item
+                                                v-if="can('expenses.delete') && !scope.row.deposit_id"
+                                                command="delete"
+                                                :icon="Delete"
+                                                divided
+                                            >
+                                                Eliminar
+                                            </el-dropdown-item>
+                                        </el-dropdown-menu>
+                                    </template>
+                                </el-dropdown>
+                            </div>
                         </template>
                     </el-table-column>
 
@@ -407,12 +564,30 @@ const handleRowCommand = (command, expense) => {
             </div>
         </div>
 
+        <!-- Expense type picker -->
+        <ExpenseTypeDialog
+            v-if="showTypeDialog"
+            v-model="showTypeDialog"
+            @select="onTypeSelected"
+        />
+
+        <!-- Budget picker -->
+        <BudgetPickerDialog v-if="showBudgetPicker" v-model="showBudgetPicker" />
+
+        <!-- Complete deposit dialog -->
+        <CompleteDepositDialog
+            v-if="showCompleteDepositDialog && completingExpense"
+            v-model="showCompleteDepositDialog"
+            :expense="completingExpense"
+        />
+
         <!-- Expense form dialog -->
         <ExpenseFormDialog
             v-if="showFormDialog"
             v-model="showFormDialog"
             :expense="editingExpense"
             :categories="categories"
+            :budget="formBudget"
             @saved="onFormSaved"
             @categories-changed="onCategoriesChanged"
         />

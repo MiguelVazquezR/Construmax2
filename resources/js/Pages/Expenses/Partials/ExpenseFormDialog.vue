@@ -1,17 +1,18 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import { ElMessage } from 'element-plus';
-import { Setting, UploadFilled } from '@element-plus/icons-vue';
-import { debounce } from 'lodash';
-import axios from 'axios';
+import { Setting } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import ExpenseCategoriesManager from './ExpenseCategoriesManager.vue';
+import ExpenseReceiptsField from './ExpenseReceiptsField.vue';
 
 const props = defineProps({
     modelValue: Boolean,
     expense: { type: Object, default: null },
     categories: Array,
+    /** When set, the expense is registered against this budget. */
+    budget: { type: Object, default: null },
 });
 
 const emit = defineEmits(['update:modelValue', 'saved', 'categories-changed']);
@@ -19,6 +20,21 @@ const emit = defineEmits(['update:modelValue', 'saved', 'categories-changed']);
 const { can } = usePermissions();
 
 const isEditing = computed(() => !!props.expense);
+
+// Budget expenses keep a budget link; concept payments also lock concept and amount.
+const isBudgetExpense = computed(() => !!props.budget || !!props.expense?.budget_id);
+const isConceptPayment = computed(() => !!props.expense?.budget_concept_id);
+
+// Deposit expenses mirror the deposits module: amount, date, status and
+// receipts are managed there (completed with the "Marcar realizado" action).
+const isDepositExpense = computed(() => !!props.expense?.deposit_id);
+
+const dialogTitle = computed(() => {
+    if (isEditing.value) return 'Editar gasto';
+    if (props.budget) return 'Registrar gasto del presupuesto';
+
+    return 'Registrar gasto';
+});
 
 const dialogVisible = ref(props.modelValue);
 watch(() => props.modelValue, (value) => { dialogVisible.value = value; });
@@ -50,14 +66,18 @@ const todayIsoDate = () => {
 
 const form = useForm({
     expense_category_id: props.expense?.category_id ?? null,
-    ticket_id: props.expense?.ticket_id ?? null,
+    budget_id: props.budget?.id ?? props.expense?.budget_id ?? null,
+    is_commission: !!props.expense?.is_commission,
     concept: props.expense?.concept ?? '',
     reference: props.expense?.reference ?? '',
     notes: props.expense?.notes ?? '',
     amount: props.expense?.amount ?? null,
+    commission_amount: props.expense?.commission_amount || null,
     expense_date: props.expense?.expense_date ?? todayIsoDate(),
     payment_method: props.expense?.payment_method ?? '',
     status: props.expense?.status ?? 'pending',
+    receipts: [],
+    remove_receipt_ids: [],
 });
 
 // --- Categories manager ---
@@ -71,114 +91,32 @@ const onCategoriesChanged = () => {
     emit('categories-changed');
 };
 
-// --- Receipt ---
-const receiptFile = ref(null);
-const removeReceipt = ref(false);
-const hasExistingReceipt = computed(() => !!props.expense?.receipt_url);
-
-const onReceiptChange = (file) => {
-    if (file.raw && file.raw.size > 10 * 1024 * 1024) {
-        ElMessage.warning('El comprobante no debe exceder 10 MB.');
-        return;
-    }
-
-    receiptFile.value = file.raw;
+// --- Receipts (several files per expense) ---
+const onReceiptsChange = ({ files, remove_ids }) => {
+    form.receipts = files;
+    form.remove_receipt_ids = remove_ids;
 };
 
-const clearReceiptSelection = () => {
-    receiptFile.value = null;
-};
-
-const rules = {
-    expense_category_id: [{ required: true, message: 'Selecciona una categoría.', trigger: 'change' }],
+const rules = computed(() => ({
+    // Budget and deposit expenses do not require a category.
+    expense_category_id: isBudgetExpense.value || isDepositExpense.value
+        ? []
+        : [{ required: true, message: 'Selecciona una categoría.', trigger: 'change' }],
     concept: [{ required: true, message: 'Escribe el concepto del gasto.', trigger: 'blur' }],
     amount: [{ required: true, message: 'Captura el monto del gasto.', trigger: 'blur' }],
     expense_date: [{ required: true, message: 'Selecciona la fecha del gasto.', trigger: 'change' }],
     status: [{ required: true, message: 'Selecciona el estatus del gasto.', trigger: 'change' }],
-};
-
-// --- Optional ticket link (remote search) ---
-const searchResults = ref([]);
-const ticketsLoading = ref(false);
-const selectedTicket = ref(
-    props.expense?.ticket_id
-        ? {
-            id: props.expense.ticket_id,
-            folio: props.expense.ticket_folio,
-            name: props.expense.ticket_name,
-            customer_name: null,
-        }
-        : null
-);
-
-const ticketOptions = computed(() => {
-    const options = [...searchResults.value];
-
-    if (
-        form.ticket_id
-        && selectedTicket.value?.id === form.ticket_id
-        && !options.some((option) => option.id === form.ticket_id)
-    ) {
-        options.unshift(selectedTicket.value);
-    }
-
-    return options;
-});
-
-watch(() => form.ticket_id, (value) => {
-    if (!value) {
-        selectedTicket.value = null;
-        return;
-    }
-
-    const match = searchResults.value.find((option) => option.id === value);
-
-    if (match) {
-        selectedTicket.value = match;
-    }
-});
-
-const searchTickets = debounce(async (query) => {
-    ticketsLoading.value = true;
-
-    try {
-        const { data } = await axios.get(route('expenses.tickets.search'), {
-            params: { q: query },
-        });
-
-        searchResults.value = data;
-    } catch {
-        searchResults.value = [];
-    } finally {
-        ticketsLoading.value = false;
-    }
-}, 300);
-
-onMounted(() => {
-    searchTickets('');
-});
-
-const ticketLabel = (option) => {
-    const label = [option.folio, option.name].filter(Boolean).join(' — ');
-
-    return option.customer_name ? `${label} (${option.customer_name})` : label;
-};
+}));
 
 // --- Submission ---
 function submit() {
     formRef.value?.validate((valid) => {
         if (!valid) return;
 
-        const withReceipt = (data) => ({
-            ...data,
-            ...(receiptFile.value ? { receipt: receiptFile.value } : {}),
-            ...(removeReceipt.value ? { remove_receipt: true } : {}),
-        });
-
         if (isEditing.value) {
             // PHP does not parse multipart bodies on real PUT requests, so the update is sent
             // as POST with method spoofing (_method=PUT). This keeps file uploads working.
-            form.transform((data) => ({ ...withReceipt(data), _method: 'PUT' }))
+            form.transform((data) => ({ ...data, _method: 'PUT' }))
                 .post(route('expenses.update', props.expense.id), {
                     forceFormData: true,
                     preserveScroll: true,
@@ -192,7 +130,7 @@ function submit() {
             return;
         }
 
-        form.transform(withReceipt).post(route('expenses.store'), {
+        form.post(route('expenses.store'), {
             forceFormData: true,
             preserveScroll: true,
             onSuccess: () => {
@@ -208,21 +146,46 @@ function submit() {
 <template>
     <el-dialog
         v-model="dialogVisible"
-        :title="isEditing ? 'Editar gasto' : 'Registrar gasto'"
+        :title="dialogTitle"
         width="680px"
+        top="8vh"
         destroy-on-close
     >
         <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
+            <el-alert
+                v-if="props.budget"
+                type="info"
+                :closable="false"
+                show-icon
+                class="mb-4"
+                :title="`Presupuesto ${props.budget.folio} — ${props.budget.name}`"
+            />
+
+            <el-alert
+                v-if="isDepositExpense"
+                type="info"
+                :closable="false"
+                show-icon
+                class="mb-4"
+                title="Este gasto proviene de un depósito"
+                description="El monto, la fecha, el estatus y el comprobante se administran desde depósitos. Para subir el comprobante y la comisión usa la acción Marcar realizado en la lista de gastos."
+            />
+
             <el-form-item label="Concepto" prop="concept" :error="form.errors.concept">
                 <el-input
                     v-model="form.concept"
                     placeholder="Ej. Renta de oficina de septiembre"
                     maxlength="255"
+                    :disabled="isConceptPayment || isDepositExpense"
                 />
             </el-form-item>
+            <p v-if="isConceptPayment" class="-mt-2 mb-4 text-xs text-gray-500 dark:text-gray-400">
+                Este gasto corresponde a un concepto del desglose del presupuesto; el concepto y el monto se administran desde el presupuesto.
+            </p>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 sm:gap-x-4">
                 <el-form-item
+                    v-if="!isConceptPayment"
                     label="Categoría"
                     prop="expense_category_id"
                     :error="form.errors.expense_category_id"
@@ -243,7 +206,7 @@ function submit() {
                     </template>
                     <el-select
                         v-model="form.expense_category_id"
-                        placeholder="Selecciona una categoría"
+                        :placeholder="isBudgetExpense ? 'Opcional' : 'Selecciona una categoría'"
                         filterable
                         class="w-full"
                     >
@@ -264,6 +227,7 @@ function submit() {
                         :controls="false"
                         placeholder="0.00"
                         class="w-full"
+                        :disabled="isConceptPayment || isDepositExpense"
                     >
                         <template #prefix>
                             <span class="text-gray-500">$</span>
@@ -271,7 +235,12 @@ function submit() {
                     </el-input-number>
                 </el-form-item>
 
-                <el-form-item label="Fecha del gasto" prop="expense_date" :error="form.errors.expense_date">
+                <el-form-item
+                    label="Fecha del gasto"
+                    prop="expense_date"
+                    :error="form.errors.expense_date"
+                    class="expense-date-item"
+                >
                     <el-date-picker
                         v-model="form.expense_date"
                         type="date"
@@ -279,11 +248,12 @@ function submit() {
                         format="DD/MM/YYYY"
                         placeholder="Selecciona la fecha"
                         class="w-full"
+                        :disabled="isDepositExpense"
                     />
                 </el-form-item>
 
                 <el-form-item label="Estatus" prop="status" :error="form.errors.status">
-                    <el-select v-model="form.status" class="w-full">
+                    <el-select v-model="form.status" class="w-full" :disabled="isDepositExpense">
                         <el-option
                             v-for="option in statusOptions"
                             :key="option.value"
@@ -294,7 +264,7 @@ function submit() {
                 </el-form-item>
 
                 <el-form-item label="Método de pago" prop="payment_method" :error="form.errors.payment_method">
-                    <el-select v-model="form.payment_method" placeholder="Opcional" clearable class="w-full">
+                    <el-select v-model="form.payment_method" placeholder="Opcional" clearable class="w-full" :disabled="isDepositExpense">
                         <el-option
                             v-for="option in paymentMethodOptions"
                             :key="option.value"
@@ -304,34 +274,33 @@ function submit() {
                     </el-select>
                 </el-form-item>
 
+                <el-form-item
+                    v-if="!form.is_commission"
+                    label="Comisión (opcional)"
+                    prop="commission_amount"
+                    :error="form.errors.commission_amount"
+                    class="expense-commission-item"
+                >
+                    <el-input-number
+                        v-model="form.commission_amount"
+                        :min="0"
+                        :precision="2"
+                        :controls="false"
+                        placeholder="0.00"
+                        class="w-full"
+                        :disabled="isDepositExpense"
+                    >
+                        <template #prefix>
+                            <span class="text-gray-500">$</span>
+                        </template>
+                    </el-input-number>
+                    <p class="text-xs text-gray-400 mt-1">Comisión del canal de pago (p. ej. cobro en OXXO).</p>
+                </el-form-item>
+
                 <el-form-item label="Referencia" prop="reference" :error="form.errors.reference">
                     <el-input v-model="form.reference" placeholder="Folio de factura o recibo (opcional)" maxlength="255" />
                 </el-form-item>
             </div>
-
-            <el-form-item label="Ticket (opcional)" prop="ticket_id" :error="form.errors.ticket_id">
-                <el-select
-                    v-model="form.ticket_id"
-                    placeholder="Busca por folio, proyecto o cliente"
-                    remote
-                    reserve-keyword
-                    filterable
-                    clearable
-                    :remote-method="searchTickets"
-                    :loading="ticketsLoading"
-                    class="w-full"
-                >
-                    <el-option
-                        v-for="ticket in ticketOptions"
-                        :key="ticket.id"
-                        :label="ticketLabel(ticket)"
-                        :value="ticket.id"
-                    />
-                </el-select>
-                <p class="text-xs text-gray-400 mt-1">
-                    Úsalo para gastos ligados a un proyecto. Déjalo vacío para gastos generales.
-                </p>
-            </el-form-item>
 
             <el-form-item label="Notas" prop="notes" :error="form.errors.notes">
                 <el-input
@@ -344,43 +313,30 @@ function submit() {
                 />
             </el-form-item>
 
-            <el-form-item label="Comprobante del gasto (opcional)" :error="form.errors.receipt">
-                <div class="w-full">
-                    <div v-if="hasExistingReceipt && !removeReceipt" class="flex items-center gap-2 text-sm">
+            <el-form-item v-if="!isDepositExpense" label="Comprobantes (opcional)" :error="form.errors.receipts">
+                <ExpenseReceiptsField
+                    :existing="props.expense?.receipts ?? []"
+                    @change="onReceiptsChange"
+                />
+            </el-form-item>
+
+            <el-form-item v-else label="Comprobante del depósito">
+                <div class="w-full text-sm">
+                    <div v-if="props.expense?.receipts?.length" class="space-y-1">
                         <a
-                            :href="props.expense.receipt_url"
+                            v-for="receipt in props.expense.receipts"
+                            :key="receipt.id"
+                            :href="receipt.url"
                             target="_blank"
                             rel="noopener"
-                            class="text-blue-600 hover:underline dark:text-blue-400"
+                            class="block text-blue-600 hover:underline dark:text-blue-400"
                         >
-                            {{ props.expense.receipt_name || 'Ver comprobante actual' }}
+                            {{ receipt.name }}
                         </a>
-                        <el-button link type="danger" size="small" @click="removeReceipt = true">
-                            Quitar
-                        </el-button>
                     </div>
-
-                    <div v-else-if="removeReceipt" class="text-sm text-amber-600">
-                        El comprobante actual se eliminará al guardar.
-                        <el-button link size="small" @click="removeReceipt = false">Deshacer</el-button>
-                    </div>
-
-                    <el-upload
-                        :auto-upload="false"
-                        :limit="1"
-                        accept=".jpg,.jpeg,.png,.webp,.pdf"
-                        :on-change="onReceiptChange"
-                        :on-remove="clearReceiptSelection"
-                        :on-exceed="() => ElMessage.warning('Solo se puede adjuntar un comprobante.')"
-                    >
-                        <el-button size="small" :icon="UploadFilled">Adjuntar archivo</el-button>
-                        <template #tip>
-                            <div class="el-upload__tip">
-                                JPG, PNG, WEBP o PDF. Máx. 10 MB.
-                                <span v-if="hasExistingReceipt"> Al subir un archivo nuevo se reemplazará el actual.</span>
-                            </div>
-                        </template>
-                    </el-upload>
+                    <p v-else class="text-xs text-gray-400">
+                        El comprobante aparecerá aquí cuando marques el depósito como realizado.
+                    </p>
                 </div>
             </el-form-item>
         </el-form>
@@ -409,8 +365,10 @@ function submit() {
     align-items: center;
 }
 
-/* Amount input: same width as the rest of the inputs */
-:deep(.expense-amount-item .el-input-number) {
+/* Amount, commission and date inputs: same width as the rest of the inputs */
+:deep(.expense-amount-item .el-input-number),
+:deep(.expense-commission-item .el-input-number),
+:deep(.expense-date-item .el-date-editor) {
     width: 100%;
 }
 </style>

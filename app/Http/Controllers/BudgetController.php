@@ -226,6 +226,8 @@ class BudgetController extends Controller
             'ticket.branch',
             'responsible',
             'concepts',
+            'expenses.category',
+            'expenses.media',
             'payments.media',
             'media',
             'ticket.tasks.assignee.technician',

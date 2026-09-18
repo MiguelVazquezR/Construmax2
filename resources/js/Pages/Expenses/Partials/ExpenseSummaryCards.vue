@@ -12,20 +12,20 @@ const formatCurrency = (value) => {
     }).format(value || 0);
 };
 
-const projectShare = computed(() => {
+const budgetShare = computed(() => {
     if (!props.stats?.total_amount) return 0;
 
-    return Math.round((props.stats.project_amount / props.stats.total_amount) * 100);
+    return Math.round((props.stats.budget_amount / props.stats.total_amount) * 100);
 });
 
-const projectCaption = computed(() => {
-    const count = props.stats.project_count || 0;
+const budgetCaption = computed(() => {
+    const count = props.stats.budget_count || 0;
 
     if (count === 0) {
-        return 'Sin gastos ligados a tickets';
+        return 'Sin gastos ligados a presupuestos';
     }
 
-    return `${count} gastos ligados a tickets (${projectShare.value}% del total)`;
+    return `${count} gastos de presupuesto (${budgetShare.value}% del total)`;
 });
 </script>
 
@@ -54,11 +54,11 @@ const projectCaption = computed(() => {
         <div
             class="bg-gradient-to-br from-white to-gray-50 dark:from-[#1e1e20] dark:to-[#252529] rounded-lg shadow-sm border border-gray-200 dark:border-[#2b2b2e] p-5">
             <div class="flex justify-between items-center mb-4">
-                <h4 class="font-bold text-gray-600 dark:text-gray-300 text-sm uppercase">En proyectos</h4>
+                <h4 class="font-bold text-gray-600 dark:text-gray-300 text-sm uppercase">De presupuesto</h4>
                 <el-icon class="text-blue-500"><Tickets /></el-icon>
             </div>
-            <p class="text-2xl font-bold text-gray-800 dark:text-white">{{ formatCurrency(stats.project_amount) }}</p>
-            <p class="text-xs text-gray-500 mt-1">{{ projectCaption }}</p>
+            <p class="text-2xl font-bold text-gray-800 dark:text-white">{{ formatCurrency(stats.budget_amount) }}</p>
+            <p class="text-xs text-gray-500 mt-1">{{ budgetCaption }}</p>
         </div>
 
         <div

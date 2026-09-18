@@ -2,30 +2,35 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Deposits\CompleteDepositAction;
 use App\Actions\Expenses\CreateExpenseAction;
 use App\Actions\Expenses\DeleteExpenseAction;
 use App\Actions\Expenses\MarkExpensePaidAction;
 use App\Actions\Expenses\UpdateExpenseAction;
+use App\Http\Requests\Expenses\CompleteDepositFromExpenseRequest;
 use App\Http\Requests\Expenses\StoreExpenseRequest;
 use App\Http\Requests\Expenses\UpdateExpenseRequest;
+use App\Models\Budget;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
-use App\Models\Ticket;
 use App\Services\Expenses\ExpenseService;
-use Illuminate\Http\JsonResponse;
+use App\Services\Export\XlsxWriterService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ExpenseController extends Controller
 {
     public function __construct(
         private readonly ExpenseService $expenseService,
+        private readonly XlsxWriterService $xlsxWriter,
         private readonly CreateExpenseAction $createExpenseAction,
         private readonly UpdateExpenseAction $updateExpenseAction,
         private readonly DeleteExpenseAction $deleteExpenseAction,
         private readonly MarkExpensePaidAction $markExpensePaidAction,
+        private readonly CompleteDepositAction $completeDepositAction,
     ) {}
 
     public function index(Request $request): Response
@@ -34,14 +39,114 @@ class ExpenseController extends Controller
             abort(403);
         }
 
-        $filters = $request->only(['search', 'status', 'category_id', 'from', 'to']);
+        $filters = $this->indexFilters($request);
 
         return Inertia::render('Expenses/Index', [
             'expenses' => $this->expenseService->getFilteredExpenses($filters),
             'stats' => $this->expenseService->getSummary($filters),
             'categories' => ExpenseCategory::active()->orderBy('name')->get(['id', 'name']),
+            'budgets' => $this->budgetsWithExpenses(),
             'filters' => $filters,
         ]);
+    }
+
+    /**
+     * Excel report with the same filters that are applied on the index.
+     */
+    public function export(Request $request): BinaryFileResponse
+    {
+        if (!$request->user()->can('expenses.index')) {
+            abort(403);
+        }
+
+        $rows = $this->expenseService->getExportRows($this->indexFilters($request));
+
+        $headers = [
+            'Folio',
+            'Fecha',
+            'Concepto',
+            'Referencia',
+            'Categoría',
+            'Presupuesto',
+            'Comisión',
+            'Método de pago',
+            'Estatus',
+            'Monto',
+            'Comprobante',
+            'Registró',
+            'Notas',
+        ];
+
+        $data = $rows->map(fn (array $row) => [
+            $row['folio'],
+            $row['expense_date'],
+            $row['concept'],
+            $row['reference'],
+            $row['category_name'],
+            trim(($row['budget_folio'] ?? '') . ' ' . ($row['budget_name'] ?? '')),
+            ($row['commission_amount'] ?? 0) > 0 ? (float) $row['commission_amount'] : null,
+            $row['payment_method_label'],
+            $row['status_label'],
+            (float) $row['amount'],
+            $row['receipt_name'] ? 'Sí' : 'No',
+            $row['created_by'],
+            $row['notes'],
+        ])->all();
+
+        $path = $this->xlsxWriter->generate(
+            'Gastos',
+            $headers,
+            $data,
+            [10, 12, 42, 18, 24, 30, 12, 18, 18, 14, 14, 22, 30],
+            ['', '', '', '', '', '', '', '', 'Total', (float) $rows->sum('amount') + (float) $rows->sum('commission_amount'), '', '', ''],
+        );
+
+        return response()
+            ->download($path, 'reporte-gastos-' . now()->format('Y-m-d') . '.xlsx', [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ])
+            ->deleteFileAfterSend();
+    }
+
+    /**
+     * Filters shared by the index and the Excel report.
+     *
+     * @return array<string, string|null>
+     */
+    private function indexFilters(Request $request): array
+    {
+        return $request->only([
+            'search',
+            'folio',
+            'status',
+            'category_id',
+            'payment_method',
+            'type',
+            'budget_id',
+            'from',
+            'to',
+            'sort_by',
+            'sort_dir',
+        ]);
+    }
+
+    /**
+     * Budgets that already have expenses, used by the index budget filter.
+     */
+    private function budgetsWithExpenses()
+    {
+        return Budget::query()
+            ->whereHas('expenses')
+            ->with(['ticket.customer:id,name'])
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (Budget $budget) => [
+                'id' => $budget->id,
+                'folio' => $budget->ticket?->folio,
+                'name' => $budget->ticket?->name,
+                'customer_name' => $budget->ticket?->customer?->name,
+            ])
+            ->values();
     }
 
     public function store(StoreExpenseRequest $request): RedirectResponse
@@ -64,6 +169,11 @@ class ExpenseController extends Controller
             abort(403);
         }
 
+        // Deposit expenses are a mirror of the deposits module.
+        if ($expense->deposit_id) {
+            return back()->with('error', 'Este gasto proviene de un depósito: elimínalo desde el módulo de depósitos.');
+        }
+
         $this->deleteExpenseAction->execute($expense);
 
         return back()->with('success', 'Gasto eliminado correctamente.');
@@ -75,44 +185,38 @@ class ExpenseController extends Controller
             abort(403);
         }
 
+        // Deposits are completed with their voucher and commission from the
+        // "Marcar realizado" flow instead of the quick mark-as-paid action.
+        if ($expense->deposit_id) {
+            return back()->with('error', 'Este gasto proviene de un depósito: usa "Marcar realizado" para subir el comprobante y la comisión.');
+        }
+
         $this->markExpensePaidAction->execute($expense);
 
         return back()->with('success', 'Gasto marcado como pagado.');
     }
 
     /**
-     * Remote search of tickets for the optional project link in the expense form.
+     * Complete the deposit linked to an expense: stores the voucher and the
+     * commission, and creates the technician payment (both modules stay in sync).
      */
-    public function searchTickets(Request $request): JsonResponse
+    public function completeDeposit(CompleteDepositFromExpenseRequest $request, Expense $expense): RedirectResponse
     {
-        if (!$request->user()->can('expenses.create') && !$request->user()->can('expenses.edit')) {
-            abort(403);
+        $deposit = $expense->deposit;
+
+        if (!$deposit) {
+            abort(404);
         }
 
-        $term = trim((string) $request->input('q'));
+        if ($deposit->status === 'completed') {
+            return back()->with('error', 'Este depósito ya fue marcado como realizado.');
+        }
 
-        $tickets = Ticket::query()
-            ->with(['customer:id,name'])
-            ->when($term !== '', function ($query) use ($term) {
-                $query->where(function ($query) use ($term) {
-                    $query->where('name', 'like', "%{$term}%")
-                        ->orWhereHas('customer', fn ($q) => $q->where('name', 'like', "%{$term}%"));
+        $this->completeDepositAction->execute($deposit, [
+            'voucher' => $request->file('voucher'),
+            'commission_amount' => $request->validated('commission_amount'),
+        ]);
 
-                    if (is_numeric($term)) {
-                        $query->orWhere('id', (int) $term);
-                    }
-                });
-            })
-            ->orderByDesc('id')
-            ->limit(20)
-            ->get()
-            ->map(fn (Ticket $ticket) => [
-                'id' => $ticket->id,
-                'folio' => $ticket->folio,
-                'name' => $ticket->name,
-                'customer_name' => $ticket->customer?->name,
-            ]);
-
-        return response()->json($tickets);
+        return back()->with('success', 'Depósito marcado como realizado. El gasto quedó actualizado.');
     }
 }

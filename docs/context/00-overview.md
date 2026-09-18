@@ -109,7 +109,7 @@ Construmax2/
 | 14 | Service Types | `06-module-tickets.md` | Simple CRUD for service type taxonomy used by tickets |
 | 15 | Tutorials | `04-module-dashboard.md` | Hardcoded video tutorial gallery page |
 | 16 | Work Acceptance Reports | `14-module-work-acceptance-reports.md` | Digital "Acta de recepción": technician data entry, electronic signature, PDF export, locking mechanism |
-| 17 | Expenses (Control de gastos) | `15-module-expenses.md` | Expense tracking: general and ticket-linked expenses, CRUD + quick mark-as-paid, receipt uploads, categories manager modal, KPIs (no approval flow) |
+| 17 | Expenses (Control de gastos) | `15-module-expenses.md` | Expense tracking: general expenses and budget expenses (breakdown payments, extras, commissions), deposit mirroring (Realizado with voucher + commission), CRUD + quick mark-as-paid, multiple receipt uploads, categories manager modal, budget expenses panel (no approval flow) |
 
 ---
 

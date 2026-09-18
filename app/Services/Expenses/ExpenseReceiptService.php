@@ -13,13 +13,20 @@ class ExpenseReceiptService
     ) {}
 
     /**
-     * Attach a receipt to the expense. Any previous receipt is replaced.
-     * Images are optimized (resized + compressed) before being stored.
+     * Attach one or more receipts to the expense. Images are optimized
+     * (resized + compressed) before being stored.
+     *
+     * @param array<int, UploadedFile> $files
      */
+    public function attachMany(Expense $expense, array $files): void
+    {
+        foreach ($files as $file) {
+            $this->attach($expense, $file);
+        }
+    }
+
     public function attach(Expense $expense, UploadedFile $file): void
     {
-        $expense->clearMediaCollection('receipt');
-
         if (str_starts_with((string) $file->getMimeType(), 'image/')) {
             $optimizedPath = $this->imageOptimizer->optimize($file);
 
@@ -33,8 +40,19 @@ class ExpenseReceiptService
         $expense->addMedia($file)->toMediaCollection('receipt');
     }
 
-    public function remove(Expense $expense): void
+    /**
+     * Delete the given receipt files from the expense.
+     *
+     * @param array<int, int|string> $mediaIds
+     */
+    public function removeMany(Expense $expense, array $mediaIds): void
     {
-        $expense->clearMediaCollection('receipt');
+        if ($mediaIds === []) {
+            return;
+        }
+
+        $expense->getMedia('receipt')
+            ->whereIn('id', $mediaIds)
+            ->each(fn ($media) => $media->delete());
     }
 }

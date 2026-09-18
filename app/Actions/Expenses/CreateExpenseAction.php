@@ -12,17 +12,22 @@ class CreateExpenseAction
     ) {}
 
     /**
-     * Register a general or ticket-linked expense.
+     * Register a general expense or an extra expense linked to a budget.
      */
     public function execute(array $data): Expense
     {
+        $isCommission = !empty($data['budget_id']) && (bool) ($data['is_commission'] ?? false);
+
         $expense = Expense::create([
-            'expense_category_id' => $data['expense_category_id'],
-            'ticket_id' => $data['ticket_id'] ?? null,
+            'expense_category_id' => $data['expense_category_id'] ?? null,
+            'budget_id' => $data['budget_id'] ?? null,
+            'is_commission' => $isCommission,
             'concept' => $data['concept'],
             'reference' => $data['reference'] ?? null,
             'notes' => $data['notes'] ?? null,
             'amount' => $data['amount'],
+            // A general commission expense does not carry another commission on top.
+            'commission_amount' => $isCommission ? null : ($data['commission_amount'] ?? null),
             'expense_date' => $data['expense_date'],
             'payment_method' => $data['payment_method'] ?? null,
             'status' => $data['status'],
@@ -30,8 +35,8 @@ class CreateExpenseAction
             'created_by' => auth()->id(),
         ]);
 
-        if (isset($data['receipt'])) {
-            $this->receiptService->attach($expense, $data['receipt']);
+        if (!empty($data['receipts'])) {
+            $this->receiptService->attachMany($expense, $data['receipts']);
         }
 
         return $expense;

@@ -13,7 +13,8 @@
 | Controller | `PublicDepositController.php` | Public signed-URL views + complete action |
 | Controller | `DepositTypeController.php` | Deposit types CRUD (JSON API) |
 | Action | `ApproveDepositAction.php` | Marks deposit as approved |
-| Action | `CompleteDepositAction.php` | Creates TechnicianPayment + marks completed |
+| Action | `CompleteDepositAction.php` | Creates TechnicianPayment + marks completed + syncs the mirror expense |
+| Action | `App\Actions\Expenses\SyncDepositExpenseAction.php` | Mirrors the deposit in the expenses module (create/refresh expense + voucher copy) |
 | Service | `DepositService.php` | Pending amounts, pending tickets, default shift |
 | Model | `Deposit.php` | Implements HasMedia; status scopes |
 | Model | `DepositType.php` | Simple taxonomy |
@@ -61,9 +62,21 @@ pending ──▶ approved ──▶ completed
 
 ### Flow
 1. **Create:** Admin/manager creates a deposit — selects technician, bank account, ticket, deposit type, amount, shift, scheduled date
-2. **Approve:** `ApproveDepositAction` sets `status=approved`, records `approved_by` and `approved_at`
-3. **Complete:** `CompleteDepositAction` creates a `TechnicianPayment` record linking the deposit amount to the budget, sets `status=completed`, stamps `completed_at`, records `commission_amount`. Once completed, cannot be re-completed (guarded server-side).
+2. **Approve:** `ApproveDepositAction` sets `status=approved`, records `approved_by` and `approved_at`, and mirrors the deposit as a pending expense in the expenses module
+3. **Complete:** `CompleteDepositAction` creates a `TechnicianPayment` record linking the deposit amount to the budget, sets `status=completed`, stamps `completed_at`, records `commission_amount`. Once completed, cannot be re-completed (guarded server-side). The mirror expense (see "Expenses integration") is updated as paid, with the commission and the voucher copied as a receipt.
 4. **Notifications:** On creation → `deposit.pending-approval` notification sent to subscribers
+
+---
+
+## Expenses integration
+
+Approved deposits are mirrored in the **expenses module** (`expenses.deposit_id`, unique) so all outgoing money is tracked in one place (module 15):
+
+- **Approve** (`ApproveDepositAction`) → `SyncDepositExpenseAction` creates the pending mirror expense: amount, budget (ticket deposits), concept (`Depósito: {tipo} — {técnico}` / `Depósito externo: {tipo} — {beneficiario}`), reference `Depósito #{id}` and the deposit notes. **Pending deposits are not mirrored** — the expense appears once the deposit is approved — and it reads as **"Pendiente de depósito"**.
+- **Complete** (internal, public link or from expenses) → the mirror expense becomes **paid**, gets the commission and the voucher is copied into its receipts.
+- **Update** → amount, type, date and concept are refreshed on the mirror; **Delete** → the mirror expense is removed too.
+- **From expenses:** the **Realizado** action (`POST /expenses/{expense}/complete-deposit`) uploads the voucher + commission and runs this same `CompleteDepositAction`, so the technician payment and status stay official. Requires `expenses.edit` or `deposits.approve`.
+- Deposit expenses cannot be mark-paid or deleted from the expenses module (guarded server-side), and their amount/date/status/receipts are locked in the expense edit dialog.
 
 ---
 
@@ -161,6 +174,7 @@ pending ──▶ approved ──▶ completed
 - **Technicians** (`09`): Deposits reference technicians and their bank accounts
 - **Tickets** (`06`): Deposits can be associated with tickets; ticket folio links to ticket details
 - **Budgets** (`07`): `budget_id` is auto-derived; `CompleteDepositAction` creates a `TechnicianPayment` linked to the budget
+- **Expenses** (`15`): deposits are mirrored as expenses (`SyncDepositExpenseAction`); completion syncs status/commission/voucher both ways, and the voucher can be uploaded from the expenses **Realizado** flow
 - **Notifications** (`13`): `deposit.pending-approval` notification
 - **Users** (`03`): `created_by`, `approved_by`
 - **Dashboard** (`04`): Dashboard KPI card shows pending deposit count and today's scheduled deposits
@@ -174,4 +188,5 @@ pending ──▶ approved ──▶ completed
 - **Budget auto-derivation:** `budget_id` is set to `$ticket->budget->id` if the ticket has a budget — if no budget exists, it stays null. This silent fallback may cause issues if budget is created later.
 - **Shift auto-detection:** Default shift is based on server time when the form loads — users can override it. This works for Mexico timezones but may need adjustment for other regions.
 - **No bulk operations:** Each deposit must be created individually — no batch deposit creation for multiple technicians on the same day.
+- **Completion from expenses skips approval by design:** the expenses "Realizado" flow completes deposits in `pending` or `approved` status (voucher required unless one already exists), same as creating a deposit with a voucher.
 - **PHP null coercion:** Empty query string values (`?shift=`) are parsed as `null` by PHP. Filter logic must explicitly check for both `''` and `null` when determining "show all".

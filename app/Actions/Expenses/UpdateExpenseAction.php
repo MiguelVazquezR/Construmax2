@@ -14,23 +14,57 @@ class UpdateExpenseAction
 
     public function execute(Expense $expense, array $data): Expense
     {
+        // Deposit expenses mirror a deposit: money fields and receipts are
+        // managed from the deposit completion flow ("Marcar realizado").
+        if ($expense->deposit_id) {
+            $data['concept'] = $expense->concept;
+            $data['amount'] = $expense->amount;
+            $data['budget_id'] = $expense->budget_id;
+            $data['expense_date'] = $expense->expense_date?->format('Y-m-d');
+            $data['status'] = $expense->status;
+            $data['payment_method'] = $expense->payment_method;
+            $data['commission_amount'] = $expense->commission_amount;
+            $data['is_commission'] = false;
+
+            unset($data['receipts'], $data['remove_receipt_ids']);
+        }
+
+        // Concept payments keep the concept and amount defined by the budget
+        // breakdown; only their payment data can be edited.
+        if ($expense->budget_concept_id) {
+            $concept = $expense->loadMissing('budgetConcept')->budgetConcept;
+
+            $data['concept'] = $concept->concept;
+            $data['amount'] = $concept->amount;
+            $data['budget_id'] = $concept->budget_id;
+            $data['is_commission'] = false;
+        }
+
+        $isCommission = !empty($expense->budget_id) && (bool) ($data['is_commission'] ?? false);
+
         $expense->update([
-            'expense_category_id' => $data['expense_category_id'],
-            'ticket_id' => $data['ticket_id'] ?? null,
+            'expense_category_id' => $data['expense_category_id'] ?? null,
+            'budget_id' => array_key_exists('budget_id', $data) ? $data['budget_id'] : $expense->budget_id,
+            'is_commission' => $isCommission,
             'concept' => $data['concept'],
             'reference' => $data['reference'] ?? null,
             'notes' => $data['notes'] ?? null,
             'amount' => $data['amount'],
+            'commission_amount' => $isCommission
+                ? null
+                : (array_key_exists('commission_amount', $data) ? $data['commission_amount'] : $expense->commission_amount),
             'expense_date' => $data['expense_date'],
             'payment_method' => $data['payment_method'] ?? null,
             'status' => $data['status'],
             'paid_at' => $this->resolvePaidAt($expense, $data['status']),
         ]);
 
-        if (isset($data['receipt'])) {
-            $this->receiptService->attach($expense, $data['receipt']);
-        } elseif ($data['remove_receipt'] ?? false) {
-            $this->receiptService->remove($expense);
+        if (!empty($data['receipts'])) {
+            $this->receiptService->attachMany($expense, $data['receipts']);
+        }
+
+        if (!empty($data['remove_receipt_ids'])) {
+            $this->receiptService->removeMany($expense, $data['remove_receipt_ids']);
         }
 
         return $expense;

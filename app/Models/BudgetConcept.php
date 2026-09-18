@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class BudgetConcept extends Model
 {
@@ -20,5 +21,13 @@ class BudgetConcept extends Model
     public function budget(): BelongsTo
     {
         return $this->belongsTo(Budget::class);
+    }
+
+    /**
+     * Payment registered for this concept from the expenses module.
+     */
+    public function expense(): HasOne
+    {
+        return $this->hasOne(Expense::class, 'budget_concept_id');
     }
 }

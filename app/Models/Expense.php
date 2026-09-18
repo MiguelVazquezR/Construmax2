@@ -32,26 +32,34 @@ class Expense extends Model implements HasMedia
         'folio',
         'expense_category_id',
         'ticket_id',
+        'budget_id',
+        'budget_concept_id',
+        'deposit_id',
         'concept',
         'reference',
         'notes',
         'amount',
+        'commission_amount',
         'expense_date',
         'payment_method',
         'status',
+        'is_commission',
         'created_by',
         'paid_at',
     ];
 
     protected $casts = [
         'amount' => 'decimal:2',
+        'commission_amount' => 'decimal:2',
         'expense_date' => 'date',
         'paid_at' => 'datetime',
+        'is_commission' => 'boolean',
     ];
 
     protected $appends = [
         'receipt_url',
         'receipt_name',
+        'receipts',
     ];
 
     protected static function booted(): void
@@ -75,6 +83,21 @@ class Expense extends Model implements HasMedia
         return $this->belongsTo(Ticket::class);
     }
 
+    public function budget(): BelongsTo
+    {
+        return $this->belongsTo(Budget::class);
+    }
+
+    public function budgetConcept(): BelongsTo
+    {
+        return $this->belongsTo(BudgetConcept::class);
+    }
+
+    public function deposit(): BelongsTo
+    {
+        return $this->belongsTo(Deposit::class);
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
@@ -84,6 +107,11 @@ class Expense extends Model implements HasMedia
 
     public function getStatusLabelAttribute(): string
     {
+        // Deposits pending completion read as "awaiting deposit" instead of "awaiting payment".
+        if ($this->status === self::STATUS_PENDING && $this->deposit_id) {
+            return 'Pendiente de depósito';
+        }
+
         return static::statusLabels()[$this->status] ?? $this->status;
     }
 
@@ -102,11 +130,29 @@ class Expense extends Model implements HasMedia
         return $this->getFirstMedia('receipt')?->file_name;
     }
 
+    /**
+     * All receipts attached to the expense.
+     *
+     * @return array<int, array{id: int, url: string, name: string}>
+     */
+    public function getReceiptsAttribute(): array
+    {
+        return $this->getMedia('receipt')
+            ->map(fn ($media) => [
+                'id' => $media->id,
+                'url' => $media->getUrl(),
+                'name' => $media->file_name,
+            ])
+            ->values()
+            ->all();
+    }
+
     // --- Media ---
 
     public function registerMediaCollections(): void
     {
-        $this->addMediaCollection('receipt')->singleFile();
+        // A single expense may hold several receipts (invoice, transfer proof, etc.)
+        $this->addMediaCollection('receipt');
     }
 
     // --- Scopes ---
@@ -155,6 +201,49 @@ class Expense extends Model implements HasMedia
         }
 
         return $query;
+    }
+
+    public function scopeWithPaymentMethod(Builder $query, ?string $method): Builder
+    {
+        if (!$method || $method === 'all') {
+            return $query;
+        }
+
+        return $query->where('payment_method', $method);
+    }
+
+    public function scopeForBudget(Builder $query, mixed $budgetId): Builder
+    {
+        if (!$budgetId) {
+            return $query;
+        }
+
+        return $query->where('budget_id', $budgetId);
+    }
+
+    /**
+     * Filter by expense type: general (no budget), budget, commission or deposit.
+     */
+    public function scopeOfType(Builder $query, ?string $type): Builder
+    {
+        return match ($type) {
+            'general' => $query->whereNull('budget_id'),
+            'budget' => $query->whereNotNull('budget_id'),
+            'commission' => $query->where('is_commission', true),
+            'deposit' => $query->whereNotNull('deposit_id'),
+            default => $query,
+        };
+    }
+
+    public function scopeWithFolio(Builder $query, ?string $term): Builder
+    {
+        $term = trim((string) $term);
+
+        if ($term === '') {
+            return $query;
+        }
+
+        return $query->where('folio', 'like', "%{$term}%");
     }
 
     // --- Catalogs ---
