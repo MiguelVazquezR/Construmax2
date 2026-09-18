@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Budget;
 use App\Models\BudgetConcept;
 use App\Models\BudgetPayment;
+use App\Models\Expense;
 use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -270,6 +271,22 @@ class BudgetControllerTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('Budgets/Show')
                 ->has('budget')
+            );
+    }
+
+    public function test_show_exposes_expense_status_labels(): void
+    {
+        $budget = Budget::factory()->create(['user_id' => $this->user->id]);
+        Expense::factory()->pending()->create(['budget_id' => $budget->id]);
+        Expense::factory()->paid()->create(['budget_id' => $budget->id]);
+
+        $this->actingAs($this->user)
+            ->get(route('budgets.show', $budget))
+            ->assertInertia(fn ($page) => $page
+                ->component('Budgets/Show')
+                ->has('budget.expenses', 2)
+                ->where('budget.expenses.0.status_label', 'Pendiente de pago')
+                ->where('budget.expenses.1.status_label', 'Pagado')
             );
     }
 

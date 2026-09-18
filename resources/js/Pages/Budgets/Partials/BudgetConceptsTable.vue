@@ -1,10 +1,13 @@
 <script setup>
 import { computed } from 'vue';
 import { Money } from '@element-plus/icons-vue';
+import { useCostType } from '@/Composables/useCostType';
 
 const props = defineProps({
     budget: Object,
 });
+
+const { costTypeLabel, costTypeTagType } = useCostType();
 
 const conceptsTotal = computed(() => {
     if (!props.budget.concepts || !props.budget.concepts.length) return 0;
@@ -28,6 +31,19 @@ const formatCurrency = (value) => {
         </div>
         <el-table :data="budget.concepts" stripe style="width: 100%">
             <el-table-column prop="concept" label="Concepto" />
+            <el-table-column label="Categoría" width="140" align="center">
+                <template #default="scope">
+                    <el-tag
+                        v-if="costTypeLabel(scope.row.type)"
+                        :type="costTypeTagType(scope.row.type)"
+                        size="small"
+                        effect="plain"
+                    >
+                        {{ costTypeLabel(scope.row.type) }}
+                    </el-tag>
+                    <span v-else class="text-xs text-gray-400 italic">—</span>
+                </template>
+            </el-table-column>
             <el-table-column prop="amount" label="Monto" align="right" width="150">
                 <template #default="scope">
                     {{ formatCurrency(scope.row.amount) }}

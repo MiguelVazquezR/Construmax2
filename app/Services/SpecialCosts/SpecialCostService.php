@@ -278,6 +278,7 @@ class SpecialCostService
                     'id'      => $concept->id,
                     'concept' => $concept->concept,
                     'amount'  => $concept->amount,
+                    'type'    => $concept->type,
                 ];
             }),
             'task_evidence'  => $taskEvidence,

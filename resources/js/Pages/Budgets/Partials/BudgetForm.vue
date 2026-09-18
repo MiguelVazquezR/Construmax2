@@ -34,10 +34,11 @@ const form = useForm({
         ? props.budget.concepts.map(c => ({ 
             concept: c.concept, 
             amount: parseFloat(c.amount), 
+            type: c.type ?? null,
             paid_to_technician: c.paid_to_technician ?? false,
             payment_date: c.payment_date || null,
         }))
-        : [{ concept: '', amount: 0, paid_to_technician: false, payment_date: null }],
+        : [{ concept: '', amount: 0, type: 'labor', paid_to_technician: false, payment_date: null }],
     survey_images: [],
     support_files: [],
     send_to_costs: false,
@@ -123,7 +124,7 @@ const formatCurrency = (value) => {
 };
 
 const addConcept = () => {
-    form.concepts.push({ concept: '', amount: 0, paid_to_technician: false, payment_date: null });
+    form.concepts.push({ concept: '', amount: 0, type: 'labor', paid_to_technician: false, payment_date: null });
 };
 
 const removeConcept = (index) => {
@@ -143,6 +144,9 @@ const rules = reactive({
 
 const doSubmit = (sendToCosts = false) => {
     if (!formRef.value) return;
+
+    // A cleared type select sends '' — normalize it so the backend stores null.
+    form.concepts = form.concepts.map(c => ({ ...c, type: c.type || null }));
 
     formRef.value.validate((valid) => {
         if (valid) {
@@ -425,44 +429,53 @@ defineExpose({ form });
                         </div>
                     </div>
 
-                    <div class="bg-gray-50 dark:bg-[#252529] rounded-lg p-4 border border-gray-200 dark:border-[#3f3f46]">
-                        <div v-for="(item, index) in form.concepts" :key="index" class="flex flex-col sm:flex-row gap-3 mb-3 last:mb-0 items-start sm:items-center">
-                            <div class="flex-1 w-full">
-                                <el-input v-model="item.concept" placeholder="Concepto" />
-                            </div>
-                            <div class="w-full sm:w-36">
+                    <div class="bg-gray-50 dark:bg-[#252529] rounded-lg p-4 border border-gray-200 dark:border-[#3f3f46] space-y-3">
+                        <div
+                            v-for="(item, index) in form.concepts"
+                            :key="index"
+                            class="bg-white dark:bg-[#1e1e20] rounded-lg border border-gray-200 dark:border-[#3f3f46] p-3"
+                        >
+                            <!-- Description, type and amount -->
+                            <div class="flex flex-col sm:flex-row gap-3 sm:items-center">
+                                <el-input v-model="item.concept" placeholder="Concepto" class="flex-1" />
+                                <el-select v-model="item.type" class="!w-full sm:!w-44" placeholder="Sin categoría" clearable>
+                                    <el-option label="Mano de obra" value="labor" />
+                                    <el-option label="Materiales" value="material" />
+                                </el-select>
                                 <el-input-number
                                     v-model="item.amount"
                                     :min="0"
                                     :precision="2"
-                                    class="!w-full"
+                                    class="!w-full sm:!w-40"
                                     placeholder="Monto"
                                     controls-position="right"
                                 >
                                     <template #prefix>$</template>
                                 </el-input-number>
+                                <el-button
+                                    type="danger"
+                                    :icon="Delete"
+                                    circle
+                                    plain
+                                    class="self-end sm:self-auto shrink-0"
+                                    @click="removeConcept(index)"
+                                    :disabled="form.concepts.length === 1"
+                                />
                             </div>
-                            <div class="flex items-center gap-2 shrink-0">
+
+                            <!-- Technician payment -->
+                            <div class="flex flex-col sm:flex-row gap-3 sm:items-center mt-3">
                                 <el-checkbox v-model="item.paid_to_technician" label="Pago a técnico" />
                                 <el-date-picker
                                     v-if="item.paid_to_technician"
                                     v-model="item.payment_date"
                                     type="date"
-                                    placeholder="Fecha pago"
-                                    class="!w-36"
+                                    placeholder="Fecha de pago"
+                                    class="!w-full sm:!w-44"
                                     format="DD/MM/YYYY"
                                     value-format="YYYY-MM-DD"
-                                    size="small"
                                 />
                             </div>
-                            <el-button
-                                type="danger"
-                                :icon="Delete"
-                                circle
-                                plain
-                                @click="removeConcept(index)"
-                                :disabled="form.concepts.length === 1"
-                            />
                         </div>
                     </div>
 
@@ -702,14 +715,14 @@ defineExpose({ form });
                         <el-button
                             type="primary"
                             color="#f26c17"
-                            class="w-full !font-bold !h-12 !text-lg"
+                            class="w-full !font-bold !h-12 !text-base"
                             :loading="form.processing"
                             @click="submit(true)"
                         >
-                            {{ isEdit ? 'Guardar y pasar a costos' : 'Guardar y pasar a costos' }}
+                            Guardar y pasar a costos
                         </el-button>
                         <el-button
-                            class="w-full !font-bold !h-11 !text-base mt-3"
+                            class="w-full !font-bold !h-12 !text-base !ml-0 !mt-3"
                             :loading="form.processing"
                             @click="submit(false)"
                         >

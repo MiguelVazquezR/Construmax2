@@ -9,6 +9,7 @@ use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use ZipArchive;
 
 class TicketControllerTest extends TestCase
 {
@@ -225,5 +226,107 @@ class TicketControllerTest extends TestCase
             ->assertSessionHas('success');
 
         $this->assertDatabaseMissing('tickets', ['id' => $ticket->id]);
+    }
+
+    // --- export ---
+
+    public function test_export_downloads_an_xlsx_report_with_the_applied_filters(): void
+    {
+        $matching = Ticket::factory()->create([
+            'seller_id' => $this->user->id,
+            'status' => 'Borrador',
+            'priority' => 'Alta',
+            'name' => 'Instalación de anuncio',
+        ]);
+
+        Ticket::factory()->create([
+            'seller_id' => $this->user->id,
+            'status' => 'Borrador',
+            'priority' => 'Baja',
+            'name' => 'Ticket fuera del filtro',
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->get(route('tickets.export', ['priority' => 'Alta']));
+
+        $response->assertOk();
+        $response->assertDownload('reporte-tickets-' . now()->format('Y-m-d') . '.xlsx');
+        $this->assertSame(
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            $response->headers->get('Content-Type')
+        );
+
+        $sheet = $this->sheetXmlFrom($response);
+
+        // Only the ticket matching the priority filter is exported.
+        $this->assertStringContainsString('>' . $matching->folio . '</t>', $sheet);
+        $this->assertStringNotContainsString('>Ticket fuera del filtro</t>', $sheet);
+    }
+
+    public function test_export_uses_default_active_statuses_when_no_status_filter_is_sent(): void
+    {
+        Ticket::factory()->withStatus('Borrador')->create(['seller_id' => $this->user->id]);
+        Ticket::factory()->withStatus('Cancelado')->create(['seller_id' => $this->user->id]);
+
+        $response = $this->actingAs($this->user)->get(route('tickets.export'));
+
+        $response->assertOk();
+
+        $sheet = $this->sheetXmlFrom($response);
+
+        $this->assertStringContainsString('>Borrador</t>', $sheet);
+        $this->assertStringNotContainsString('>Cancelado</t>', $sheet);
+    }
+
+    public function test_export_includes_every_status_when_all_is_selected(): void
+    {
+        Ticket::factory()->withStatus('Cancelado')->create(['seller_id' => $this->user->id]);
+
+        $response = $this->actingAs($this->user)
+            ->get(route('tickets.export', ['status' => ['all']]));
+
+        $response->assertOk();
+
+        $sheet = $this->sheetXmlFrom($response);
+
+        $this->assertStringContainsString('>Cancelado</t>', $sheet);
+    }
+
+    public function test_export_only_includes_the_acting_seller_tickets(): void
+    {
+        Ticket::factory()->create([
+            'seller_id' => $this->user->id,
+            'status' => 'Borrador',
+            'name' => 'Ticket propio',
+        ]);
+
+        Ticket::factory()->create([
+            'status' => 'Borrador',
+            'name' => 'Ticket de otro asesor',
+        ]);
+
+        $response = $this->actingAs($this->user)->get(route('tickets.export'));
+
+        $response->assertOk();
+
+        $sheet = $this->sheetXmlFrom($response);
+
+        $this->assertStringContainsString('>Ticket propio</t>', $sheet);
+        $this->assertStringNotContainsString('>Ticket de otro asesor</t>', $sheet);
+    }
+
+    /**
+     * Read the generated sheet XML from a download response.
+     */
+    private function sheetXmlFrom($response): string
+    {
+        $zip = new ZipArchive();
+        $this->assertTrue($zip->open($response->getFile()->getPathname()));
+        $sheet = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $zip->close();
+
+        $this->assertNotFalse($sheet);
+
+        return $sheet;
     }
 }

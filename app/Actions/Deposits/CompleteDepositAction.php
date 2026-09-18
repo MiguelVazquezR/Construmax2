@@ -2,6 +2,7 @@
 
 namespace App\Actions\Deposits;
 
+use App\Actions\Expenses\SyncDepositExpenseAction;
 use App\Models\Deposit;
 use App\Models\TechnicianPayment;
 use App\Services\Media\ImageOptimizerService;
@@ -10,6 +11,7 @@ class CompleteDepositAction
 {
     public function __construct(
         private readonly ImageOptimizerService $imageOptimizer,
+        private readonly SyncDepositExpenseAction $syncDepositExpenseAction,
     ) {}
 
     public function execute(Deposit $deposit, array $data): Deposit
@@ -54,6 +56,10 @@ class CompleteDepositAction
             }
         }
 
-        return $deposit->fresh();
+        // 3. Keep the mirror expense in the expenses module up to date
+        $deposit = $deposit->fresh();
+        $this->syncDepositExpenseAction->execute($deposit);
+
+        return $deposit;
     }
 }
