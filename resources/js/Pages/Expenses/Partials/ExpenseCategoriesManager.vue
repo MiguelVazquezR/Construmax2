@@ -109,7 +109,14 @@ async function deleteCategory(category) {
         </div>
 
         <el-table :data="categories" v-loading="loading" size="small" max-height="400">
-            <el-table-column prop="name" label="Nombre" min-width="170" show-overflow-tooltip />
+            <el-table-column label="Nombre" min-width="170" show-overflow-tooltip>
+                <template #default="{ row }">
+                    <div class="flex items-center gap-2">
+                        <span>{{ row.name }}</span>
+                        <el-tag v-if="row.is_default" type="info" size="small" effect="plain">Predeterminada</el-tag>
+                    </div>
+                </template>
+            </el-table-column>
             <el-table-column label="Gastos" width="80" align="center">
                 <template #default="{ row }">
                     <span class="text-xs text-gray-500">{{ row.expenses_count }}</span>
@@ -124,8 +131,14 @@ async function deleteCategory(category) {
             </el-table-column>
             <el-table-column label="Acciones" width="120" align="center">
                 <template #default="{ row }">
-                    <el-button size="small" :icon="Edit" @click="openEdit(row)" />
-                    <el-button size="small" type="danger" :icon="Delete" @click="deleteCategory(row)" />
+                    <el-button v-if="!row.is_default" size="small" :icon="Edit" @click="openEdit(row)" />
+                    <el-button
+                        v-if="!row.is_default"
+                        size="small"
+                        type="danger"
+                        :icon="Delete"
+                        @click="deleteCategory(row)"
+                    />
                 </template>
             </el-table-column>
 

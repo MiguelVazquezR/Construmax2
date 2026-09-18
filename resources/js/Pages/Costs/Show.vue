@@ -6,6 +6,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { ChatDotSquare, WarningFilled } from '@element-plus/icons-vue';
 import { useCostsHelpers } from '@/Composables/useCostsHelpers';
 import { useCatalogStatus } from '@/Composables/useCatalogStatus';
+import { useCostType } from '@/Composables/useCostType';
 import MaterialsTable from '@/Components/Costs/MaterialsTable.vue';
 import LaborTable from '@/Components/Costs/LaborTable.vue';
 import EmpenoFacilTotals from '@/Components/Costs/EmpenoFacilTotals.vue';
@@ -13,6 +14,7 @@ import EmpenoFacilTotals from '@/Components/Costs/EmpenoFacilTotals.vue';
 const props = defineProps({ budget: Object, canCreateCatalog: Boolean, canApprove: Boolean, canTransfer: Boolean });
 const { formatCurrency, copyToClipboard } = useCostsHelpers();
 const { catalogStatusLabel, catalogStatusType, isCatalogPendingUpdate, catalogUpdatedTooltip } = useCatalogStatus();
+const { costTypeLabel, costTypeTagType } = useCostType();
 
 const currentVersion = ref(null);
 const currentCatalogId = ref(null);
@@ -552,6 +554,19 @@ function approveCatalog() {
                     </h3>
                     <el-table :data="budget.concepts" size="small" border class="w-full">
                         <el-table-column prop="concept" label="Concepto comercial" min-width="200" />
+                        <el-table-column label="Categoría" width="130" align="center">
+                            <template #default="scope">
+                                <el-tag
+                                    v-if="costTypeLabel(scope.row.type)"
+                                    :type="costTypeTagType(scope.row.type)"
+                                    size="small"
+                                    effect="plain"
+                                >
+                                    {{ costTypeLabel(scope.row.type) }}
+                                </el-tag>
+                                <span v-else class="text-xs text-gray-400">—</span>
+                            </template>
+                        </el-table-column>
                         <el-table-column label="Monto referencial" width="140" align="right">
                             <template #default="scope">{{ formatCurrency(scope.row.amount, budget.currency) }}</template>
                         </el-table-column>

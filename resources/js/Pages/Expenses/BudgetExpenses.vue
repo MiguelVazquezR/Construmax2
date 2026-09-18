@@ -16,9 +16,9 @@ import {
     Wallet,
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
+import { useCostType } from '@/Composables/useCostType';
 import ExpenseFormDialog from './Partials/ExpenseFormDialog.vue';
 import BudgetConceptPaymentDialog from './Partials/BudgetConceptPaymentDialog.vue';
-import BulkMarkConceptsPaidDialog from './Partials/BulkMarkConceptsPaidDialog.vue';
 import CompleteDepositDialog from './Partials/CompleteDepositDialog.vue';
 
 const props = defineProps({
@@ -27,6 +27,7 @@ const props = defineProps({
 });
 
 const { can } = usePermissions();
+const { costTypeLabel, costTypeTagType } = useCostType();
 
 const isCancelled = computed(() => props.budget.status === 'Cancelado');
 
@@ -69,28 +70,12 @@ const statusTagType = (status) => {
 };
 
 // --- Breakdown concepts ---
-const selectedConcepts = ref([]);
 const paymentConcept = ref(null);
 const showPaymentDialog = ref(false);
-const showBulkDialog = ref(false);
 
 const openPaymentDialog = (concept) => {
     paymentConcept.value = concept;
     showPaymentDialog.value = true;
-};
-
-const openBulkDialog = () => {
-    if (!selectedConcepts.value.length) return;
-
-    showBulkDialog.value = true;
-};
-
-const onConceptSelectionChange = (rows) => {
-    selectedConcepts.value = rows;
-};
-
-const onConceptsPaid = () => {
-    selectedConcepts.value = [];
 };
 
 const conceptState = (concept) => {
@@ -198,7 +183,7 @@ const handleExtraCommand = (command, extra) => {
                 class="bg-white dark:bg-[#1e1e20] p-4 rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] flex flex-col lg:flex-row justify-between items-center gap-4">
                 <div class="flex items-center gap-3">
                     <Link :href="route('expenses.index')">
-                        <el-button icon="Back">Volver a gastos</el-button>
+                        <el-button circle icon="Back" title="Volver a gastos" aria-label="Volver a gastos" />
                     </Link>
                     <div>
                         <h2 class="text-lg font-bold text-gray-800 dark:text-white">Gastos del presupuesto</h2>
@@ -209,14 +194,9 @@ const handleExtraCommand = (command, extra) => {
                     </div>
                 </div>
 
-                <div class="flex items-center gap-2">
-                    <el-tag :type="statusTagType(budget.status)" effect="dark" size="large">
-                        {{ budget.status }}
-                    </el-tag>
-                    <Link v-if="can('budgets.index')" :href="route('budgets.show', budget.id)">
-                        <el-button>Ver presupuesto</el-button>
-                    </Link>
-                </div>
+                <el-tag :type="statusTagType(budget.status)" effect="plain" size="default">
+                    {{ budget.status }}
+                </el-tag>
             </div>
 
             <el-alert
@@ -269,29 +249,28 @@ const handleExtraCommand = (command, extra) => {
 
             <!-- Breakdown -->
             <div class="bg-white dark:bg-[#1e1e20] rounded-lg shadow-sm border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
-                <div class="p-4 bg-gray-50 dark:bg-[#252529] border-b border-gray-100 dark:border-[#2b2b2e] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="p-4 bg-gray-50 dark:bg-[#252529] border-b border-gray-100 dark:border-[#2b2b2e]">
                     <h3 class="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
                         <el-icon><Money /></el-icon> Desglose del presupuesto
                     </h3>
-
-                    <el-button
-                        type="primary"
-                        plain
-                        size="default"
-                        :disabled="!selectedConcepts.length || isCancelled || !(can('expenses.create') || can('expenses.edit'))"
-                        @click="openBulkDialog"
-                    >
-                        Marcar pagados ({{ selectedConcepts.length }})
-                    </el-button>
                 </div>
 
-                <el-table :data="budget.concepts" stripe style="width: 100%" @selection-change="onConceptSelectionChange">
-                    <el-table-column type="selection" width="48" :selectable="() => !isCancelled" />
-
+                <el-table :data="budget.concepts" stripe style="width: 100%">
                     <el-table-column label="Concepto" min-width="200" show-overflow-tooltip>
                         <template #default="scope">
                             <div class="flex flex-col">
-                                <span class="font-medium text-gray-800 dark:text-gray-200 text-sm">{{ scope.row.concept }}</span>
+                                <div class="flex items-center gap-2">
+                                    <span class="font-medium text-gray-800 dark:text-gray-200 text-sm">{{ scope.row.concept }}</span>
+                                    <el-tag
+                                        v-if="costTypeLabel(scope.row.type)"
+                                        :type="costTypeTagType(scope.row.type)"
+                                        size="small"
+                                        effect="plain"
+                                        class="shrink-0"
+                                    >
+                                        {{ costTypeLabel(scope.row.type) }}
+                                    </el-tag>
+                                </div>
                                 <span v-if="scope.row.expense?.folio" class="text-xs text-gray-400">Gasto {{ scope.row.expense.folio }}</span>
                             </div>
                         </template>
@@ -523,16 +502,7 @@ const handleExtraCommand = (command, extra) => {
             v-model="showPaymentDialog"
             :budget="budget"
             :concept="paymentConcept"
-            @saved="onConceptsPaid"
-        />
-
-        <!-- Bulk payment dialog -->
-        <BulkMarkConceptsPaidDialog
-            v-if="showBulkDialog"
-            v-model="showBulkDialog"
-            :budget="budget"
-            :concepts="selectedConcepts"
-            @saved="onConceptsPaid"
+            :categories="categories"
         />
 
         <!-- Extra expense dialog -->

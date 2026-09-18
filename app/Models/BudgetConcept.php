@@ -11,7 +11,7 @@ class BudgetConcept extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['budget_id', 'concept', 'amount', 'paid_to_technician', 'payment_date'];
+    protected $fillable = ['budget_id', 'concept', 'amount', 'type', 'paid_to_technician', 'payment_date'];
 
     protected $casts = [
         'paid_to_technician' => 'boolean',

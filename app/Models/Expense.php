@@ -60,6 +60,7 @@ class Expense extends Model implements HasMedia
         'receipt_url',
         'receipt_name',
         'receipts',
+        'status_label',
     ];
 
     protected static function booted(): void
@@ -187,7 +188,22 @@ class Expense extends Model implements HasMedia
             return $query;
         }
 
-        return $query->where('expense_category_id', $categoryId);
+        $category = ExpenseCategory::find($categoryId);
+        $costType = $category?->conceptCostType();
+
+        return $query->where(function (Builder $query) use ($categoryId, $costType) {
+            $query->where('expense_category_id', $categoryId);
+
+            // The default categories ("Mano de obra" / "Materiales") also match
+            // concept payments that display that cost type — expenses without
+            // their own category whose budget concept carries the same type.
+            if ($costType) {
+                $query->orWhere(function (Builder $query) use ($costType) {
+                    $query->whereNull('expense_category_id')
+                        ->whereHas('budgetConcept', fn (Builder $sub) => $sub->where('type', $costType));
+                });
+            }
+        });
     }
 
     public function scopeBetweenDates(Builder $query, ?string $from, ?string $to): Builder

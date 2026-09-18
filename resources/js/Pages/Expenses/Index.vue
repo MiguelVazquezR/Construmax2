@@ -18,6 +18,7 @@ import {
     Promotion,
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
+import { useCostType } from '@/Composables/useCostType';
 import ExpenseSummaryCards from './Partials/ExpenseSummaryCards.vue';
 import ExpenseFormDialog from './Partials/ExpenseFormDialog.vue';
 import ExpenseTypeDialog from './Partials/ExpenseTypeDialog.vue';
@@ -25,6 +26,7 @@ import BudgetPickerDialog from './Partials/BudgetPickerDialog.vue';
 import CompleteDepositDialog from './Partials/CompleteDepositDialog.vue';
 
 const { can } = usePermissions();
+const { costTypeLabel, costTypeTagType } = useCostType();
 
 const props = defineProps({
     expenses: Object,
@@ -416,6 +418,15 @@ const handleRowCommand = (command, expense) => {
                                 <span class="block w-full truncate text-sm text-gray-600 dark:text-gray-400">
                                     {{ scope.row.category_name }}
                                 </span>
+                            </el-tooltip>
+                            <el-tooltip
+                                v-else-if="costTypeLabel(scope.row.budget_concept_type)"
+                                content="Tipo de costo del concepto del presupuesto"
+                                placement="top"
+                            >
+                                <el-tag :type="costTypeTagType(scope.row.budget_concept_type)" size="small" effect="plain">
+                                    {{ costTypeLabel(scope.row.budget_concept_type) }}
+                                </el-tag>
                             </el-tooltip>
                             <span v-else class="text-xs text-gray-400">Sin categoría</span>
                         </template>

@@ -17,7 +17,7 @@
 | FormRequests | `app/Http/Requests/Expenses/` | `StoreExpenseRequest`, `UpdateExpenseRequest` (extends Store), `RegisterBudgetConceptPaymentRequest`, `MarkBudgetConceptsPaidRequest`, `StoreExpenseCategoryRequest`, `UpdateExpenseCategoryRequest` |
 | Service | `app/Services/Expenses/ExpenseService.php` | Filtered paginated listing, export rows, summary aggregates and the shared `mapExpense` serializer |
 | Service | `app/Services/Expenses/BudgetExpenseService.php` | Budget search for the picker and the budget expenses panel payload (breakdown + extras + totals, commission-aware) |
-| Service | `app/Services/Export/XlsxWriterService.php` | Minimal XLSX writer (PHP zip extension, no dependencies): bold header/footer, column widths, `#,##0.00` for float values |
+| Service | `app/Services/Export/XlsxWriterService.php` | Minimal XLSX writer (PHP zip extension, no dependencies): bold header + bold totals footer rows, column widths, `#,##0.00` for float values |
 | Service | `app/Services/Expenses/ExpenseReceiptService.php` | Attach one or many receipts and remove them by media id (images optimized via `ImageOptimizerService`) |
 | Model | `app/Models/Expense.php` | Statuses, payment methods, folio generation (`GAS-####`), budget links, scopes (`ofType`, `forBudget`), `status_label` / `payment_method_label` / `receipt_url` / `receipt_name` / `receipts`, media collection `receipt` (multiple files) |
 | Model | `app/Models/ExpenseCategory.php` | Expense category catalog (`scopeActive`) |
@@ -29,22 +29,17 @@
 | Vue partial | `resources/js/Pages/Expenses/Partials/ExpenseTypeDialog.vue` | First step of "Registrar gasto": choose general expense or budget expense |
 | Vue partial | `resources/js/Pages/Expenses/Partials/BudgetPickerDialog.vue` | Remote budget picker with ticket-status filter (shows folio, name, customer and status tag) |
 | Vue partial | `resources/js/Pages/Expenses/Partials/ExpenseFormDialog.vue` | Register/edit dialog: general expenses and budget extras (commissions are extras titled "Comisión"), multiple receipts, default date = today, amount and commission with $ prefix |
-| Vue partial | `resources/js/Pages/Expenses/Partials/BudgetConceptPaymentDialog.vue` | Register/edit the payment of one breakdown concept (status, date, method, commission, reference, notes, receipts) |
-| Vue partial | `resources/js/Pages/Expenses/Partials/BulkMarkConceptsPaidDialog.vue` | Registers a common payment for several selected concepts (optional transaction commission) |
+| Vue partial | `resources/js/Pages/Expenses/Partials/BudgetConceptPaymentDialog.vue` | Register/edit the payment of one breakdown concept (status, date, method, optional category, commission, reference, notes, receipts) |
 | Vue partial | `resources/js/Pages/Expenses/Partials/CompleteDepositDialog.vue` | "Marcar depósito como realizado": uploads the voucher + commission and completes the linked deposit |
 | Vue partial | `resources/js/Pages/Expenses/Partials/ExpenseReceiptsField.vue` | Shared multi-receipt uploader (append files, remove existing ones) |
-| Vue partial | `resources/js/Pages/Expenses/Partials/ExpenseCategoriesManager.vue` | Categories manager modal (add by name / rename / deactivate / delete) |
-| Vue partial | `resources/js/Pages/Budgets/Partials/BudgetExpensesCard.vue` | Budget show section: linked expenses, paid/pending footer and "Gestionar gastos" button |
-| Migration | `database/migrations/2026_09_16_000001_create_expense_categories_table.php` | Categories catalog |
-| Migration | `database/migrations/2026_09_16_000002_create_expenses_table.php` | Expenses table (no approval columns) |
-| Migration | `database/migrations/2026_09_16_000003_drop_description_from_expense_categories_table.php` | Categories only need a name |
-| Migration | `database/migrations/2026_09_17_000001_add_budget_link_to_expenses_table.php` | Adds `budget_id`, `budget_concept_id` (unique) and `is_commission` to `expenses` |
-| Migration | `database/migrations/2026_09_17_000002_add_commission_to_expenses_table.php` | Adds `commission_amount` (payment channel fee, e.g. OXXO) to `expenses` |
-| Migration | `database/migrations/2026_09_17_000003_add_deposit_link_to_expenses_table.php` | Adds `deposit_id` (unique) to `expenses` — mirror of the deposits module |
+| Vue partial | `resources/js/Pages/Expenses/Partials/ExpenseCategoriesManager.vue` | Categories manager modal (add by name / rename / deactivate / delete; the default *Mano de obra* and *Materiales* cannot be edited, deleted or deactivated) |
+| Vue partial | `resources/js/Pages/Budgets/Partials/BudgetExpensesCard.vue` | Budget show section: linked expenses with status and date, paid/pending footer (the "Gestionar gastos" button was removed sep 18 2026) |
+| Migration | `database/migrations/2026_09_16_000001_create_expense_categories_table.php` | Categories catalog, final state (consolidated sep 18 2026): `name`, `is_active`, `is_default`; seeds the protected categories *Mano de obra* and *Materiales* |
+| Migration | `database/migrations/2026_09_16_000002_create_expenses_table.php` | Expenses table, final state (consolidated sep 18 2026): optional `ticket_id`, `budget_id`, unique `budget_concept_id`, `is_commission`, `commission_amount` and unique `deposit_id` (no approval columns) |
 | Seeder | `database/seeders/ExpenseCategorySeeder.php` | 10 default categories (called from `DatabaseSeeder`) |
 | Factory | `database/factories/ExpenseFactory.php` | States: `pending()`, `paid()`, `cancelled()` |
 | Factory | `database/factories/ExpenseCategoryFactory.php` | Realistic category names |
-| Test | `tests/Feature/ExpenseControllerTest.php` | 58 tests: permission gates, listing, filters (type/budget included), summary (commission-aware), folio, store (general + budget + commission + receipts), update (append/remove receipts, commission), mark paid, destroy, budget search, budget panel, concept payments (single + bulk + transaction commission), export |
+| Test | `tests/Feature/ExpenseControllerTest.php` | 65 tests: permission gates, listing, filters (type/budget included, default categories match concept cost types), summary (commission-aware, including budget amount), folio, store (general + budget + commission + receipts), update (append/remove receipts, commission), mark paid, destroy, budget search, budget panel, concept payments (single + bulk + transaction commission; optional category on a payment), categories (defaults protected), export (commission column, totals, category fallback) |
 | Test | `tests/Feature/DepositExpenseIntegrationTest.php` | 13 tests: mirror only after approval, mirror update/delete, completion from both modules, voucher/commission sync, guards (mark-paid, delete, voucher required, permissions) |
 | Menu | `resources/js/Layouts/AppSidebar.vue` | Sidebar entry "Control de gastos" (gated by `expenses.index`) |
 
@@ -67,8 +62,8 @@
 | POST | `/expenses/{expense}/complete-deposit` | `expenses.complete-deposit` | Completes the linked deposit (voucher + commission) and syncs both modules — requires `expenses.edit` or `deposits.approve` |
 | GET | `/expenses/categories` | `expenses.categories.index` | Categories catalog JSON (with `expenses_count`) — requires `expenses.categories.manage` |
 | POST | `/expenses/categories` | `expenses.categories.store` | Create category |
-| PUT | `/expenses/categories/{category}` | `expenses.categories.update` | Rename / toggle active |
-| DELETE | `/expenses/categories/{category}` | `expenses.categories.destroy` | Delete category (expenses fall back to "Sin categoría" via `nullOnDelete`) |
+| PUT | `/expenses/categories/{category}` | `expenses.categories.update` | Rename / toggle active (default categories cannot be edited — 422) |
+| DELETE | `/expenses/categories/{category}` | `expenses.categories.destroy` | Delete category (expenses fall back to "Sin categoría" via `nullOnDelete`); default categories return 422 |
 
 All write actions redirect `back()` so the index (or the budget panel) filters are preserved after saving. Concept payment writes require `expenses.create` or `expenses.edit`.
 
@@ -83,6 +78,7 @@ All write actions redirect `back()` so the index (or the budget panel) filters a
 | `id` | bigint PK | |
 | `name` | string unique | Sentence case, Spanish |
 | `is_active` | boolean | default `true` |
+| `is_default` | boolean | default `false` — protected categories (*Mano de obra*, *Materiales*) that cannot be edited, deleted or deactivated; the expenses filter also matches concept payments by their cost type |
 | `created_at` / `updated_at` | timestamps | |
 
 **Relationships:** `hasMany(Expense)`
@@ -121,7 +117,7 @@ All write actions redirect `back()` so the index (or the budget panel) filters a
 
 **Budget expense semantics:**
 
-- **Concept payment:** one expense per `budget_concept` (enforced by a unique index). The action copies concept/amount/budget from the concept and keeps `budget_concepts.payment_date` in sync (set when paid, cleared otherwise). When an existing concept expense is edited from the generic dialog, concept and amount are forced back to the breakdown values.
+- **Concept payment:** one expense per `budget_concept` (enforced by a unique index). The action copies concept/amount/budget from the concept and keeps `budget_concepts.payment_date` in sync (set when paid, cleared otherwise). When an existing concept expense is edited from the generic dialog, concept and amount are forced back to the breakdown values. The payment dialog also accepts an optional expense category (`expense_category_id`), which labels the expense and can be cleared later — useful to give a category to payments of concepts that have none.
 - **Extra expense / commission:** expense with `budget_id` and no `budget_concept_id`; commissions also set `is_commission = true`. These never alter the budget breakdown.
 - **Commission (`commission_amount`):** the fee charged by the payment channel (e.g. paying at OXXO). It is captured on each expense — general, budget extra or concept payment — and optionally once per bulk payment (the "transaction commission", stored as a general commission expense). Totals (index cards, export total and the budget panel) count `amount + commission_amount`. A general commission expense (`is_commission = true`) does not carry a commission of its own.
 - **Deposit expense:** mirror of a deposit (`deposit_id`), created/refreshed by `SyncDepositExpenseAction`. Money fields, status and receipts belong to the deposits flow: pending ones read as "Pendiente de depósito" and are completed with the **Realizado** action (`expenses.complete-deposit`), which stores the voucher + commission and runs the standard deposit completion (technician payment included).
@@ -145,10 +141,10 @@ Defined in `database/seeders/PermissionSeeder.php` under the `Control de gastos`
 
 ## Index behavior
 
-- **Filters (server-side):** `search` (concept or reference), `folio`, `status`, `category_id`, `payment_method`, `type` (`general` / `budget` / `commission` / `deposit`), `budget_id`, `from` / `to` (date range). 15 rows per page.
+- **Filters (server-side):** `search` (concept or reference), `folio`, `status`, `category_id`, `payment_method`, `type` (`general` / `budget` / `commission` / `deposit`), `budget_id`, `from` / `to` (date range). 15 rows per page. The `category_id` filter also matches concept payments without their own category whose budget concept carries the matching cost type — so filtering by the default *Mano de obra* / *Materiales* categories returns exactly what the Categoría column displays.
 - **Sorting:** the folio, date, budget and status columns sort server-side through `sort_by` + `sort_dir` (allowlist in `ExpenseService::SORTABLE_COLUMNS`), falling back to newest `expense_date` first. Statuses sort in workflow order (pending → paid → cancelled).
 - **Budget filter options:** the controller passes a `budgets` prop with the budgets that already have expenses (folio, project name, customer).
-- **Summary cards:** *total registered*, *pending payment*, *de presupuesto* (expenses linked to a budget — includes breakdown payments, extras and commissions — with their share of the total) and *paid*. Every amount counts `amount + commission_amount`; the `status` filter is intentionally excluded from the summary query so every card keeps its totals while browsing a specific status.
+- **Summary cards:** *total registered*, *pending payment*, *de presupuesto* (expenses linked to a budget — includes breakdown payments, extras and commissions — with their share of the total) and *paid*. Every amount counts `amount + commission_amount` and the captions state "incluye comisiones" so it is visible that the channel fees are part of each KPI; the `status` filter is intentionally excluded from the summary query so every card keeps its totals while browsing a specific status.
 - **Columns:** folio (compact, sortable), date (sortable), concept (with reference and "Comisión" / "Depósito" tags), category (ellipsis + tooltip when long), budget (compact folio link to the budget panel, sortable), amount (with the commission shown under it), status (full label, sortable), registered by (ellipsis + tooltip) and actions.
 - **Payment method:** shown as a colored icon with tooltip right next to the amount (cash, transfer, card, check, other) — no dedicated column.
 - **Receipts:** when the expense has files, a document icon button opens the first one in a new tab (tooltip shows the file count when there are several). The icon slot is always reserved so the ⋯ menu stays aligned in every row.
@@ -157,8 +153,8 @@ Defined in `database/seeders/PermissionSeeder.php` under the `Control de gastos`
   - *Gasto general* opens the register dialog directly (category required).
   - *Gasto de presupuesto* opens `BudgetPickerDialog` (remote search + ticket-status filter, each option shows folio, project, customer and a status tag), then navigates to the budget expenses panel.
 - **Register/edit dialog:** concept, category (optional for budget extras), amount, commission (optional, "Comisión del canal de pago — p. ej. cobro en OXXO"), date (defaults to today on create), status, payment method, notes and multiple receipt uploads (`ExpenseReceiptsField`). Concept payments show concept/amount locked with a hint that they are managed from the budget breakdown.
-- **Excel report:** the "Descargar reporte" button downloads an `.xlsx` file with every filtered row (no pagination): folio, date, concept, reference, category, budget (folio + project), commission, payment method, status, amount, receipt (Sí/No), registered by and notes, plus a bold total row (amount + commission). Generated with `XlsxWriterService` using the current filters (`getExportRows`).
-- **Categories manager:** the gear icon next to the category label opens the manager modal (gated by `expenses.categories.manage`) where categories can be added, edited, deactivated or deleted. When the catalog changes, the index reloads only `categories`, `expenses` and `stats` props.
+- **Excel report:** the "Descargar reporte" button downloads an `.xlsx` file with every filtered row (no pagination): folio, date, concept, reference, category (budget concept payments without their own category show the cost type of the concept — *Mano de obra* / *Materiales* —, same fallback as the index tag), budget (folio + project), payment method, status, amount, commission (placed right next to the amount), receipt (Sí/No), registered by and notes, plus six bold totals rows under the amount column: **Total**, **Total + comisión**, **Total pagado**, **Total pagado + comisión**, **Total pendiente de pago** and **Total pendiente de pago + comisión** — the plain rows sum `amount`, the "+ comisión" rows sum `amount + commission_amount`. Generated with `XlsxWriterService` using the current filters (`getExportRows`).
+- **Categories manager:** the gear icon next to the category label opens the manager modal (gated by `expenses.categories.manage`) where categories can be added, edited, deactivated or deleted. The two **default categories** (*Mano de obra* and *Materiales*, `is_default`) are pre-loaded by migration, always active, and cannot be edited, deleted or deactivated — the manager hides their action buttons — so they always appear in the index category filter and in every category select (expense form, concept payment dialog). When the catalog changes, the index reloads only `categories`, `expenses` and `stats` props.
 - **Budget column:** links to `expenses.budgets.show` (the user already has `expenses.index`, same permission the panel requires).
 - The sidebar entry is only rendered when the user has `expenses.index`.
 
@@ -166,12 +162,12 @@ Defined in `database/seeders/PermissionSeeder.php` under the `Control de gastos`
 
 ## Budget expenses panel (`Expenses/BudgetExpenses`)
 
-Opened from the type picker (`Gasto de presupuesto`) or from the "Gestionar gastos" button in the budget show page (`Budgets/Partials/BudgetExpensesCard.vue`).
+Opened from the type picker (`Gasto de presupuesto`) or from the budget folio link in the expenses index. The "Gestionar gastos" button in the budget show card (`Budgets/Partials/BudgetExpensesCard.vue`, which lists each expense with its status label and date) was removed (sep 18 2026).
 
-- **Header:** back to expenses, budget folio + project + customer, ticket status tag and a "Ver presupuesto" link (gated by `budgets.index`). When the ticket is *Cancelado*, a warning alert is shown and every write action is disabled (read-only).
+- **Header:** a circular back arrow to the expenses index (`<el-button circle icon="Back" />`, same pattern as the cost catalog show), budget folio + project + customer and the ticket status tag in plain style (not button-like). The "Ver presupuesto" button was removed (sep 18 2026). When the ticket is *Cancelado*, a warning alert is shown and every write action is disabled (read-only).
 - **Summary cards:** *Desglose* (sum of breakdown concepts), *Adicionales* (extras + commissions, with their channel fees), *Pagado* (linked expenses with status `paid`, including commissions) and *Por pagar* (unpaid concepts + pending extras, including commissions).
-- **Breakdown table:** every `BudgetConcept` with concept, amount (commission shown under it), "pago a técnico" tag, derived state (*Pendiente* when no expense exists, otherwise the expense status), payment date, reference, receipts and the *Registrar pago* / *Editar pago* row action (`BudgetConceptPaymentDialog`, which includes the commission field).
-- **Bulk payment:** row checkboxes + "Marcar pagados (N)" (`BulkMarkConceptsPaidDialog`) register a common date/method/reference/notes for the selected concepts; one paid expense is created per concept. The optional "Comisión de la transacción" is recorded once as a general commission expense of the budget (never split across concepts).
+- **Breakdown table:** every `BudgetConcept` with concept, amount (commission shown under it), "pago a técnico" tag, derived state (*Pendiente* when no expense exists, otherwise the expense status), payment date, reference, receipts and the *Registrar pago* / *Editar pago* row action (`BudgetConceptPaymentDialog`, which includes the commission field and an optional category select).
+- **Bulk payment (UI removed, sep 18 2026):** the row checkboxes, the "Marcar pagados (N)" button and `BulkMarkConceptsPaidDialog` were deleted — payments are registered per concept with the *Registrar pago* row action. The `expenses.budgets.concepts.mark-paid` endpoint, its action and its tests remain available server-side.
 - **Extras table:** budget expenses without a concept, including general commissions. Only "Agregar gasto" is available — a general commission is registered as an extra expense titled "Comisión". Row actions: mark as paid (pending only), edit and delete (reusing `expenses.mark-paid`, `expenses.update` and `expenses.destroy`).
 - **Amounts** are formatted with the budget currency (`budget.currency`); the expenses index keeps MXN formatting.
 - **Deleting an expense** (from the panel or the index) makes its concept go back to *Pendiente*; the concept payment date is cleared by the next payment edit.

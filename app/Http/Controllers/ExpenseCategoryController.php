@@ -39,6 +39,12 @@ class ExpenseCategoryController extends Controller
 
     public function update(UpdateExpenseCategoryRequest $request, ExpenseCategory $category): JsonResponse
     {
+        if ($category->is_default) {
+            return response()->json([
+                'message' => 'Las categorías predeterminadas no se pueden editar.',
+            ], 422);
+        }
+
         $category->update([
             'name' => $request->validated('name'),
             'is_active' => $request->boolean('is_active', $category->is_active),
@@ -54,6 +60,12 @@ class ExpenseCategoryController extends Controller
     {
         if (!$request->user()->can('expenses.categories.manage')) {
             abort(403);
+        }
+
+        if ($category->is_default) {
+            return response()->json([
+                'message' => 'Las categorías predeterminadas (Mano de obra y Materiales) no se pueden eliminar.',
+            ], 422);
         }
 
         $category->delete();

@@ -68,10 +68,10 @@ class ExpenseController extends Controller
             'Referencia',
             'Categoría',
             'Presupuesto',
-            'Comisión',
             'Método de pago',
             'Estatus',
             'Monto',
+            'Comisión',
             'Comprobante',
             'Registró',
             'Notas',
@@ -82,23 +82,50 @@ class ExpenseController extends Controller
             $row['expense_date'],
             $row['concept'],
             $row['reference'],
-            $row['category_name'],
+            // Budget concept payments carry no category of their own: fall back
+            // to the cost type of the concept (Mano de obra / Materiales).
+            $row['category_name'] ?? match ($row['budget_concept_type'] ?? null) {
+                'labor' => 'Mano de obra',
+                'material' => 'Materiales',
+                default => null,
+            },
             trim(($row['budget_folio'] ?? '') . ' ' . ($row['budget_name'] ?? '')),
-            ($row['commission_amount'] ?? 0) > 0 ? (float) $row['commission_amount'] : null,
             $row['payment_method_label'],
             $row['status_label'],
             (float) $row['amount'],
+            ($row['commission_amount'] ?? 0) > 0 ? (float) $row['commission_amount'] : null,
             $row['receipt_name'] ? 'Sí' : 'No',
             $row['created_by'],
             $row['notes'],
         ])->all();
 
+        // Totals: base amounts and base + commission, overall / paid / pending.
+        $sum = function (?string $status) use ($rows): array {
+            $filtered = $status === null ? $rows : $rows->where('status', $status);
+
+            return [
+                'amount' => (float) $filtered->sum('amount'),
+                'commission' => (float) $filtered->sum('commission_amount'),
+            ];
+        };
+
+        $total = $sum(null);
+        $paid = $sum(Expense::STATUS_PAID);
+        $pending = $sum(Expense::STATUS_PENDING);
+
         $path = $this->xlsxWriter->generate(
             'Gastos',
             $headers,
             $data,
-            [10, 12, 42, 18, 24, 30, 12, 18, 18, 14, 14, 22, 30],
-            ['', '', '', '', '', '', '', '', 'Total', (float) $rows->sum('amount') + (float) $rows->sum('commission_amount'), '', '', ''],
+            [10, 12, 42, 18, 24, 30, 18, 34, 14, 12, 14, 22, 30],
+            [
+                ['', '', '', '', '', '', '', 'Total', $total['amount'], '', '', '', ''],
+                ['', '', '', '', '', '', '', 'Total + comisión', $total['amount'] + $total['commission'], '', '', '', ''],
+                ['', '', '', '', '', '', '', 'Total pagado', $paid['amount'], '', '', '', ''],
+                ['', '', '', '', '', '', '', 'Total pagado + comisión', $paid['amount'] + $paid['commission'], '', '', '', ''],
+                ['', '', '', '', '', '', '', 'Total pendiente de pago', $pending['amount'], '', '', '', ''],
+                ['', '', '', '', '', '', '', 'Total pendiente de pago + comisión', $pending['amount'] + $pending['commission'], '', '', '', ''],
+            ],
         );
 
         return response()

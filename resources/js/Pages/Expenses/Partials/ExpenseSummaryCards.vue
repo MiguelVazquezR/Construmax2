@@ -25,7 +25,7 @@ const budgetCaption = computed(() => {
         return 'Sin gastos ligados a presupuestos';
     }
 
-    return `${count} gastos de presupuesto (${budgetShare.value}% del total)`;
+    return `${count} gastos de presupuesto (${budgetShare.value}% del total) · incluye comisiones`;
 });
 </script>
 
@@ -38,7 +38,7 @@ const budgetCaption = computed(() => {
                 <el-icon class="text-primary"><Wallet /></el-icon>
             </div>
             <p class="text-2xl font-bold text-gray-800 dark:text-white">{{ formatCurrency(stats.total_amount) }}</p>
-            <p class="text-xs text-gray-500 mt-1">{{ stats.total_count }} gastos en el periodo</p>
+            <p class="text-xs text-gray-500 mt-1">{{ stats.total_count }} gastos en el periodo · incluye comisiones</p>
         </div>
 
         <div
@@ -48,7 +48,7 @@ const budgetCaption = computed(() => {
                 <el-icon class="text-amber-500"><Clock /></el-icon>
             </div>
             <p class="text-2xl font-bold text-gray-800 dark:text-white">{{ formatCurrency(stats.pending_amount) }}</p>
-            <p class="text-xs text-gray-500 mt-1">{{ stats.pending_count }} gastos por pagar</p>
+            <p class="text-xs text-gray-500 mt-1">{{ stats.pending_count }} gastos por pagar · incluye comisiones</p>
         </div>
 
         <div
@@ -68,7 +68,7 @@ const budgetCaption = computed(() => {
                 <el-icon class="text-green-500"><CircleCheck /></el-icon>
             </div>
             <p class="text-2xl font-bold text-gray-800 dark:text-white">{{ formatCurrency(stats.paid_amount) }}</p>
-            <p class="text-xs text-gray-500 mt-1">{{ stats.paid_count }} gastos pagados</p>
+            <p class="text-xs text-gray-500 mt-1">{{ stats.paid_count }} gastos pagados · incluye comisiones</p>
         </div>
     </div>
 </template>

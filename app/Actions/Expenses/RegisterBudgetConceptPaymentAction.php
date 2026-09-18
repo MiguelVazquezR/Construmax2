@@ -24,7 +24,10 @@ class RegisterBudgetConceptPaymentAction
         $expense = Expense::firstOrNew(['budget_concept_id' => $concept->id]);
 
         $expense->fill([
-            'expense_category_id' => $data['expense_category_id'] ?? $expense->expense_category_id,
+            // A category is optional here and can also be cleared from the dialog.
+            'expense_category_id' => array_key_exists('expense_category_id', $data)
+                ? $data['expense_category_id']
+                : $expense->expense_category_id,
             'budget_id' => $concept->budget_id,
             'concept' => $concept->concept,
             'amount' => $concept->amount,

@@ -103,6 +103,7 @@ class BudgetExpenseService
                     'id' => $concept->id,
                     'concept' => $concept->concept,
                     'amount' => (float) $concept->amount,
+                    'type' => $concept->type,
                     'paid_to_technician' => (bool) $concept->paid_to_technician,
                     'payment_date' => $concept->payment_date?->format('Y-m-d'),
                     'expense' => $concept->expense ? $this->expenseService->mapExpense($concept->expense) : null,

@@ -19,6 +19,7 @@ class RegisterBudgetConceptPaymentRequest extends FormRequest
             'status' => ['required', 'string', Rule::in([Expense::STATUS_PENDING, Expense::STATUS_PAID, Expense::STATUS_CANCELLED])],
             'payment_date' => ['required', 'date'],
             'payment_method' => ['nullable', 'string', Rule::in(array_keys(Expense::paymentMethodLabels()))],
+            'expense_category_id' => ['nullable', 'integer', 'exists:expense_categories,id'],
             'commission_amount' => ['nullable', 'numeric', 'min:0'],
             'reference' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:2000'],

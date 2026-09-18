@@ -9,8 +9,8 @@ use ZipArchive;
  * Minimal XLSX writer built on PHP's zip extension (no external dependencies).
  *
  * It produces a single-sheet workbook with inline strings, a bold header row,
- * an optional bold footer, optional column widths and the built-in
- * "#,##0.00" number format for float values.
+ * optional bold footer rows (e.g. totals), optional column widths and the
+ * built-in "#,##0.00" number format for float values.
  */
 class XlsxWriterService
 {
@@ -19,7 +19,7 @@ class XlsxWriterService
      * @param string[] $headers   Column labels, rendered as the bold first row.
      * @param array<int, array<int, string|int|float|null>> $rows Data rows.
      * @param array<int, int|float> $columnWidths Column widths indexed by position (0-based).
-     * @param array<int, string|int|float|null>|null $footer Optional bold closing row.
+     * @param array<int, array<int, string|int|float|null>> $footers Optional bold closing rows (e.g. totals).
      *
      * @return string Absolute path of the generated temporary file.
      */
@@ -28,7 +28,7 @@ class XlsxWriterService
         array $headers,
         array $rows,
         array $columnWidths = [],
-        ?array $footer = null,
+        array $footers = [],
     ): string {
         $path = tempnam(sys_get_temp_dir(), 'xlsx');
 
@@ -47,14 +47,14 @@ class XlsxWriterService
         $zip->addFromString('xl/workbook.xml', $this->workbook($sheetTitle));
         $zip->addFromString('xl/_rels/workbook.xml.rels', $this->workbookRelations());
         $zip->addFromString('xl/styles.xml', $this->styles());
-        $zip->addFromString('xl/worksheets/sheet1.xml', $this->sheet($headers, $rows, $columnWidths, $footer));
+        $zip->addFromString('xl/worksheets/sheet1.xml', $this->sheet($headers, $rows, $columnWidths, $footers));
 
         $zip->close();
 
         return $path;
     }
 
-    private function sheet(array $headers, array $rows, array $columnWidths, ?array $footer): string
+    private function sheet(array $headers, array $rows, array $columnWidths, array $footers): string
     {
         $xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
         $xml .= '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">';
@@ -82,8 +82,8 @@ class XlsxWriterService
             $xml .= $this->row($rowNumber++, $row);
         }
 
-        if ($footer !== null) {
-            $xml .= $this->row($rowNumber, $footer, true);
+        foreach ($footers as $footer) {
+            $xml .= $this->row($rowNumber++, $footer, true);
         }
 
         $xml .= '</sheetData></worksheet>';

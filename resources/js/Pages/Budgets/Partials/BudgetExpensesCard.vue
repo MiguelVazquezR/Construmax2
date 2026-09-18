@@ -1,14 +1,10 @@
 <script setup>
 import { computed } from 'vue';
-import { Link } from '@inertiajs/vue3';
 import { Money } from '@element-plus/icons-vue';
-import { usePermissions } from '@/Composables/usePermissions';
 
 const props = defineProps({
     budget: Object,
 });
-
-const { can } = usePermissions();
 
 const expenses = computed(() => props.budget.expenses || []);
 
@@ -34,7 +30,8 @@ const formatCurrency = (value) => {
 const formatDate = (value) => {
     if (!value) return '—';
 
-    const [year, month, day] = value.split('-');
+    // Dates arrive as ISO strings (e.g. 2026-09-18T00:00:00.000000Z).
+    const [year, month, day] = String(value).split('T')[0].split('-');
 
     return new Date(year, month - 1, day).toLocaleDateString('es-MX', {
         day: '2-digit',
@@ -56,14 +53,10 @@ const statusTagType = (status) => {
 
 <template>
     <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
-        <div class="p-4 bg-gray-50 dark:bg-[#252529] border-b border-gray-100 dark:border-[#2b2b2e] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="p-4 bg-gray-50 dark:bg-[#252529] border-b border-gray-100 dark:border-[#2b2b2e]">
             <h3 class="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
                 <el-icon><Money /></el-icon> Gastos del presupuesto
             </h3>
-
-            <Link v-if="can('expenses.index')" :href="route('expenses.budgets.show', budget.id)">
-                <el-button type="primary" plain size="default">Gestionar gastos</el-button>
-            </Link>
         </div>
 
         <el-table :data="expenses" stripe style="width: 100%">

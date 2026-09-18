@@ -42,7 +42,7 @@ class ExpenseService
     private function query(array $filters): Builder
     {
         return $this->applySorting($this->buildQuery($filters), $filters)
-            ->with(['category', 'budget.ticket', 'creator', 'media']);
+            ->with(['category', 'budget.ticket', 'budgetConcept', 'creator', 'media']);
     }
 
     /**
@@ -61,6 +61,7 @@ class ExpenseService
             'category_name' => $expense->category?->name,
             'budget_id' => $expense->budget_id,
             'budget_concept_id' => $expense->budget_concept_id,
+            'budget_concept_type' => $expense->budgetConcept?->type,
             'deposit_id' => $expense->deposit_id,
             'budget_folio' => $expense->budget?->ticket?->folio,
             'budget_name' => $expense->budget?->ticket?->name,

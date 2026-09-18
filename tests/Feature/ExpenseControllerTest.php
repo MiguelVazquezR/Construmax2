@@ -144,6 +144,53 @@ class ExpenseControllerTest extends TestCase
             );
     }
 
+    public function test_index_filters_expenses_by_default_category_matching_concept_types(): void
+    {
+        $budget = Budget::factory()->create();
+        $materialCategory = ExpenseCategory::where('name', 'Materiales')->firstOrFail();
+
+        $laborConcept = BudgetConcept::factory()->create(['budget_id' => $budget->id, 'type' => 'labor']);
+        $labeledConcept = BudgetConcept::factory()->create(['budget_id' => $budget->id, 'type' => 'labor']);
+        $materialConcept = BudgetConcept::factory()->create(['budget_id' => $budget->id, 'type' => 'material']);
+
+        // Concept payments without their own category display the concept cost type.
+        $laborExpense = Expense::factory()->pending()->create([
+            'budget_id' => $budget->id,
+            'budget_concept_id' => $laborConcept->id,
+            'expense_category_id' => null,
+        ]);
+        Expense::factory()->pending()->create([
+            'budget_id' => $budget->id,
+            'budget_concept_id' => $materialConcept->id,
+            'expense_category_id' => null,
+        ]);
+
+        // A payment labelled with its own category keeps matching only that category.
+        Expense::factory()->pending()->create([
+            'budget_id' => $budget->id,
+            'budget_concept_id' => $labeledConcept->id,
+            'expense_category_id' => $materialCategory->id,
+        ]);
+
+        $laborCategory = ExpenseCategory::where('name', 'Mano de obra')->firstOrFail();
+
+        $this->actingAs($this->user)
+            ->get(route('expenses.index', ['category_id' => $laborCategory->id]))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('expenses.data', 1)
+                ->where('expenses.data.0.id', $laborExpense->id)
+            );
+
+        // Materiales matches the material concept payment plus the labelled one.
+        $this->actingAs($this->user)
+            ->get(route('expenses.index', ['category_id' => $materialCategory->id]))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('expenses.data', 2)
+            );
+    }
+
     public function test_index_filters_expenses_by_date_range(): void
     {
         $inside = Expense::factory()->create(['expense_date' => '2026-09-10']);
@@ -426,6 +473,45 @@ class ExpenseControllerTest extends TestCase
             ->assertOk();
 
         $this->assertDatabaseMissing('expense_categories', ['id' => $category->id]);
+    }
+
+    public function test_default_categories_cannot_be_deleted(): void
+    {
+        $category = ExpenseCategory::where('is_default', true)->firstOrFail();
+
+        $this->actingAs($this->user)
+            ->deleteJson(route('expenses.categories.destroy', $category))
+            ->assertStatus(422);
+
+        $this->assertDatabaseHas('expense_categories', ['id' => $category->id]);
+    }
+
+    public function test_default_categories_cannot_be_edited(): void
+    {
+        $category = ExpenseCategory::where('name', 'Mano de obra')->firstOrFail();
+
+        $this->actingAs($this->user)
+            ->putJson(route('expenses.categories.update', $category), [
+                'name' => 'Obra editada',
+                'is_active' => false,
+            ])
+            ->assertStatus(422);
+
+        $category->refresh();
+
+        $this->assertSame('Mano de obra', $category->name);
+        $this->assertTrue($category->is_active);
+    }
+
+    public function test_index_categories_include_the_default_cost_types(): void
+    {
+        $this->actingAs($this->user)
+            ->get(route('expenses.index'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('categories.0.name', 'Mano de obra')
+                ->where('categories.1.name', 'Materiales')
+            );
     }
 
     public function test_categories_require_a_unique_name(): void
@@ -838,6 +924,37 @@ class ExpenseControllerTest extends TestCase
         $this->assertSame('2026-09-15', $concept->fresh()->payment_date->format('Y-m-d'));
     }
 
+    public function test_concept_payment_can_assign_and_clear_a_category(): void
+    {
+        $budget = Budget::factory()->create();
+        $concept = BudgetConcept::factory()->create(['budget_id' => $budget->id]);
+        $category = ExpenseCategory::factory()->create(['name' => 'Fletes']);
+
+        // The payment dialog can label the expense with an optional category.
+        $this->actingAs($this->user)
+            ->post(route('expenses.budgets.concepts.payment', [$budget, $concept]), [
+                'status' => 'paid',
+                'payment_date' => '2026-09-15',
+                'expense_category_id' => $category->id,
+            ])
+            ->assertRedirect();
+
+        $expense = Expense::where('budget_concept_id', $concept->id)->firstOrFail();
+
+        $this->assertSame($category->id, $expense->expense_category_id);
+
+        // Editing the payment can clear the category again.
+        $this->actingAs($this->user)
+            ->post(route('expenses.budgets.concepts.payment', [$budget, $concept]), [
+                'status' => 'paid',
+                'payment_date' => '2026-09-15',
+                'expense_category_id' => null,
+            ])
+            ->assertRedirect();
+
+        $this->assertNull($expense->fresh()->expense_category_id);
+    }
+
     public function test_concept_payment_can_be_edited_back_to_pending(): void
     {
         $budget = Budget::factory()->create();
@@ -1040,16 +1157,24 @@ class ExpenseControllerTest extends TestCase
 
     public function test_index_summary_includes_commissions(): void
     {
+        $budget = Budget::factory()->create();
+
         Expense::factory()->pending()->create(['amount' => 100, 'commission_amount' => 10]);
         Expense::factory()->paid()->create(['amount' => 200, 'commission_amount' => 20]);
+        Expense::factory()->pending()->create([
+            'amount' => 300,
+            'commission_amount' => 30,
+            'budget_id' => $budget->id,
+        ]);
 
         $this->actingAs($this->user)
             ->get(route('expenses.index'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->where('stats.total_amount', 330)
-                ->where('stats.pending_amount', 110)
+                ->where('stats.total_amount', 660)
+                ->where('stats.pending_amount', 440)
                 ->where('stats.paid_amount', 220)
+                ->where('stats.budget_amount', 330)
             );
     }
 
@@ -1112,6 +1237,80 @@ class ExpenseControllerTest extends TestCase
         );
     }
 
+    public function test_export_includes_paid_and_pending_totals(): void
+    {
+        Expense::factory()->paid()->create(['amount' => 100, 'commission_amount' => 10]);
+        Expense::factory()->pending()->create(['amount' => 50, 'commission_amount' => 5]);
+
+        $response = $this->actingAs($this->user)->get(route('expenses.export'));
+
+        $response->assertOk();
+
+        $zip = new ZipArchive();
+        $this->assertTrue($zip->open($response->getFile()->getPathname()));
+        $sheet = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $zip->close();
+
+        $this->assertNotFalse($sheet);
+
+        // The commission column sits right after the amount column.
+        $this->assertLessThan(strpos($sheet, '>Comisión</t>'), strpos($sheet, '>Monto</t>'));
+
+        foreach ([
+            'Total',
+            'Total + comisión',
+            'Total pagado',
+            'Total pagado + comisión',
+            'Total pendiente de pago',
+            'Total pendiente de pago + comisión',
+        ] as $label) {
+            $this->assertStringContainsString($label . '</t>', $sheet);
+        }
+
+        // Base totals and base + commission totals (150 / 165, 100 / 110, 50 / 55).
+        foreach ([150, 165, 100, 110, 50, 55] as $value) {
+            $this->assertStringContainsString('<v>' . $value . '</v>', $sheet);
+        }
+    }
+
+    public function test_export_category_falls_back_to_budget_concept_type(): void
+    {
+        $budget = Budget::factory()->create();
+        $labor = BudgetConcept::factory()->create(['budget_id' => $budget->id, 'type' => 'labor']);
+        $material = BudgetConcept::factory()->create(['budget_id' => $budget->id, 'type' => 'material']);
+
+        Expense::factory()->paid()->create([
+            'budget_id' => $budget->id,
+            'budget_concept_id' => $labor->id,
+            'expense_category_id' => null,
+        ]);
+        Expense::factory()->paid()->create([
+            'budget_id' => $budget->id,
+            'budget_concept_id' => $material->id,
+            'expense_category_id' => null,
+        ]);
+        $category = ExpenseCategory::factory()->create(['name' => 'Fletes']);
+        Expense::factory()->paid()->create(['expense_category_id' => $category->id]);
+
+        $response = $this->actingAs($this->user)->get(route('expenses.export'));
+
+        $response->assertOk();
+
+        $zip = new ZipArchive();
+        $this->assertTrue($zip->open($response->getFile()->getPathname()));
+        $sheet = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $zip->close();
+
+        $this->assertNotFalse($sheet);
+
+        // Budget concept payments without a category show the concept cost type.
+        $this->assertStringContainsString('>Mano de obra</t>', $sheet);
+        $this->assertStringContainsString('>Materiales</t>', $sheet);
+
+        // Expenses with their own category keep it.
+        $this->assertStringContainsString('>Fletes</t>', $sheet);
+    }
+
     public function test_export_is_forbidden_without_permission(): void
     {
         $viewer = User::factory()->create(['is_active' => true]);
@@ -1139,7 +1338,7 @@ class ExpenseControllerTest extends TestCase
             ['Concepto', 'Monto'],
             [['Renta & servicios', 1234.5]],
             [20, 12],
-            ['Total', 1234.5],
+            [['Total', 1234.5]],
         );
 
         $this->assertFileExists($path);

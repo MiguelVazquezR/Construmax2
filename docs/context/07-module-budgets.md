@@ -101,7 +101,7 @@ When an invoice is uploaded → budget status becomes "Facturado" and ticket sta
 - 3-column layout: form fields + summary panel + actions
 - Ticket selection → auto-fills currency and technicians
 - Currency selector (MXN/USD) → auto-fetches exchange rate from API proxy
-- Concepts grid: add/remove rows with amount
+- Concepts grid: add/remove rows with amount and an optional cost type select (Mano de obra / Materiales, clearable — concepts created before the feature stay without type, `NULL`)
 - Survey images upload (picture-card style)
 - `forceFormData` when files are attached
 
@@ -109,7 +109,7 @@ When an invoice is uploaded → budget status becomes "Facturado" and ticket sta
 Cotización → Presupuesto enviado → Trabajo en proceso → Facturación → Facturado → Pagado → Perdido
 
 ### Detail tabs (Show.vue)
-1. **Scope & Costs:** Catalog status + concepts table + scope description
+1. **Scope & Costs:** Catalog status + concepts table (with a *Categoría* column showing the concept cost type — *—* when it has none) + scope description
 2. **Files:** Survey images, invoice docs, budget files (upload/preview/delete)
 3. **Finance:** Payments received, balance due, progress bar, payment recording modal
 4. **Client:** Company name, contact, branch

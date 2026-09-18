@@ -239,6 +239,7 @@ Line items for budget scope/cost.
 | `budget_id` | FK → budgets.id CASCADE | |
 | `concept` | string | description |
 | `amount` | decimal(12,2) | |
+| `type` | string | nullable — cost type of the concept: `labor` (mano de obra) or `material` (materiales). Concepts registered before the feature stay `NULL` (the auto-assigned `material` was cleared when the column became nullable, migration `2026_09_18_000001`) |
 | `paid_to_technician` | boolean | default false — marks this concept as payable to external tech |
 | `payment_date` | date | nullable |
 

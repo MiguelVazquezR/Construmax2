@@ -26,6 +26,7 @@ Route::middleware([
     Route::get('/tickets/pending-tech-payments', [TicketController::class, 'pendingTechnicianPayments'])->name('tickets.pending-tech-payments');
     // Debe registrarse antes de Route::resource para que no sea capturada por {ticket}
     Route::get('/tickets/duplicate-check', [TicketController::class, 'checkDuplicates'])->name('tickets.duplicate-check');
+    Route::get('/tickets/export', [TicketController::class, 'export'])->name('tickets.export');
     Route::resource('tickets', TicketController::class);
     Route::post('/budgets/{budget}/ticket-auto', [TicketController::class, 'storeFromBudget'])->name('tickets.store-from-budget');
     Route::put('/tickets/{ticket}/status', [TicketController::class, 'updateStatus'])->name('tickets.update-status');

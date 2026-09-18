@@ -10,6 +10,8 @@ const props = defineProps({
     budget: Object,
     /** Concept row from the budget breakdown with an optional linked expense. */
     concept: Object,
+    /** Expense categories available to label the payment (optional). */
+    categories: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['update:modelValue', 'saved']);
@@ -46,6 +48,7 @@ const form = useForm({
     status: props.concept?.expense?.status ?? 'paid',
     payment_date: props.concept?.expense?.expense_date ?? props.concept?.payment_date ?? todayIsoDate(),
     payment_method: props.concept?.expense?.payment_method ?? '',
+    expense_category_id: props.concept?.expense?.category_id ?? null,
     commission_amount: props.concept?.expense?.commission_amount || null,
     reference: props.concept?.expense?.reference ?? '',
     notes: props.concept?.expense?.notes ?? '',
@@ -166,6 +169,23 @@ function submit() {
                         </template>
                     </el-input-number>
                     <p class="text-xs text-gray-400 mt-1">Comisión del canal de pago (p. ej. cobro en OXXO).</p>
+                </el-form-item>
+
+                <el-form-item label="Categoría (opcional)" prop="expense_category_id" :error="form.errors.expense_category_id">
+                    <el-select
+                        v-model="form.expense_category_id"
+                        placeholder="Sin categoría"
+                        clearable
+                        filterable
+                        class="w-full"
+                    >
+                        <el-option
+                            v-for="category in categories"
+                            :key="category.id"
+                            :label="category.name"
+                            :value="category.id"
+                        />
+                    </el-select>
                 </el-form-item>
 
                 <el-form-item label="Referencia" prop="reference" :error="form.errors.reference">
