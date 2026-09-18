@@ -60,7 +60,6 @@ const statusOptions = [
 const typeOptions = [
     { value: 'general', label: 'Gasto general' },
     { value: 'budget', label: 'Gasto de presupuesto' },
-    { value: 'commission', label: 'Comisiones' },
     { value: 'deposit', label: 'Depósitos' },
 ];
 
