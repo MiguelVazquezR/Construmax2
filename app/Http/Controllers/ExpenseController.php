@@ -35,7 +35,7 @@ class ExpenseController extends Controller
 
     public function index(Request $request): Response
     {
-        if (!$request->user()->can('expenses.index')) {
+        if (! $request->user()->can('expenses.index')) {
             abort(403);
         }
 
@@ -55,7 +55,7 @@ class ExpenseController extends Controller
      */
     public function export(Request $request): BinaryFileResponse
     {
-        if (!$request->user()->can('expenses.index')) {
+        if (! $request->user()->can('expenses.index')) {
             abort(403);
         }
 
@@ -89,7 +89,7 @@ class ExpenseController extends Controller
                 'material' => 'Materiales',
                 default => null,
             },
-            trim(($row['budget_folio'] ?? '') . ' ' . ($row['budget_name'] ?? '')),
+            trim(($row['budget_folio'] ?? '').' '.($row['budget_name'] ?? '')),
             $row['payment_method_label'],
             $row['status_label'],
             (float) $row['amount'],
@@ -129,7 +129,7 @@ class ExpenseController extends Controller
         );
 
         return response()
-            ->download($path, 'reporte-gastos-' . now()->format('Y-m-d') . '.xlsx', [
+            ->download($path, 'reporte-gastos-'.now()->format('Y-m-d').'.xlsx', [
                 'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             ])
             ->deleteFileAfterSend();
@@ -192,13 +192,18 @@ class ExpenseController extends Controller
 
     public function destroy(Request $request, Expense $expense): RedirectResponse
     {
-        if (!$request->user()->can('expenses.delete')) {
+        if (! $request->user()->can('expenses.delete')) {
             abort(403);
         }
 
         // Deposit expenses are a mirror of the deposits module.
         if ($expense->deposit_id) {
             return back()->with('error', 'Este gasto proviene de un depósito: elimínalo desde el módulo de depósitos.');
+        }
+
+        // Payroll expenses mirror a closed payroll period.
+        if ($expense->payroll_period_id) {
+            return back()->with('error', 'Este gasto proviene del cierre de un periodo de nómina: reabre el periodo para eliminarlo.');
         }
 
         $this->deleteExpenseAction->execute($expense);
@@ -208,7 +213,7 @@ class ExpenseController extends Controller
 
     public function markPaid(Request $request, Expense $expense): RedirectResponse
     {
-        if (!$request->user()->can('expenses.edit')) {
+        if (! $request->user()->can('expenses.edit')) {
             abort(403);
         }
 
@@ -231,7 +236,7 @@ class ExpenseController extends Controller
     {
         $deposit = $expense->deposit;
 
-        if (!$deposit) {
+        if (! $deposit) {
             abort(404);
         }
 

@@ -92,6 +92,7 @@ PUT    /technicians/{technician}/bank-accounts/{account}/favorite  technicians.b
 - Banking: bank, account, CLABE (legacy fields)
 - Internal notes
 - Bank accounts management (inline `BankAccountsTab`)
+- **Attendance section** (optional, `PayrollProfileFields` with `:show-payroll-fields="false"`): technicians can record attendance and remote attendance individually (requires `payroll.profiles.manage` / `payroll.remote-attendance.manage`); salary and payslip fields are reserved for employees
 
 ### `Technicians/Show.vue`
 - Tabs: Profile, History (tickets), Documents, Payments, Bank Accounts
@@ -115,6 +116,7 @@ The `Technician::involvedTickets()` method delegates to this scope.
 - **Tickets** (`06`): Technicians assigned via JSON arrays; involved tickets queried
 - **Budgets** (`07`): `TechnicianPayment` links technician payments to budgets
 - **Deposits** (`11`): Deposits reference technicians and their bank accounts
+- **Payroll & HR** (`16`): Technicians may record attendance (kiosk/remote) through their payroll profile attendance flags; payroll subjects (salary calculation) are employees only for now — the schema is ready to enable it for technicians later
 
 ---
 

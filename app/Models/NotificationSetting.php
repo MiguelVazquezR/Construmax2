@@ -21,11 +21,12 @@ class NotificationSetting extends Model
     ];
 
     public const TYPES = [
-        'ticket.needs-catalog'       => 'Ticket necesita catálogo de costos',
-        'catalog.approved'           => 'Catálogo de costos aprobado',
-        'ticket.needs-invoice'       => 'Ticket listo para facturar',
-        'invoice.overdue'            => 'Vencimiento de factura',
-        'deposit.pending-approval'   => 'Depósito pendiente de aprobación',
+        'ticket.needs-catalog' => 'Ticket necesita catálogo de costos',
+        'catalog.approved' => 'Catálogo de costos aprobado',
+        'ticket.needs-invoice' => 'Ticket listo para facturar',
+        'invoice.overdue' => 'Vencimiento de factura',
+        'deposit.pending-approval' => 'Depósito pendiente de aprobación',
+        'payroll.period-closed' => 'Cierre de periodo de nómina',
     ];
 
     public function user(): BelongsTo

@@ -2,35 +2,38 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Payroll\SyncPayrollProfileAction;
 use App\Models\Technician;
 use App\Models\TechnicianBankAccount;
-use App\Models\TechnicianSpecialty;
-use App\Models\User;
-use App\Models\Ticket;
 use App\Models\TechnicianPayment;
+use App\Models\TechnicianSpecialty;
+use App\Models\Ticket;
+use App\Models\User;
 use App\Services\Media\ImageOptimizerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Inertia\Inertia;
-use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
 
 class TechnicianController extends Controller
 {
     public function __construct(
         private readonly ImageOptimizerService $imageOptimizer,
+        private readonly SyncPayrollProfileAction $syncPayrollProfileAction,
     ) {}
+
     public function index(Request $request)
     {
         $perPage = $request->input('perPage', 10);
         $trashed = $request->boolean('trashed');
 
         $technicians = Technician::with(['user' => function ($q) use ($trashed) {
-                if ($trashed) {
-                    $q->onlyTrashed();
-                }
-            }])
+            if ($trashed) {
+                $q->onlyTrashed();
+            }
+        }])
             ->whereHas('user', function ($q) use ($trashed) {
                 if ($trashed) {
                     $q->onlyTrashed();
@@ -70,7 +73,7 @@ class TechnicianController extends Controller
     {
         // Pasamos las especialidades también al formulario de creación si lo necesitas
         return Inertia::render('Technicians/Create', [
-            'availableSpecialties' => TechnicianSpecialty::active()->orderBy('name')->pluck('name')
+            'availableSpecialties' => TechnicianSpecialty::active()->orderBy('name')->pluck('name'),
         ]);
     }
 
@@ -79,9 +82,9 @@ class TechnicianController extends Controller
         // CAMBIO: Dejamos como "required" solo name y phone (como en el quickStore)
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'nullable|email|max:255|unique:users', 
+            'email' => 'nullable|email|max:255|unique:users',
             'photo' => 'nullable|image|max:2048',
-            'phone' => 'required|string|max:20', 
+            'phone' => 'required|string|max:20',
             'secondary_phone' => 'nullable|string|max:20',
             'is_internal' => 'boolean',
             'state' => 'nullable|string',
@@ -91,7 +94,7 @@ class TechnicianController extends Controller
             'coverage_radius_km' => 'nullable|integer|min:1',
             'specialties' => 'nullable|array',
             'specialties.*' => 'string',
-            'level' => 'nullable|string|in:' . implode(',', Technician::LEVELS),
+            'level' => 'nullable|string|in:'.implode(',', Technician::LEVELS),
             'legal_name' => 'nullable|string',
             'rfc' => 'nullable|string|max:20',
             'bank_name' => 'nullable|string',
@@ -100,9 +103,12 @@ class TechnicianController extends Controller
             'internal_notes' => 'nullable|string',
             'tax_file' => 'nullable|file|mimes:pdf,jpg,png|max:5120',
             'rating_avg' => 'nullable|numeric|min:0|max:5',
+            ...$this->payrollRules(),
         ]);
 
-        DB::transaction(function () use ($validated, $request) {
+        $payrollProfile = $this->syncPayrollProfileAction->sanitizeFor($request->user(), $validated);
+
+        DB::transaction(function () use ($validated, $request, $payrollProfile) {
             $user = User::create([
                 'name' => $validated['name'],
                 'email' => $validated['email'] ?? null, // CORRECCIÓN: Agregar ?? null
@@ -143,6 +149,8 @@ class TechnicianController extends Controller
                 'rating_avg' => $validated['rating_avg'] ?? 0,
             ]);
 
+            $this->syncPayrollProfileAction->execute($technician->user, $payrollProfile);
+
             if ($request->hasFile('tax_file')) {
                 $file = $request->file('tax_file');
                 if (str_starts_with($file->getMimeType(), 'image/')) {
@@ -164,17 +172,18 @@ class TechnicianController extends Controller
     {
         $technician->load([
             'user' => fn ($q) => $q->withTrashed(),
+            'user.payrollProfile',
             'media',
             'bankAccounts.media',
         ]);
-        
+
         $historyQuery = Ticket::with(['budget.customer', 'tasks'])
-            ->where(function($query) use ($technician) {
+            ->where(function ($query) use ($technician) {
                 $query->whereJsonContains('technicians', (string) $technician->user_id)
-                      ->orWhereJsonContains('technicians', (int) $technician->user_id)
-                      ->orWhereHas('tasks', function($q) use ($technician) {
-                          $q->where('user_id', $technician->user_id);
-                      });
+                    ->orWhereJsonContains('technicians', (int) $technician->user_id)
+                    ->orWhereHas('tasks', function ($q) use ($technician) {
+                        $q->where('user_id', $technician->user_id);
+                    });
             });
 
         $tickets = $historyQuery->orderBy('id', 'desc')
@@ -182,10 +191,10 @@ class TechnicianController extends Controller
             ->get();
 
         $payments = TechnicianPayment::where('user_id', $technician->user_id)
-            ->with(['budget.customer', 'media']) 
+            ->with(['budget.customer', 'media'])
             ->orderBy('payment_date', 'desc')
             ->get();
-            
+
         $totalTickets = $historyQuery->count();
         $completedTickets = (clone $historyQuery)->whereIn('status', ['Ejecutado', 'Facturado', 'Pagado'])->count();
         $completionRate = $totalTickets > 0 ? round(($completedTickets / $totalTickets) * 100) : 0;
@@ -194,20 +203,20 @@ class TechnicianController extends Controller
         return Inertia::render('Technicians/Show', [
             'technician' => $technician,
             'tickets' => $tickets,
-            'payments' => $payments, 
+            'payments' => $payments,
             'kpis' => [
                 'total_tickets' => $totalTickets,
                 'completion_rate' => $completionRate,
-                'total_earnings' => $totalEarnings, 
-            ]
+                'total_earnings' => $totalEarnings,
+            ],
         ]);
     }
 
     public function edit(Technician $technician)
     {
         return Inertia::render('Technicians/Edit', [
-            'technician' => $technician->load(['user', 'bankAccounts.media']),
-            'availableSpecialties' => TechnicianSpecialty::active()->orderBy('name')->pluck('name')
+            'technician' => $technician->load(['user.payrollProfile', 'bankAccounts.media']),
+            'availableSpecialties' => TechnicianSpecialty::active()->orderBy('name')->pluck('name'),
         ]);
     }
 
@@ -215,7 +224,7 @@ class TechnicianController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => ['nullable', 'email', Rule::unique('users')->ignore($technician->user_id)], 
+            'email' => ['nullable', 'email', Rule::unique('users')->ignore($technician->user_id)],
             'photo' => 'nullable|image|max:2048',
             'phone' => 'required|string|max:20',
             'secondary_phone' => 'nullable|string|max:20',
@@ -227,7 +236,7 @@ class TechnicianController extends Controller
             'coverage_radius_km' => 'nullable|integer',
             'specialties' => 'nullable|array',
             'specialties.*' => 'string',
-            'level' => 'nullable|string|in:' . implode(',', Technician::LEVELS),
+            'level' => 'nullable|string|in:'.implode(',', Technician::LEVELS),
             'legal_name' => 'nullable|string',
             'rfc' => 'nullable|string',
             'bank_name' => 'nullable|string',
@@ -237,12 +246,15 @@ class TechnicianController extends Controller
             'internal_notes' => 'nullable|string',
             'rating_avg' => 'nullable|numeric|min:0|max:5',
             'tax_file' => 'nullable|file|mimes:pdf,jpg,png|max:5120', // CORRECCIÓN 1: Faltaba validar el archivo
+            ...$this->payrollRules(),
         ]);
 
-        DB::transaction(function () use ($validated, $request, $technician) {
+        $payrollProfile = $this->syncPayrollProfileAction->sanitizeFor($request->user(), $validated);
+
+        DB::transaction(function () use ($validated, $request, $technician, $payrollProfile) {
             $technician->user->update([
                 'name' => $validated['name'],
-                'email' => $validated['email'] ?? null, 
+                'email' => $validated['email'] ?? null,
             ]);
 
             if ($request->hasFile('photo')) {
@@ -265,7 +277,7 @@ class TechnicianController extends Controller
                 'colony' => $validated['colony'] ?? null,
                 'zip_code' => $validated['zip_code'] ?? null,
                 'coverage_radius_km' => $validated['coverage_radius_km'] ?? $technician->coverage_radius_km,
-                'specialties' => $validated['specialties'] ?? [], 
+                'specialties' => $validated['specialties'] ?? [],
                 'level' => $validated['level'] ?? 'Encargado',
                 'legal_name' => $validated['legal_name'] ?? null,
                 'rfc' => $validated['rfc'] ?? null,
@@ -276,6 +288,8 @@ class TechnicianController extends Controller
                 'internal_notes' => $validated['internal_notes'] ?? null,
                 'rating_avg' => $validated['rating_avg'] ?? $technician->rating_avg,
             ]);
+
+            $this->syncPayrollProfileAction->execute($technician->user, $payrollProfile);
 
             // CORRECCIÓN 2: Lógica para guardar la constancia fiscal si se adjuntó
             if ($request->hasFile('tax_file')) {
@@ -298,10 +312,24 @@ class TechnicianController extends Controller
         return redirect()->route('technicians.show', $technician->id)->with('success', 'Perfil actualizado.');
     }
 
+    /**
+     * Optional payroll and attendance fields edited from the technician form.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    private function payrollRules(): array
+    {
+        return [
+            'is_attendance_subject' => ['sometimes', 'boolean'],
+            'can_remote_attendance' => ['sometimes', 'boolean'],
+            'kiosk_pin' => ['nullable', 'string', 'min:4', 'max:12', 'regex:/^[0-9]+$/'],
+        ];
+    }
+
     public function updateStatus(Request $request, Technician $technician)
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:Activo,Inactivo,En revisión,Vetado,Eliminado'
+            'status' => 'required|string|in:Activo,Inactivo,En revisión,Vetado,Eliminado',
         ]);
 
         $technician->update(['status' => $validated['status']]);
@@ -312,7 +340,7 @@ class TechnicianController extends Controller
     public function updateRating(Request $request, Technician $technician)
     {
         $validated = $request->validate([
-            'rating' => 'required|numeric|min:0|max:5'
+            'rating' => 'required|numeric|min:0|max:5',
         ]);
 
         $technician->update(['rating_avg' => $validated['rating']]);
@@ -327,7 +355,7 @@ class TechnicianController extends Controller
             'name' => 'required|string|max:255',
             'phone' => 'required|string|max:20',
             'is_internal' => 'boolean', // NUEVO CAMPO ACEPTADO
-            'level' => 'nullable|string|in:' . implode(',', Technician::LEVELS),
+            'level' => 'nullable|string|in:'.implode(',', Technician::LEVELS),
             'state' => 'nullable|string|max:255',
         ]);
 
@@ -337,7 +365,7 @@ class TechnicianController extends Controller
             $user = User::create([
                 'name' => $validated['name'],
                 'email' => null,
-                'password' => Hash::make(Str::random(12)), 
+                'password' => Hash::make(Str::random(12)),
                 'is_active' => true,
             ]);
 
@@ -347,17 +375,17 @@ class TechnicianController extends Controller
                 'is_internal' => $validated['is_internal'] ?? false, // APLICADO AQUÍ
                 'level' => $validated['level'] ?? 'Encargado',
                 'state' => $validated['state'] ?? null,
-                'status' => 'Activo', 
+                'status' => 'Activo',
                 'rating_avg' => 0,
                 'coverage_radius_km' => 10,
             ]);
 
-            $user->load('technician'); 
+            $user->load('technician');
         });
 
         return response()->json([
             'user' => $user,
-            'message' => 'Técnico registrado rápidamente.'
+            'message' => 'Técnico registrado rápidamente.',
         ], 201);
     }
 

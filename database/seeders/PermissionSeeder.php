@@ -2,11 +2,11 @@
 
 namespace Database\Seeders;
 
+use App\Models\User;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
-use App\Models\User;
 
 class PermissionSeeder extends Seeder
 {
@@ -24,334 +24,405 @@ class PermissionSeeder extends Seeder
             [
                 'name' => 'users.index',
                 'category' => 'Usuarios',
-                'description' => 'Ver listado y detalles de usuarios'
+                'description' => 'Ver listado y detalles de usuarios',
             ],
             [
                 'name' => 'users.create',
                 'category' => 'Usuarios',
-                'description' => 'Registrar nuevos usuarios y empleados'
+                'description' => 'Registrar nuevos usuarios y empleados',
             ],
             [
                 'name' => 'users.edit',
                 'category' => 'Usuarios',
-                'description' => 'Editar información de usuarios existentes'
+                'description' => 'Editar información de usuarios existentes',
             ],
             [
                 'name' => 'users.delete',
                 'category' => 'Usuarios',
-                'description' => 'Eliminar usuarios del sistema'
+                'description' => 'Eliminar usuarios del sistema',
             ],
             [
                 'name' => 'users.toggle-status',
                 'category' => 'Usuarios',
-                'description' => 'Activar o desactivar acceso a usuarios'
+                'description' => 'Activar o desactivar acceso a usuarios',
             ],
             // técnicos
             [
                 'name' => 'technicians.index',
                 'category' => 'Técnicos',
-                'description' => 'Ver listado y detalles de técnicos'
+                'description' => 'Ver listado y detalles de técnicos',
             ],
             [
                 'name' => 'technicians.create',
                 'category' => 'Técnicos',
-                'description' => 'Registrar nuevos técnicos'
+                'description' => 'Registrar nuevos técnicos',
             ],
             [
                 'name' => 'technicians.edit',
                 'category' => 'Técnicos',
-                'description' => 'Editar información de técnicos existentes'
+                'description' => 'Editar información de técnicos existentes',
             ],
             [
                 'name' => 'technicians.delete',
                 'category' => 'Técnicos',
-                'description' => 'Eliminar técnicos del sistema'
+                'description' => 'Eliminar técnicos del sistema',
             ],
 
             // --- MÓDULO: ROLES Y PERMISOS ---
             [
                 'name' => 'roles.index',
                 'category' => 'Configuración',
-                'description' => 'Ver roles y sus permisos asignados'
+                'description' => 'Ver roles y sus permisos asignados',
             ],
             [
                 'name' => 'roles.create',
                 'category' => 'Configuración',
-                'description' => 'Crear nuevos roles'
+                'description' => 'Crear nuevos roles',
             ],
             [
                 'name' => 'roles.edit',
                 'category' => 'Configuración',
-                'description' => 'Editar roles y modificar sus permisos'
+                'description' => 'Editar roles y modificar sus permisos',
             ],
             [
                 'name' => 'roles.delete',
                 'category' => 'Configuración',
-                'description' => 'Eliminar roles del sistema'
+                'description' => 'Eliminar roles del sistema',
             ],
             // El permiso para gestionar "permisos base" (permissions.*) suele reservarse
             // exclusivamente para el desarrollador (ID 1) por código, pero lo agregamos por si acaso.
             [
                 'name' => 'permissions.manage',
                 'category' => 'Sistema',
-                'description' => 'Gestionar la matriz de permisos (Solo Desarrollador)'
+                'description' => 'Gestionar la matriz de permisos (Solo Desarrollador)',
             ],
 
             // --- MÓDULO: CLIENTES ---
             [
                 'name' => 'customers.index',
                 'category' => 'Clientes',
-                'description' => 'Ver listado y detalles de clientes'
+                'description' => 'Ver listado y detalles de clientes',
             ],
             [
                 'name' => 'customers.create',
                 'category' => 'Clientes',
-                'description' => 'Registrar nuevos clientes y contactos'
+                'description' => 'Registrar nuevos clientes y contactos',
             ],
             [
                 'name' => 'customers.edit',
                 'category' => 'Clientes',
-                'description' => 'Editar información comercial y fiscal de clientes'
+                'description' => 'Editar información comercial y fiscal de clientes',
             ],
             [
                 'name' => 'customers.delete',
                 'category' => 'Clientes',
-                'description' => 'Eliminar clientes del sistema'
+                'description' => 'Eliminar clientes del sistema',
             ],
 
             // --- MÓDULO: PRESUPUESTOS (VENTAS) ---
             [
                 'name' => 'budgets.index',
                 'category' => 'Presupuestos',
-                'description' => 'Ver listado, detalles y costos de presupuestos'
+                'description' => 'Ver listado, detalles y costos de presupuestos',
             ],
             [
                 'name' => 'budgets.create',
                 'category' => 'Presupuestos',
-                'description' => 'Crear nuevos presupuestos'
+                'description' => 'Crear nuevos presupuestos',
             ],
             [
                 'name' => 'budgets.edit',
                 'category' => 'Presupuestos',
-                'description' => 'Editar presupuestos, costos y estatus'
+                'description' => 'Editar presupuestos, costos y estatus',
             ],
             [
                 'name' => 'budgets.delete',
                 'category' => 'Presupuestos',
-                'description' => 'Eliminar presupuestos'
+                'description' => 'Eliminar presupuestos',
             ],
             // Permisos sensibles de Presupuestos
             [
                 'name' => 'budgets.payments.manage',
                 'category' => 'Presupuestos',
-                'description' => 'Registrar y eliminar pagos de proyectos'
+                'description' => 'Registrar y eliminar pagos de proyectos',
             ],
             [
                 'name' => 'budgets.files.manage',
                 'category' => 'Presupuestos',
-                'description' => 'Subir y eliminar archivos adjuntos (planos, facturas)'
+                'description' => 'Subir y eliminar archivos adjuntos (planos, facturas)',
             ],
 
             // --- MÓDULO: TICKETS (OPERACIONES) ---
             [
                 'name' => 'tickets.index-all',
                 'category' => 'Tickets',
-                'description' => 'Ver tickets de todos los asesores'
+                'description' => 'Ver tickets de todos los asesores',
             ],
             [
                 'name' => 'tickets.index',
                 'category' => 'Tickets',
-                'description' => 'Ver tablero de tickets y cronogramas'
+                'description' => 'Ver tablero de tickets y cronogramas',
             ],
             [
                 'name' => 'tickets.create',
                 'category' => 'Tickets',
-                'description' => 'Generar nuevas órdenes de servicio (tickets)'
+                'description' => 'Generar nuevas órdenes de servicio (tickets)',
             ],
             [
                 'name' => 'tickets.edit',
                 'category' => 'Tickets',
-                'description' => 'Editar asignaciones, fechas y estatus de tickets'
+                'description' => 'Editar asignaciones, fechas y estatus de tickets',
             ],
             [
                 'name' => 'tickets.delete',
                 'category' => 'Tickets',
-                'description' => 'Eliminar tickets operativos'
+                'description' => 'Eliminar tickets operativos',
             ],
             [
                 'name' => 'tickets.tasks.create',
                 'category' => 'Tickets',
-                'description' => 'Crear tareas dentro de tickets'
+                'description' => 'Crear tareas dentro de tickets',
             ],
             [
                 'name' => 'tickets.tasks.edit',
                 'category' => 'Tickets',
-                'description' => 'Editar tareas dentro de tickets y adjuntar evidencias'
+                'description' => 'Editar tareas dentro de tickets y adjuntar evidencias',
             ],
             [
                 'name' => 'tickets.tasks.delete',
                 'category' => 'Tickets',
-                'description' => 'Eliminar tareas dentro de tickets'
+                'description' => 'Eliminar tareas dentro de tickets',
             ],
             [
                 'name' => 'tickets.tasks.toggle',
                 'category' => 'Tickets',
-                'description' => 'Marcar tareas como completadas o pendientes de cualquier usuario'
+                'description' => 'Marcar tareas como completadas o pendientes de cualquier usuario',
             ],
             [
                 'name' => 'tickets.create-tasks-template',
                 'category' => 'Tickets',
-                'description' => 'Crear plantillas de tareas'
+                'description' => 'Crear plantillas de tareas',
             ],
             [
                 'name' => 'tickets.edit-tasks-template',
                 'category' => 'Tickets',
-                'description' => 'Editar plantillas de tareas'
+                'description' => 'Editar plantillas de tareas',
             ],
             [
                 'name' => 'tickets.delete-tasks-template',
                 'category' => 'Tickets',
-                'description' => 'Eliminar plantillas de tareas'
+                'description' => 'Eliminar plantillas de tareas',
             ],
             [
                 'name' => 'tickets.calendar.view',
                 'category' => 'Tickets',
-                'description' => 'Ver el calendario de trabajos en sitio de tickets'
+                'description' => 'Ver el calendario de trabajos en sitio de tickets',
             ],
             [
                 'name' => 'tickets.calendar.create',
                 'category' => 'Tickets',
-                'description' => 'Crear eventos en el calendario de actividades'
+                'description' => 'Crear eventos en el calendario de actividades',
             ],
-            
 
             // --- MÓDULO: ANALÍTICAS (DASHBOARDS) ---
             [
                 'name' => 'tickets.analytics',
                 'category' => 'Analíticas',
-                'description' => 'Ver tablero de rendimiento operativo'
+                'description' => 'Ver tablero de rendimiento operativo',
             ],
 
             // --- MÓDULO: FACTURACIÓN ---
             [
                 'name' => 'invoices.index',
                 'category' => 'Facturación',
-                'description' => 'Permite ver la lista de presupuestos que requieren facturación o seguimiento con los pagos'
+                'description' => 'Permite ver la lista de presupuestos que requieren facturación o seguimiento con los pagos',
             ],
             [
                 'name' => 'invoices.upload',
                 'category' => 'Facturación',
-                'description' => 'Permite marcar como factura emitida a un presupuesto y también subir la factura'
+                'description' => 'Permite marcar como factura emitida a un presupuesto y también subir la factura',
             ],
 
             // --- MÓDULO: COSTOS ---
             [
                 'name' => 'costs.index',
                 'category' => 'Costos',
-                'description' => 'Ver listado de presupuestos y costos'
+                'description' => 'Ver listado de presupuestos y costos',
             ],
             [
                 'name' => 'costs.create',
                 'category' => 'Costos',
-                'description' => 'Crear versiones de catálogo de costos'
+                'description' => 'Crear versiones de catálogo de costos',
             ],
             [
                 'name' => 'costs.approve',
                 'category' => 'Costos',
-                'description' => 'Aprobar catálogos de costos'
+                'description' => 'Aprobar catálogos de costos',
             ],
             [
                 'name' => 'costs.transfer',
                 'category' => 'Costos',
-                'description' => 'Transferir catálogos a costos especiales para autorización'
+                'description' => 'Transferir catálogos a costos especiales para autorización',
             ],
             [
                 'name' => 'costs.receive-catalog-update-notifications',
                 'category' => 'Costos',
-                'description' => 'Recibir notificaciones cuando un presupuesto actualizado requiere un nuevo catálogo'
+                'description' => 'Recibir notificaciones cuando un presupuesto actualizado requiere un nuevo catálogo',
             ],
 
             // --- MÓDULO: COSTOS ESPECIALES ---
             [
                 'name' => 'special-costs.index',
                 'category' => 'Costos especiales',
-                'description' => 'Ver listado y detalles de catálogos en costos especiales'
+                'description' => 'Ver listado y detalles de catálogos en costos especiales',
             ],
             [
                 'name' => 'special-costs.approve',
                 'category' => 'Costos especiales',
-                'description' => 'Aprobar catálogos de costos especiales'
+                'description' => 'Aprobar catálogos de costos especiales',
             ],
             [
                 'name' => 'special-costs.create-version',
                 'category' => 'Costos especiales',
-                'description' => 'Crear nuevas versiones de catálogo en costos especiales'
+                'description' => 'Crear nuevas versiones de catálogo en costos especiales',
             ],
 
             // --- MÓDULO: NOTIFICACIONES ---
             [
                 'name' => 'config.notifications',
                 'category' => 'Configuración',
-                'description' => 'Gestionar configuraciones de notificaciones (quién recibe qué)'
+                'description' => 'Gestionar configuraciones de notificaciones (quién recibe qué)',
             ],
 
             // --- MÓDULO: DEPÓSITOS ---
             [
                 'name' => 'deposits.index',
                 'category' => 'Depósitos',
-                'description' => 'Ver el módulo de depósitos (lista y calendario)'
+                'description' => 'Ver el módulo de depósitos (lista y calendario)',
             ],
             [
                 'name' => 'deposits.create',
                 'category' => 'Depósitos',
-                'description' => 'Programar nuevos depósitos a técnicos'
+                'description' => 'Programar nuevos depósitos a técnicos',
             ],
             [
                 'name' => 'deposits.edit',
                 'category' => 'Depósitos',
-                'description' => 'Editar depósitos existentes'
+                'description' => 'Editar depósitos existentes',
             ],
             [
                 'name' => 'deposits.delete',
                 'category' => 'Depósitos',
-                'description' => 'Eliminar depósitos del sistema'
+                'description' => 'Eliminar depósitos del sistema',
             ],
             [
                 'name' => 'deposits.approve',
                 'category' => 'Depósitos',
-                'description' => 'Aprobar depósitos pendientes y recibir notificaciones'
+                'description' => 'Aprobar depósitos pendientes y recibir notificaciones',
             ],
             [
                 'name' => 'deposits.types.manage',
                 'category' => 'Depósitos',
-                'description' => 'Gestionar el catálogo de tipos de depósito'
+                'description' => 'Gestionar el catálogo de tipos de depósito',
             ],
 
             // --- MÓDULO: CONTROL DE GASTOS ---
             [
                 'name' => 'expenses.index',
                 'category' => 'Control de gastos',
-                'description' => 'Ver el listado y el resumen de gastos'
+                'description' => 'Ver el listado y el resumen de gastos',
             ],
             [
                 'name' => 'expenses.create',
                 'category' => 'Control de gastos',
-                'description' => 'Registrar nuevos gastos'
+                'description' => 'Registrar nuevos gastos',
             ],
             [
                 'name' => 'expenses.edit',
                 'category' => 'Control de gastos',
-                'description' => 'Editar gastos existentes'
+                'description' => 'Editar gastos existentes',
             ],
             [
                 'name' => 'expenses.delete',
                 'category' => 'Control de gastos',
-                'description' => 'Eliminar gastos del sistema'
+                'description' => 'Eliminar gastos del sistema',
             ],
             [
                 'name' => 'expenses.categories.manage',
                 'category' => 'Control de gastos',
-                'description' => 'Gestionar el catálogo de categorías de gasto'
+                'description' => 'Gestionar el catálogo de categorías de gasto',
+            ],
+
+            // --- MÓDULO: NÓMINA Y RECURSOS HUMANOS ---
+            [
+                'name' => 'payroll.settings.manage',
+                'category' => 'Nómina',
+                'description' => 'Configurar el módulo de nómina (periodos, retardos, vacaciones, reconocimiento facial)',
+            ],
+            [
+                'name' => 'payroll.profiles.manage',
+                'category' => 'Nómina',
+                'description' => 'Editar los datos de nómina y asistencia de los colaboradores',
+            ],
+            [
+                'name' => 'payroll.remote-attendance.manage',
+                'category' => 'Nómina',
+                'description' => 'Activar o desactivar la asistencia remota de colaboradores y técnicos',
+            ],
+            [
+                'name' => 'payroll.devices.manage',
+                'category' => 'Nómina',
+                'description' => 'Gestionar los dispositivos autorizados del kiosco de asistencia',
+            ],
+            [
+                'name' => 'payroll.shifts.manage',
+                'category' => 'Nómina',
+                'description' => 'Gestionar turnos, horarios y sus asignaciones',
+            ],
+            [
+                'name' => 'payroll.incidents.manage',
+                'category' => 'Nómina',
+                'description' => 'Registrar y administrar incidencias de asistencia',
+            ],
+            [
+                'name' => 'payroll.vacations.manage',
+                'category' => 'Nómina',
+                'description' => 'Ver y administrar el módulo de vacaciones',
+            ],
+            [
+                'name' => 'payroll.vacations.approve',
+                'category' => 'Nómina',
+                'description' => 'Aprobar o rechazar solicitudes de vacaciones',
+            ],
+            [
+                'name' => 'payroll.holidays.manage',
+                'category' => 'Nómina',
+                'description' => 'Gestionar el calendario de días festivos',
+            ],
+            [
+                'name' => 'payroll.periods.index',
+                'category' => 'Nómina',
+                'description' => 'Ver los periodos de nómina y la pre-nómina',
+            ],
+            [
+                'name' => 'payroll.periods.manage',
+                'category' => 'Nómina',
+                'description' => 'Editar registros de asistencia, ajustes e incidencias dentro del periodo',
+            ],
+            [
+                'name' => 'payroll.periods.close',
+                'category' => 'Nómina',
+                'description' => 'Cerrar y reabrir periodos de nómina',
+            ],
+            [
+                'name' => 'payroll.payslips.view',
+                'category' => 'Nómina',
+                'description' => 'Ver e imprimir recibos de nómina de los colaboradores',
+            ],
+            [
+                'name' => 'payroll.faces.manage',
+                'category' => 'Nómina',
+                'description' => 'Registrar y eliminar rostros para el reconocimiento facial',
             ],
         ];
 
@@ -361,7 +432,7 @@ class PermissionSeeder extends Seeder
                 [
                     'category' => $permission['category'],
                     'description' => $permission['description'],
-                    'guard_name' => 'web'
+                    'guard_name' => 'web',
                 ]
             );
         }
@@ -378,7 +449,7 @@ class PermissionSeeder extends Seeder
             $adminUser->assignRole($superAdminRole);
             $this->command->info("Rol 'Super Admin' asignado al usuario ID: 1 ({$adminUser->name})");
         } else {
-            $this->command->warn("No se encontró el usuario con ID 1. Recuerda asignarle el rol manualmente.");
+            $this->command->warn('No se encontró el usuario con ID 1. Recuerda asignarle el rol manualmente.');
         }
 
         $this->command->info('Permisos y roles generados correctamente.');

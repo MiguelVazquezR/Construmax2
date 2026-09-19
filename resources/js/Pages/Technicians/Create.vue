@@ -50,7 +50,12 @@ const form = useForm({
     // Interno
     internal_notes: '',
     rating_avg: 0,
-    
+
+    // Nómina y asistencia (opcional, según permisos)
+    is_attendance_subject: false,
+    can_remote_attendance: false,
+    kiosk_pin: '',
+
     // Archivos
     tax_file: null,
 });

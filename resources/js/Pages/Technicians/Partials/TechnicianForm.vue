@@ -13,6 +13,7 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus';
 import axios from 'axios';
 import BankAccountsTab from './BankAccountsTab.vue';
+import PayrollProfileFields from '@/Components/Payroll/PayrollProfileFields.vue';
 
 const props = defineProps({
     form: {
@@ -375,7 +376,12 @@ const mexicoStates = [
                 </el-form-item>
             </div>
 
-            <!-- 5. Notas Internas y Submit -->
+            <!-- 5. Nómina y asistencia -->
+            <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6 pb-2">
+                <PayrollProfileFields :form="form" :show-payroll-fields="false" />
+            </div>
+
+            <!-- 6. Notas Internas y Submit -->
             <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6">
                 <el-form-item label="Notas internas (bitácora)">
                     <el-input 

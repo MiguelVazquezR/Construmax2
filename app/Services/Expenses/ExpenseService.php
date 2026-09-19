@@ -63,6 +63,7 @@ class ExpenseService
             'budget_concept_id' => $expense->budget_concept_id,
             'budget_concept_type' => $expense->budgetConcept?->type,
             'deposit_id' => $expense->deposit_id,
+            'payroll_period_id' => $expense->payroll_period_id,
             'budget_folio' => $expense->budget?->ticket?->folio,
             'budget_name' => $expense->budget?->ticket?->name,
             'is_commission' => (bool) $expense->is_commission,
@@ -135,7 +136,7 @@ class ExpenseService
     {
         $column = self::SORTABLE_COLUMNS[$filters['sort_by'] ?? ''] ?? null;
 
-        if (!$column) {
+        if (! $column) {
             return $query->orderByDesc('expense_date')->orderByDesc('id');
         }
 
@@ -145,7 +146,7 @@ class ExpenseService
         if ($column === 'status') {
             return $query
                 ->orderByRaw(
-                    'CASE status WHEN ? THEN 1 WHEN ? THEN 2 ELSE 3 END ' . $direction,
+                    'CASE status WHEN ? THEN 1 WHEN ? THEN 2 ELSE 3 END '.$direction,
                     [Expense::STATUS_PENDING, Expense::STATUS_PAID]
                 )
                 ->orderByDesc('id');

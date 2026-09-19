@@ -7,7 +7,7 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import SupportModal from '@/Components/SupportModal.vue';
 // Iconos
 import {  
-    Money, Document 
+    Money, Document, Suitcase
 } from '@element-plus/icons-vue';
 
 defineProps({
@@ -17,6 +17,10 @@ defineProps({
 const { can } = usePermissions();
 const showSupportModal = ref(false);
 const route = window.route; // Acceso directo al helper route de Ziggy
+const page = usePage();
+
+// Portal de asistencia del colaborador (marcaje remoto, vacaciones y recibos)
+const attendancePortal = computed(() => page.props.attendance_portal === true);
 
 // Lógica para determinar qué menú está activo (incluyendo sub-rutas)
 const activeMenu = computed(() => {
@@ -54,6 +58,9 @@ const activeMenu = computed(() => {
     if (route().current('users.*')) return 'users.index';
     if (route().current('technicians.*')) return 'technicians.index';
     if (route().current('config.roles-permissions.*')) return 'config.roles-permissions.index';
+
+    // Recursos Humanos (nómina y asistencia)
+    if (route().current('payroll.*')) return route().current();
 
     // Default
     return route().current();
@@ -190,6 +197,46 @@ const activeMenu = computed(() => {
                         <template #title><span>Tutoriales</span></template>
                     </el-menu-item>
                 </Link>
+
+                <!-- Recursos Humanos (nómina y asistencia) -->
+                <el-sub-menu index="payroll" v-if="attendancePortal || can('payroll.settings.manage') || can('payroll.devices.manage') || can('payroll.shifts.manage') || can('payroll.holidays.manage') || can('payroll.incidents.manage') || can('payroll.vacations.manage') || can('payroll.periods.index')">
+                    <template #title>
+                        <el-icon><Suitcase /></el-icon>
+                        <span>Recursos Humanos</span>
+                    </template>
+
+                    <Link v-if="attendancePortal" :href="route('payroll.my-attendance.index')">
+                        <el-menu-item class="!bg-dark" index="payroll.my-attendance.index">Mi asistencia</el-menu-item>
+                    </Link>
+
+                    <Link v-if="can('payroll.periods.index')" :href="route('payroll.periods.index')">
+                        <el-menu-item class="!bg-dark" index="payroll.periods.index">Periodos de nómina</el-menu-item>
+                    </Link>
+
+                    <Link v-if="can('payroll.incidents.manage')" :href="route('payroll.incidents.index')">
+                        <el-menu-item class="!bg-dark" index="payroll.incidents.index">Incidencias</el-menu-item>
+                    </Link>
+
+                    <Link v-if="can('payroll.vacations.manage') || can('payroll.vacations.approve')" :href="route('payroll.vacations.index')">
+                        <el-menu-item class="!bg-dark" index="payroll.vacations.index">Vacaciones</el-menu-item>
+                    </Link>
+
+                    <Link v-if="can('payroll.shifts.manage')" :href="route('payroll.shifts.index')">
+                        <el-menu-item class="!bg-dark" index="payroll.shifts.index">Turnos y horarios</el-menu-item>
+                    </Link>
+
+                    <Link v-if="can('payroll.holidays.manage')" :href="route('payroll.holidays.index')">
+                        <el-menu-item class="!bg-dark" index="payroll.holidays.index">Días festivos</el-menu-item>
+                    </Link>
+
+                    <Link v-if="can('payroll.devices.manage')" :href="route('payroll.devices.index')">
+                        <el-menu-item class="!bg-dark" index="payroll.devices.index">Dispositivos de asistencia</el-menu-item>
+                    </Link>
+
+                    <Link v-if="can('payroll.settings.manage')" :href="route('payroll.settings.edit')">
+                        <el-menu-item class="!bg-dark" index="payroll.settings.edit">Configuración de nómina</el-menu-item>
+                    </Link>
+                </el-sub-menu>
 
                 <!-- Módulo Configuración -->
                 <el-sub-menu index="settings" v-if="can('users.index') || can('roles.index')">

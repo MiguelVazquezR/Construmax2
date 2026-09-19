@@ -36,15 +36,16 @@ Construmax2/
 │   │   ├── Fortify/      # CreateNewUser, ResetUserPassword, etc.
 │   │   ├── Invoices/     # UploadInvoiceAction
 │   │   ├── Jetstream/    # DeleteUser
+│   │   ├── Payroll/      # RegisterAttendancePunchAction, Request/ReviewVacationRequestAction, SyncPayrollProfileAction, EnrollUserFacesAction…
 │   │   └── Notifications/# DispatchNotificationAction
-│   ├── Console/Commands/ # CheckOverdueInvoices, MigrateProductionData
+│   ├── Console/Commands/ # CheckOverdueInvoices, MigrateProductionData, SyncHolidayYears, ClosePayrollPeriod, PruneAttendanceCaptures
 │   ├── Http/
 │   │   ├── Controllers/  # Thin controllers — delegate to Actions/Services
 │   │   ├── Middleware/   # Standard Laravel + Jetstream middleware
 │   │   └── Requests/     # Form Requests (all validation lives here)
 │   │       ├── FieldWork/ # Store|UpdateFieldWorkScheduleRequest
-│   ├── Models/           # 23 Eloquent models with rich relationships/scopes
-│   ├── Notifications/    # 6 notification classes (mail + database)
+│   ├── Models/           # 43 Eloquent models with rich relationships/scopes
+│   ├── Notifications/    # 9 notification classes (mail + database)
 │   ├── Providers/        # AppServiceProvider, Fortify, Jetstream
 │   └── Services/         # Reusable business logic (per module)
 │       ├── Costs/        # CostService
@@ -52,9 +53,10 @@ Construmax2/
 │       ├── FieldWork/    # FieldWorkScheduleService
 │       ├── Invoices/     # InvoiceService
 │       ├── Media/        # ImageOptimizerService
+│       ├── Payroll/      # AttendanceDayService, ScheduleResolverService, VacationService, PayrollCalculatorService, PayrollPeriodService, FaceRecognition/*
 │       └── Notifications/# NotificationService
 ├── config/               # Standard Laravel + Spatie + Jetstream + Sanctum
-├── database/migrations/  # 34 migration files
+├── database/migrations/  # 42 migration files
 ├── resources/js/
 │   ├── Pages/            # Inertia page components (one folder per module)
 │   ├── Components/       # Reusable UI (shared + per-module subfolders)
@@ -62,9 +64,9 @@ Construmax2/
 │   └── Layouts/          # AppLayout.vue, AppSidebar.vue, AppTopbar.vue
 ├── routes/
 │   ├── web.php           # Top-level routes + requires all web/*.php files
-│   ├── web/              # 15 modular route files (one per module)
+│   ├── web/              # 16 modular route files (one per module, incl. payroll.php)
 │   ├── api.php           # Sanctum-protected /api/user
-│   └── console.php       # Scheduled command: check-overdue-invoices (daily 07:00)
+│   └── console.php       # Scheduled commands: overdue invoices (daily 07:00), payroll closing (daily 01:00), LFT holidays (Dec 1), capture purge (Mondays 03:00)
 └── docs/context/         # THIS DOCUMENTATION SET
 ```
 
@@ -83,7 +85,7 @@ Construmax2/
 | **Architecture pattern** | Controller → Action → Service → Model. Controllers are thin (delegate immediately). Actions handle one use case. Services contain reusable logic. |
 | **File uploads** | Spatie Media Library. Images auto-optimized via GD (1920px max, 75% quality). |
 | **Notifications** | Laravel Notifications (mail + database). Dispatch is centralized in `DispatchNotificationAction`. Subscribers managed per notification type via `NotificationSetting`. |
-| **Scheduling** | One cron: `notifications:check-overdue-invoices` daily at 07:00. |
+| **Scheduling** | Framework scheduler via one cron: `notifications:check-overdue-invoices` daily 07:00, `payroll:close-period` daily 01:00, `payroll:sync-holidays` Dec 1, `payroll:prune-captures` Mondays 03:00. |
 | **Multi-currency** | MXN (default) + USD. Exchange rate fetched client-side from a proxy endpoint. Budget totals stored in original currency with an exchange rate field. |
 | **Naming conventions** | Routes: kebab-case URLs. Permissions: kebab-case. User-facing text: sentence case. All code in English. |
 
@@ -105,11 +107,12 @@ Construmax2/
 | 10 | Calendar | `10-module-calendar.md` | Dual-mode calendar: personal events with participant invitations + field work scheduling with task timestamp automation, Day/Week/Month views |
 | 11 | Deposits | `11-module-deposits.md` | Deposit tracking: creation, approval workflow, bank accounts, public signed-URL views, shift management |
 | 12 | Invoices | `12-module-invoices.md` | Invoice upload, tracking overdue invoices, status syncing with tickets |
-| 13 | Notifications | `13-module-notifications.md` | 6 event types, subscriber management, notification bell with polling, cron-triggered overdue checks |
+| 13 | Notifications | `13-module-notifications.md` | Event types, subscriber management, notification bell with polling, cron-triggered overdue checks |
 | 14 | Service Types | `06-module-tickets.md` | Simple CRUD for service type taxonomy used by tickets |
 | 15 | Tutorials | `04-module-dashboard.md` | Hardcoded video tutorial gallery page |
 | 16 | Work Acceptance Reports | `14-module-work-acceptance-reports.md` | Digital "Acta de recepción": technician data entry, electronic signature, PDF export, locking mechanism |
 | 17 | Expenses (Control de gastos) | `15-module-expenses.md` | Expense tracking: general expenses and budget expenses (breakdown payments, extras, commissions), deposit mirroring (Realizado with voucher + commission), CRUD + quick mark-as-paid, multiple receipt uploads, categories manager modal, budget expenses panel (no approval flow) |
+| 18 | Payroll & HR (Recursos Humanos) | `16-module-payroll.md` | Facial kiosk (AWS Rekognition) with authorized devices, remote geolocated attendance, shifts (fixed/rotating/flexible), automatic lates/overtime, LFT holidays, incidents, vacations with weekly accrual, real-time pre-payroll, payable periods with automatic closing (01:00), printable payslips, mirrored period expense, collaborator portal *Mi asistencia* |
 
 ---
 
@@ -117,6 +120,7 @@ Construmax2/
 
 ```
 User ──hasOne──▶ Employee
+User ──hasOne──▶ PayrollProfile (employee number, salary, attendance flags, kiosk PIN)
 User ──hasOne──▶ Technician ──hasMany──▶ TechnicianBankAccount
 User ──hasMany──▶ Ticket (as seller)
 User ──belongsToMany──▶ Calendar (participants)
@@ -143,6 +147,11 @@ Ticket ──hasOne──▶ WorkAcceptanceReport
 Ticket ──hasOne──▶ FieldWorkSchedule
 FieldWorkSchedule ──belongsTo──▶ User (creator)
 WorkAcceptanceReport ──belongsTo──▶ User (created_by)
+
+PayrollPeriod ──hasMany──▶ Payslip ──hasMany──▶ PayslipLine, PayslipDay
+PayrollPeriod ──hasOne──▶ Expense (mirrored, unique payroll_period_id)
+VacationRequest ──hasOne──▶ Incident (approved vacations)
+Shift ──hasMany──▶ ShiftAssignment
 ```
 
 ---

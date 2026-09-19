@@ -2,12 +2,20 @@
 import { ref, reactive } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import PayrollProfileFields from '@/Components/Payroll/PayrollProfileFields.vue';
 
 const props = defineProps({
     roles: Array, // Recibimos la lista de roles
+    faceRecognitionEnabled: Boolean,
 });
 
 const formRef = ref();
+const photoPreview = ref(null);
+
+const handlePhotoChange = (file) => {
+    form.photo = file.raw;
+    photoPreview.value = URL.createObjectURL(file.raw);
+};
 
 const form = useForm({
     name: '',
@@ -17,6 +25,17 @@ const form = useForm({
     department: '',
     position: '',
     phone: '',
+    photo: null,
+
+    // Nómina y asistencia (opcional, según permisos)
+    employee_number: '',
+    hire_date: null,
+    daily_salary: null,
+    daily_hours: null,
+    is_payroll_subject: false,
+    is_attendance_subject: false,
+    can_remote_attendance: false,
+    kiosk_pin: '',
 });
 
 const rules = reactive({
@@ -52,6 +71,7 @@ const submit = () => {
     formRef.value.validate((valid) => {
         if (valid) {
             form.post(route('users.store'), {
+                forceFormData: true,
                 onFinish: () => form.reset('password'),
             });
         } else {
@@ -93,41 +113,79 @@ const submit = () => {
                                 <el-icon class="text-primary"><User /></el-icon> Información de la cuenta
                             </h3>
                             
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <!-- Nombre -->
-                                <el-form-item label="Nombre completo" prop="name" :error="form.errors.name">
-                                    <el-input v-model="form.name" placeholder="Ej. Juan Pérez" />
-                                </el-form-item>
-
-                                <!-- Email -->
-                                <el-form-item label="Correo electrónico" prop="email" :error="form.errors.email">
-                                    <el-input v-model="form.email" placeholder="juan@empresa.com" />
-                                </el-form-item>
-
-                                <!-- Password -->
-                                <el-form-item label="Contraseña" prop="password" :error="form.errors.password">
-                                    <el-input v-model="form.password" placeholder="Ingrese la contraseña inicial" />
-                                </el-form-item>
-
-                                <!-- Roles (Selector Múltiple) -->
-                                <el-form-item label="Rol de usuario" prop="roles" :error="form.errors.roles">
-                                    <el-select 
-                                        v-model="form.roles" 
-                                        multiple 
-                                        placeholder="Seleccionar roles" 
-                                        class="w-full"
-                                        collapse-tags
-                                        collapse-tags-tooltip
+                            <div class="flex flex-col sm:flex-row gap-6">
+                                <!-- Foto de perfil -->
+                                <div class="relative group mx-auto sm:mx-0 shrink-0">
+                                    <el-upload
+                                        class="avatar-uploader"
+                                        action="#"
+                                        :auto-upload="false"
+                                        :show-file-list="false"
+                                        :on-change="handlePhotoChange"
+                                        accept="image/jpeg,image/png,image/webp"
                                     >
-                                        <el-option
-                                            v-for="role in roles"
-                                            :key="role.id"
-                                            :label="role.name"
-                                            :value="role.name"
-                                        />
-                                    </el-select>
-                                </el-form-item>
+                                        <div v-if="photoPreview" class="relative">
+                                            <el-avatar :size="100" :src="photoPreview" class="border-2 border-gray-200" />
+                                            <div class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                                                <el-icon class="text-white text-xl"><Camera /></el-icon>
+                                            </div>
+                                        </div>
+                                        <div v-else class="w-[100px] h-[100px] rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 cursor-pointer hover:border-primary transition-colors">
+                                            <div class="text-center text-gray-400">
+                                                <el-icon class="text-xl mb-1"><Plus /></el-icon>
+                                                <div class="text-[10px]">Foto</div>
+                                            </div>
+                                        </div>
+                                    </el-upload>
+                                    <p class="text-center text-xs text-gray-400 mt-2">Opcional</p>
+                                    <p v-if="form.errors.photo" class="text-center text-xs text-red-500 mt-1">{{ form.errors.photo }}</p>
+                                </div>
+
+                                <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <!-- Nombre -->
+                                    <el-form-item label="Nombre completo" prop="name" :error="form.errors.name">
+                                        <el-input v-model="form.name" placeholder="Ej. Juan Pérez" />
+                                    </el-form-item>
+
+                                    <!-- Email -->
+                                    <el-form-item label="Correo electrónico" prop="email" :error="form.errors.email">
+                                        <el-input v-model="form.email" placeholder="juan@empresa.com" />
+                                    </el-form-item>
+
+                                    <!-- Password -->
+                                    <el-form-item label="Contraseña" prop="password" :error="form.errors.password">
+                                        <el-input v-model="form.password" placeholder="Ingrese la contraseña inicial" />
+                                    </el-form-item>
+
+                                    <!-- Roles (Selector Múltiple) -->
+                                    <el-form-item label="Rol de usuario" prop="roles" :error="form.errors.roles">
+                                        <el-select 
+                                            v-model="form.roles" 
+                                            multiple 
+                                            placeholder="Seleccionar roles" 
+                                            class="w-full"
+                                            collapse-tags
+                                            collapse-tags-tooltip
+                                        >
+                                            <el-option
+                                                v-for="role in roles"
+                                                :key="role.id"
+                                                :label="role.name"
+                                                :value="role.name"
+                                            />
+                                        </el-select>
+                                    </el-form-item>
+                                </div>
                             </div>
+
+                            <p class="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                                <template v-if="faceRecognitionEnabled">
+                                    Se usa como referencia del reconocimiento facial del kiosco: foto de frente, con buena iluminación y sin lentes oscuros.
+                                </template>
+                                <template v-else>
+                                    Se muestra como foto de perfil del colaborador en todo el sistema.
+                                </template>
+                            </p>
                         </div>
 
                         <!-- Sección: Datos de Empleado -->
@@ -159,6 +217,9 @@ const submit = () => {
                                 </el-form-item>
                             </div>
                         </div>
+
+                        <!-- Sección: Nómina y asistencia -->
+                        <PayrollProfileFields :form="form" />
 
                         <!-- Botones de Acción -->
                         <div class="flex justify-end gap-3 pt-4 border-t border-gray-100 dark:border-gray-700">

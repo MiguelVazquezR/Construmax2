@@ -2,16 +2,23 @@
 import { ref } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import FaceEnrollmentDialog from '@/Components/Payroll/FaceEnrollmentDialog.vue';
 import { usePermissions } from '@/Composables/usePermissions';
-import { Back, Edit, User, Ticket } from '@element-plus/icons-vue';
+import { Back, Edit, User, Ticket, Suitcase, Camera } from '@element-plus/icons-vue';
 
 const { can } = usePermissions();
 
 defineProps({
     user: Object,
+    faceEnrollment: Object,
 });
 
 const activeTab = ref('general');
+const faceDialogVisible = ref(false);
+
+const onFaceSaved = () => {
+    router.reload({ only: ['user', 'faceEnrollment'] });
+};
 
 const formatDate = (dateString) => {
     if (!dateString) return '-';
@@ -246,10 +253,101 @@ const navigateToTicket = (row) => {
                             </div>
                         </div>
                     </el-tab-pane>
+
+                    <!-- PESTAÑA 3: NÓMINA Y ASISTENCIA -->
+                    <el-tab-pane v-if="can('payroll.profiles.manage') || user.payroll_profile" name="payroll">
+                        <template #label>
+                            <span class="flex items-center gap-2 px-2">
+                                <el-icon><Suitcase /></el-icon> Nómina y asistencia
+                            </span>
+                        </template>
+                        <div class="p-6">
+                            <el-descriptions v-if="user.payroll_profile" border :column="2" size="large">
+                                <el-descriptions-item label="Número de empleado">
+                                    <span class="font-mono">{{ user.payroll_profile.employee_number || 'Sin asignar' }}</span>
+                                </el-descriptions-item>
+                                <el-descriptions-item label="Fecha de ingreso">
+                                    {{ formatDate(user.payroll_profile.hire_date) }}
+                                </el-descriptions-item>
+                                <el-descriptions-item label="Sueldo diario">
+                                    {{ user.payroll_profile.daily_salary ? `$${Number(user.payroll_profile.daily_salary).toFixed(2)}` : 'No asignado' }}
+                                </el-descriptions-item>
+                                <el-descriptions-item label="Horas por día">
+                                    {{ user.payroll_profile.daily_hours ? Number(user.payroll_profile.daily_hours) : 'No asignado' }}
+                                </el-descriptions-item>
+                                <el-descriptions-item label="Sujeto a nómina">
+                                    <el-tag :type="user.payroll_profile.is_payroll_subject ? 'success' : 'info'" size="small" effect="plain">
+                                        {{ user.payroll_profile.is_payroll_subject ? 'Sí' : 'No' }}
+                                    </el-tag>
+                                </el-descriptions-item>
+                                <el-descriptions-item label="Registra asistencia">
+                                    <el-tag :type="user.payroll_profile.is_attendance_subject ? 'success' : 'info'" size="small" effect="plain">
+                                        {{ user.payroll_profile.is_attendance_subject ? 'Sí' : 'No' }}
+                                    </el-tag>
+                                </el-descriptions-item>
+                                <el-descriptions-item label="Asistencia remota">
+                                    <el-tag :type="user.payroll_profile.can_remote_attendance ? 'success' : 'info'" size="small" effect="plain">
+                                        {{ user.payroll_profile.can_remote_attendance ? 'Habilitada' : 'Deshabilitada' }}
+                                    </el-tag>
+                                </el-descriptions-item>
+                                <el-descriptions-item label="PIN de kiosco">
+                                    <el-tag :type="user.payroll_profile.has_kiosk_pin ? 'success' : 'info'" size="small" effect="plain">
+                                        {{ user.payroll_profile.has_kiosk_pin ? 'Configurado' : 'Sin configurar' }}
+                                    </el-tag>
+                                </el-descriptions-item>
+                            </el-descriptions>
+
+                            <div
+                                v-if="user.payroll_profile && faceEnrollment"
+                                class="mt-6 flex flex-wrap items-center justify-between gap-4 bg-gray-50 dark:bg-[#252529]/50 rounded-lg border border-gray-200 dark:border-gray-800 px-5 py-4"
+                            >
+                                <div class="flex items-center gap-3">
+                                    <el-icon :size="22" class="text-gray-400"><Camera /></el-icon>
+                                    <div>
+                                        <p class="font-semibold text-gray-800 dark:text-gray-200 text-sm">Reconocimiento facial</p>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400">
+                                            <template v-if="faceEnrollment.activeCount > 0">
+                                                {{ faceEnrollment.activeCount }} {{ faceEnrollment.activeCount === 1 ? 'rostro registrado' : 'rostros registrados' }} para el kiosco y la asistencia.
+                                            </template>
+                                            <template v-else>
+                                                Sin registro facial. El colaborador puede usar su rostro en el kiosco al registrarlo.
+                                            </template>
+                                        </p>
+                                    </div>
+                                </div>
+                                <el-button
+                                    v-if="can('payroll.faces.manage') && user.payroll_profile.is_attendance_subject"
+                                    type="primary"
+                                    plain
+                                    :icon="Camera"
+                                    @click="faceDialogVisible = true"
+                                >
+                                    {{ faceEnrollment.activeCount > 0 ? 'Actualizar registro facial' : 'Registrar rostro' }}
+                                </el-button>
+                            </div>
+
+                            <div v-else class="text-center py-12 bg-gray-50 dark:bg-[#252529]/50 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">
+                                <el-empty description="Sin perfil de nómina" :image-size="100">
+                                    <template #default>
+                                        <p class="text-sm text-gray-500">Edita el usuario para capturar sus datos de nómina y asistencia.</p>
+                                    </template>
+                                </el-empty>
+                            </div>
+                        </div>
+                    </el-tab-pane>
                 </el-tabs>
             </div>
 
         </div>
+
+        <FaceEnrollmentDialog
+            v-if="user.payroll_profile && faceEnrollment"
+            v-model="faceDialogVisible"
+            :user="user"
+            :configured="faceEnrollment.configured"
+            :active-count="faceEnrollment.activeCount"
+            @saved="onFaceSaved"
+        />
     </AppLayout>
 </template>
 

@@ -1,6 +1,6 @@
 # Construmax2 ERP — 01: Database Schema
 
-> Summarizes all ~31 tables grouped by domain. Focuses on relationships and business-meaningful columns.
+> Summarizes all ~47 tables grouped by domain. Focuses on relationships and business-meaningful columns.
 
 ---
 
@@ -459,6 +459,75 @@ Digital "Acta de recepción" signed by branch managers.
 
 ---
 
+## Domain: Payroll & HR (Recursos Humanos)
+
+Created by migrations `2026_09_19_000001` … `000015` (see `docs/context/16-module-payroll.md` for business rules).
+
+### `payroll_settings` (singleton)
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | bigint PK | |
+| `period_type` | string | `weekly` / `biweekly` / `semimonthly` |
+| `period_anchor_date` | date | First period reference |
+| `late_tolerance_minutes` | int | Default late tolerance |
+| `late_discount_mode` | string | `track_only` / `deduct_minutes` |
+| `overtime_double_multiplier` / `overtime_triple_multiplier` | decimal | Default 2 / 3 |
+| `overtime_weekly_threshold_hours` | decimal | Default 9 |
+| `holiday_worked_extra_multiplier` | decimal | Default 2 |
+| `vacation_min_days_to_request` | int | |
+| `vacation_carryover_months` | int | Default 18 |
+| `incapacity_paid` / `incapacity_pay_percentage` | bool / int | Default false / 60 |
+| `default_daily_hours` | decimal | Default 8 |
+| `payroll_expense_category_id` | FK → expense_categories.id | Mirrored expense category |
+| `face_recognition_enabled`, `face_match_threshold`, `rekognition_collection_id`, `kiosk_pin_fallback_enabled` | mixed | Facial recognition + kiosk fallback |
+| `attendance_capture_retention_months` | int | Default 12 (purged by `payroll:prune-captures`) |
+| `remote_geolocation_required` | bool | Default true |
+| `updated_by` | FK → users.id | nullable |
+
+### `payroll_profiles`
+One per user. `employee_number` (unique, auto `EMP-####`), `hire_date`, `termination_date`, `daily_salary`, `daily_hours`, `is_payroll_subject`, `is_attendance_subject`, `can_remote_attendance`, `kiosk_pin` (hashed), `notes`.
+
+### `attendance_devices`
+Authorized kiosk devices: `name`, `location`, `token_hash` (sha256, unique), registered by/at, `last_seen_at`/`last_seen_ip`/`user_agent`, `is_active`, revoked by/at.
+
+### `attendance_logs`
+Punches: `user_id`, `attendance_device_id` (nullable), `type` (check_in, lunch_start, lunch_end, break_start, break_end, check_out), `punched_at`, `source` (kiosk/remote/manual), `identifier_method` (face/pin/manual), `face_similarity`, `latitude`/`longitude`/`location_accuracy`, `ip`, `user_agent`, audit `edited_by`/`edited_at`/`edit_reason`. Evidence photo in media collection `capture`.
+
+### `attendance_day_overrides`
+Sparse per user+date: `late_ignored`, `notes`, `updated_by` (unique user_id + date).
+
+### `shifts`
+`name`, `type` (fixed/rotating/flexible), `start_time`, `end_time`, `meal_minutes`, `is_meal_paid`, `days` (ISO 1-7 JSON), `required_daily_hours`, `late_tolerance_minutes` (nullable), `is_active`, `description`.
+
+### `shift_assignments`
+`user_id` **or** `department`, `type`, `shift_id`, `rotation` (JSON weekly cycle of shift ids), `start_date`, `end_date`, `notes`.
+
+### `holidays`
+`date` (unique), `name`, `year`, `source` (`lft`/`manual`), `is_mandatory`, `apply_extra_pay`, `notes`.
+
+### `incidents`
+`user_id`, `type` (absence_justified/absence_unjustified/medical_leave/permission_paid/permission_unpaid/vacation/other), `start_date`, `end_date`, `days`, `affects_pay`, `status`, `notes`, `vacation_request_id` (nullable), created/approved audit. Optional `support` attachment.
+
+### `vacation_requests`
+`user_id`, `start_date`, `end_date`, `days`, `status` (pending/approved/rejected/cancelled), `reason`, `requested_by`, `reviewed_by`, `reviewed_at`, `review_notes`.
+
+### `payroll_periods`
+`type`, `start_date`, `end_date`, `status` (open/closed), `closed_at`, `closed_by` (null = automatic), `total_gross`, `total_deductions`, `total_net`, `expense_id`, `notes`.
+
+### `payroll_adjustments`
+`payroll_period_id`, `user_id`, `type` (earning/deduction), `concept`, `amount`, `notes`, `created_by`.
+
+### `payslips` (+ `payslip_lines`, `payslip_days`)
+Frozen closing snapshot: profile fields (`employee_number`, `department`, `position`, `hire_date`, `daily_salary`, `daily_hours`), totals (days paid/unpaid, late minutes/discount, overtime 2x/3x, holidays, vacations, incapacity, adjustments, gross/deductions/net), `generated_at`/`generated_by`. Lines store concept/type/quantity/unit_rate/amount/source; days store date/status/first_in/lunch/last_out/worked/late/overtime minutes.
+
+### `face_enrollments`
+`user_id`, `collection_id`, `face_id`, `external_image_id`, `status` (active/failed/removed), `quality`, `enrolled_by`, `enrolled_at`.
+
+### `expenses` (payroll additions)
+`payroll_period_id` (FK → payroll_periods.id, unique, nullOnDelete — the mirrored period expense) and `created_by` became nullable (command-generated).
+
+---
+
 ## Cross-domain foreign key summary
 
 ```
@@ -466,7 +535,20 @@ users.id ──▶ employees.user_id, technicians.user_id, tickets.seller_id,
             ticket_tasks.user_id, budgets.user_id, calendars.user_id,
             calendar_participants.user_id, technician_payments.user_id,
             deposits.created_by, deposits.approved_by, notification_settings.user_id,
-            work_acceptance_reports.created_by, field_work_schedules.user_id
+            work_acceptance_reports.created_by, field_work_schedules.user_id,
+            payroll_profiles.user_id, attendance_logs.user_id, attendance_day_overrides.user_id,
+            shift_assignments.user_id, incidents.user_id, vacation_requests.user_id,
+            payroll_adjustments.user_id, payslips.user_id, face_enrollments.user_id,
+            payroll_settings.updated_by, attendance_devices.registered_by
+
+payroll_periods.id ──▶ payroll_adjustments.payroll_period_id,
+                      payslips.payroll_period_id, expenses.payroll_period_id
+
+shifts.id ──▶ shift_assignments.shift_id
+
+attendance_devices.id ──▶ attendance_logs.attendance_device_id
+
+vacation_requests.id ──▶ incidents.vacation_request_id
 
 customers.id ──▶ customer_branches.customer_id, customer_contacts.customer_id,
                  tickets.customer_id

@@ -2,13 +2,29 @@
 import { ref, reactive } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import PayrollProfileFields from '@/Components/Payroll/PayrollProfileFields.vue';
 
 const props = defineProps({
     user: Object,
     roles: Array, // Lista de roles disponibles
+    faceRecognitionEnabled: Boolean,
 });
 
 const formRef = ref();
+const photoPreview = ref(props.user.profile_photo_url || null);
+
+const handlePhotoChange = (file) => {
+    form.photo = file.raw;
+    photoPreview.value = URL.createObjectURL(file.raw);
+};
+
+const toNumber = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? null : parsed;
+};
+
+const profile = props.user.payroll_profile || {};
 
 // Inicializamos el formulario y mapeamos los roles actuales del usuario
 const form = useForm({
@@ -20,6 +36,17 @@ const form = useForm({
     department: props.user.employee?.department || '',
     position: props.user.employee?.position || '',
     phone: props.user.employee?.phone || '',
+    photo: null,
+
+    // Nómina y asistencia (opcional, según permisos)
+    employee_number: profile.employee_number || '',
+    hire_date: profile.hire_date ? String(profile.hire_date).substring(0, 10) : null,
+    daily_salary: toNumber(profile.daily_salary),
+    daily_hours: toNumber(profile.daily_hours),
+    is_payroll_subject: Boolean(profile.is_payroll_subject),
+    is_attendance_subject: Boolean(profile.is_attendance_subject),
+    can_remote_attendance: Boolean(profile.can_remote_attendance),
+    kiosk_pin: '',
 });
 
 const rules = reactive({
@@ -53,9 +80,12 @@ const submit = () => {
     
     formRef.value.validate((valid) => {
         if (valid) {
-            form.put(route('users.update', props.user.id), {
-                onFinish: () => form.reset('password'),
-            });
+            // El spoofing de método permite enviar el archivo con un POST real.
+            form.transform((data) => ({ ...data, _method: 'PUT' }))
+                .post(route('users.update', props.user.id), {
+                    forceFormData: true,
+                    onFinish: () => form.reset('password'),
+                });
         }
     });
 };
@@ -93,41 +123,79 @@ const submit = () => {
                                 <el-icon class="text-primary"><User /></el-icon> Información de la cuenta
                             </h3>
                             
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <el-form-item label="Nombre completo" prop="name" :error="form.errors.name">
-                                    <el-input v-model="form.name" />
-                                </el-form-item>
-
-                                <el-form-item label="Correo electrónico" prop="email" :error="form.errors.email">
-                                    <el-input v-model="form.email" />
-                                </el-form-item>
-
-                                <el-form-item label="Nueva contraseña (opcional)" prop="password" :error="form.errors.password">
-                                    <el-input 
-                                        v-model="form.password" 
-                                        placeholder="Dejar vacío para mantener la actual" 
-                                    />
-                                </el-form-item>
-
-                                <!-- Roles (Selector Múltiple) -->
-                                <el-form-item label="Rol de usuario" prop="roles" :error="form.errors.roles">
-                                    <el-select 
-                                        v-model="form.roles" 
-                                        multiple 
-                                        placeholder="Seleccionar roles" 
-                                        class="w-full"
-                                        collapse-tags
-                                        collapse-tags-tooltip
+                            <div class="flex flex-col sm:flex-row gap-6">
+                                <!-- Foto de perfil -->
+                                <div class="relative group mx-auto sm:mx-0 shrink-0">
+                                    <el-upload
+                                        class="avatar-uploader"
+                                        action="#"
+                                        :auto-upload="false"
+                                        :show-file-list="false"
+                                        :on-change="handlePhotoChange"
+                                        accept="image/jpeg,image/png,image/webp"
                                     >
-                                        <el-option
-                                            v-for="role in roles"
-                                            :key="role.id"
-                                            :label="role.name"
-                                            :value="role.name"
+                                        <div v-if="photoPreview" class="relative">
+                                            <el-avatar :size="100" :src="photoPreview" class="border-2 border-gray-200" />
+                                            <div class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                                                <el-icon class="text-white text-xl"><Camera /></el-icon>
+                                            </div>
+                                        </div>
+                                        <div v-else class="w-[100px] h-[100px] rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 cursor-pointer hover:border-primary transition-colors">
+                                            <div class="text-center text-gray-400">
+                                                <el-icon class="text-xl mb-1"><Plus /></el-icon>
+                                                <div class="text-[10px]">Foto</div>
+                                            </div>
+                                        </div>
+                                    </el-upload>
+                                    <p class="text-center text-xs text-gray-400 mt-2">Opcional</p>
+                                    <p v-if="form.errors.photo" class="text-center text-xs text-red-500 mt-1">{{ form.errors.photo }}</p>
+                                </div>
+
+                                <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <el-form-item label="Nombre completo" prop="name" :error="form.errors.name">
+                                        <el-input v-model="form.name" />
+                                    </el-form-item>
+
+                                    <el-form-item label="Correo electrónico" prop="email" :error="form.errors.email">
+                                        <el-input v-model="form.email" />
+                                    </el-form-item>
+
+                                    <el-form-item label="Nueva contraseña (opcional)" prop="password" :error="form.errors.password">
+                                        <el-input 
+                                            v-model="form.password" 
+                                            placeholder="Dejar vacío para mantener la actual" 
                                         />
-                                    </el-select>
-                                </el-form-item>
+                                    </el-form-item>
+
+                                    <!-- Roles (Selector Múltiple) -->
+                                    <el-form-item label="Rol de usuario" prop="roles" :error="form.errors.roles">
+                                        <el-select 
+                                            v-model="form.roles" 
+                                            multiple 
+                                            placeholder="Seleccionar roles" 
+                                            class="w-full"
+                                            collapse-tags
+                                            collapse-tags-tooltip
+                                        >
+                                            <el-option
+                                                v-for="role in roles"
+                                                :key="role.id"
+                                                :label="role.name"
+                                                :value="role.name"
+                                            />
+                                        </el-select>
+                                    </el-form-item>
+                                </div>
                             </div>
+
+                            <p class="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                                <template v-if="faceRecognitionEnabled">
+                                    Se usa como referencia del reconocimiento facial del kiosco: foto de frente, con buena iluminación y sin lentes oscuros.
+                                </template>
+                                <template v-else>
+                                    Se muestra como foto de perfil del colaborador en todo el sistema.
+                                </template>
+                            </p>
                         </div>
 
                         <!-- Sección: Datos de Empleado -->
@@ -156,6 +224,9 @@ const submit = () => {
                                 </el-form-item>
                             </div>
                         </div>
+
+                        <!-- Sección: Nómina y asistencia -->
+                        <PayrollProfileFields :form="form" />
 
                         <!-- Botones -->
                         <div class="flex justify-end gap-3 pt-4 border-t border-gray-100 dark:border-gray-700">

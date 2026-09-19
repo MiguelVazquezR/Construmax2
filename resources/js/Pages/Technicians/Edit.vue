@@ -60,7 +60,12 @@ const form = useForm({
     // Interno
     internal_notes: props.technician.internal_notes || '',
     rating_avg: Number(props.technician.rating_avg) || 0,
-    
+
+    // Nómina y asistencia (opcional, según permisos)
+    is_attendance_subject: Boolean(props.technician.payroll_profile?.is_attendance_subject),
+    can_remote_attendance: Boolean(props.technician.payroll_profile?.can_remote_attendance),
+    kiosk_pin: '',
+
     // Archivos 
     tax_file: null,
 });

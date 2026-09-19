@@ -29,6 +29,19 @@ class UpdateExpenseAction
             unset($data['receipts'], $data['remove_receipt_ids']);
         }
 
+        // Payroll expenses mirror a closed payroll period: only their payment
+        // data (status, payment method, notes) can be edited.
+        if ($expense->payroll_period_id) {
+            $data['concept'] = $expense->concept;
+            $data['amount'] = $expense->amount;
+            $data['budget_id'] = $expense->budget_id;
+            $data['expense_date'] = $expense->expense_date?->format('Y-m-d');
+            $data['commission_amount'] = $expense->commission_amount;
+            $data['is_commission'] = false;
+
+            unset($data['receipts'], $data['remove_receipt_ids']);
+        }
+
         // Concept payments keep the concept and amount defined by the budget
         // breakdown; only their payment data can be edited.
         if ($expense->budget_concept_id) {
@@ -40,7 +53,7 @@ class UpdateExpenseAction
             $data['is_commission'] = false;
         }
 
-        $isCommission = !empty($expense->budget_id) && (bool) ($data['is_commission'] ?? false);
+        $isCommission = ! empty($expense->budget_id) && (bool) ($data['is_commission'] ?? false);
 
         $expense->update([
             'expense_category_id' => $data['expense_category_id'] ?? null,
@@ -59,11 +72,11 @@ class UpdateExpenseAction
             'paid_at' => $this->resolvePaidAt($expense, $data['status']),
         ]);
 
-        if (!empty($data['receipts'])) {
+        if (! empty($data['receipts'])) {
             $this->receiptService->attachMany($expense, $data['receipts']);
         }
 
-        if (!empty($data['remove_receipt_ids'])) {
+        if (! empty($data['remove_receipt_ids'])) {
             $this->receiptService->removeMany($expense, $data['remove_receipt_ids']);
         }
 
