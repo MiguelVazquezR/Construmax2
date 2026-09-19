@@ -33,7 +33,10 @@ return [
         'key' => env('AWS_ACCESS_KEY_ID'),
         'secret' => env('AWS_SECRET_ACCESS_KEY'),
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
-        'rekognition_collection' => env('PAYROLL_REKOGNITION_COLLECTION', 'construmax-attendance'),
+        'rekognition_collection' => env(
+            'PAYROLL_REKOGNITION_COLLECTION',
+            env('AWS_REKOGNITION_COLLECTION_ID', 'construmax-attendance')
+        ),
     ],
 
     'slack' => [

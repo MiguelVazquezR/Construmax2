@@ -70,8 +70,8 @@ const rules = reactive({
 });
 
 const handlePhotoChange = (file) => {
-    form.photo = file.raw;
-    photoPreview.value = URL.createObjectURL(file.raw);
+    form.photo = file;
+    photoPreview.value = URL.createObjectURL(file);
 };
 
 const handleTaxFileChange = (file) => {

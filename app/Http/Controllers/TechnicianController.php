@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Payroll\EnrollProfilePhotoAction;
 use App\Actions\Payroll\SyncPayrollProfileAction;
 use App\Models\Technician;
 use App\Models\TechnicianBankAccount;
@@ -22,6 +23,7 @@ class TechnicianController extends Controller
     public function __construct(
         private readonly ImageOptimizerService $imageOptimizer,
         private readonly SyncPayrollProfileAction $syncPayrollProfileAction,
+        private readonly EnrollProfilePhotoAction $enrollProfilePhotoAction,
     ) {}
 
     public function index(Request $request)
@@ -116,10 +118,13 @@ class TechnicianController extends Controller
                 'is_active' => false,
             ]);
 
-            if ($request->hasFile('photo')) {
-                $optimizedPath = $this->imageOptimizer->optimize($request->file('photo'));
+            $optimizedPhotoPath = $request->hasFile('photo')
+                ? $this->imageOptimizer->optimize($request->file('photo'))
+                : null;
+
+            if ($optimizedPhotoPath !== null) {
                 $user->updateProfilePhoto(new \Illuminate\Http\UploadedFile(
-                    $optimizedPath,
+                    $optimizedPhotoPath,
                     $request->file('photo')->getClientOriginalName(),
                     $request->file('photo')->getMimeType(),
                     null,
@@ -150,6 +155,11 @@ class TechnicianController extends Controller
             ]);
 
             $this->syncPayrollProfileAction->execute($technician->user, $payrollProfile);
+
+            // The profile photo doubles as the face reference of the attendance kiosk.
+            if ($optimizedPhotoPath !== null) {
+                $this->enrollProfilePhotoAction->execute($technician->user, $optimizedPhotoPath, $request->user());
+            }
 
             if ($request->hasFile('tax_file')) {
                 $file = $request->file('tax_file');
@@ -257,10 +267,13 @@ class TechnicianController extends Controller
                 'email' => $validated['email'] ?? null,
             ]);
 
-            if ($request->hasFile('photo')) {
-                $optimizedPath = $this->imageOptimizer->optimize($request->file('photo'));
+            $optimizedPhotoPath = $request->hasFile('photo')
+                ? $this->imageOptimizer->optimize($request->file('photo'))
+                : null;
+
+            if ($optimizedPhotoPath !== null) {
                 $technician->user->updateProfilePhoto(new \Illuminate\Http\UploadedFile(
-                    $optimizedPath,
+                    $optimizedPhotoPath,
                     $request->file('photo')->getClientOriginalName(),
                     $request->file('photo')->getMimeType(),
                     null,
@@ -290,6 +303,11 @@ class TechnicianController extends Controller
             ]);
 
             $this->syncPayrollProfileAction->execute($technician->user, $payrollProfile);
+
+            // The profile photo doubles as the face reference of the attendance kiosk.
+            if ($optimizedPhotoPath !== null) {
+                $this->enrollProfilePhotoAction->execute($technician->user, $optimizedPhotoPath, $request->user());
+            }
 
             // CORRECCIÓN 2: Lógica para guardar la constancia fiscal si se adjuntó
             if ($request->hasFile('tax_file')) {

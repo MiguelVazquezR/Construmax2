@@ -27,6 +27,7 @@
 | Payslips | `app/Services/Payroll/PayslipService.php` + `PayslipController` + `resources/js/Pages/Payroll/Payslips/Print.vue` | Frozen payslips (snapshot + lines + days) generated at closing; compact 4-5-per-sheet printable page (browser print → PDF) |
 | Closing | `app/Console/Commands/ClosePayrollPeriod.php` (`payroll:close-period`) | Closes the due period: payslips, mirrored expense, notification, opens the next period. Scheduled daily at 01:00 |
 | Retention | `app/Console/Commands/PruneAttendanceCaptures.php` (`payroll:prune-captures`) | Deletes attendance captures older than the configured retention window (scheduled Mondays 03:00) |
+| Enrollment | `app/Console/Commands/EnrollProfilePhotos.php` (`payroll:enroll-profile-photos`) | Bulk indexes the profile photos of attendance collaborators (users and technicians) as face references; `--user=` limits to one collaborator, `--force` re-indexes |
 | Faces | `app/Services/Payroll/FaceRecognition/` (`FaceRecognitionService` contract, `AwsFaceRecognitionService`, `NullFaceRecognitionService`), `EnrollUserFacesAction`, `FaceEnrollmentController` | AWS Rekognition integration (1 collection, index/search/delete), admin enrollment from Users, self-enrollment from *Mi asistencia*, status endpoint |
 | Self-service | `app/Http/Controllers/Payroll/MyAttendanceController.php` + `resources/js/Pages/Payroll/MyAttendance/Index.vue` | Remote punch (geolocation + optional face verification), recent history, vacations (balance/seasons/requests), own payslips, face enrollment |
 | Adjustment/Audit | `app/Http/Controllers/Payroll/AttendanceLogController.php` | Manual punch corrections with mandatory `edit_reason` (audited) |
@@ -99,7 +100,7 @@ All routes are authenticated (`auth`, `verified`) unless noted. Payroll routes u
 
 ### Attendance & kiosk
 - Kiosk page is public; **every** API call requires `X-Attendance-Device` matching an active `attendance_devices` row (token shown once, stored hashed). Unauthorized devices see a registration hint.
-- Verified punches: face (1:N search against the Rekognition collection; `identifier_method=face` + similarity) or employee number + PIN fallback (when `kiosk_pin_fallback_enabled`). Both store the captured frame as evidence. When the fallback is disabled the kiosk hides the employee number + PIN form and works face-only (a red notice appears if no method is enabled at all).
+- The kiosk page is **face-only**: the collaborator selects the punch type and presses "Marcar con rostro"; the live capture goes to Rekognition (1:N search) and the collaborator is identified by similarity (`identifier_method=face`, the capture is stored as evidence). When the recognition is not enabled/configured the kiosk shows a red notice instead of allowing punches. The employee number + PIN endpoint (`attendance.kiosk.punch`) and the `kiosk_pin_fallback_enabled` setting remain at the API level for other clients/manual use, but the kiosk UI no longer asks for them.
 - Duplicate punches of the same type within ±2 minutes are rejected.
 - Remote punches (`/my-attendance`) require `can_remote_attendance`; geolocation is mandatory when `remote_geolocation_required`; when facial recognition is active and configured the photo is required and must match the authenticated user.
 - Manual corrections require a reason and stamp the audit columns.
@@ -127,9 +128,9 @@ All routes are authenticated (`auth`, `verified`) unless noted. Payroll routes u
 - Calculation notes: daily salary basis; overtime split 2x until the weekly threshold (default 9 h) then 3x; worked holidays pay an extra × multiplier; lates only discount money in `deduct_minutes` mode; no ISR/IMSS.
 
 ### Faces (AWS Rekognition)
-- `FaceRecognitionService` contract with an AWS implementation (CreateCollection/IndexFaces/SearchFacesByImage/DeleteFaces) and a null implementation; bound in `AppServiceProvider` depending on `services.aws` credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`, `PAYROLL_REKOGNITION_COLLECTION`).
+- `FaceRecognitionService` contract with an AWS implementation (CreateCollection/IndexFaces/SearchFacesByImage/DeleteFaces) and a null implementation; bound in `AppServiceProvider` depending on `services.aws` credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`, collection name via `PAYROLL_REKOGNITION_COLLECTION` or `AWS_REKOGNITION_COLLECTION_ID`).
 - Enrollment replaces previous active references (up to 3 photos, quality stored). Admin flow from Users/Show; self-service from *Mi asistencia*. Kiosk and remote punches use the search result.
-- The **profile photo** uploaded in the Users form acts as the face reference when the module is active (`EnrollProfilePhotoAction`, invoked from `UserController`): the portrait is indexed with `external_image_id = user id` and replaces the previous references only after a successful detection — a photo without a detectable face leaves the old references untouched and the flash message reports the outcome. The live-capture dialog (up to 3 photos) remains available for corrections.
+- The **profile photo** uploaded in the Users **and Technicians** forms acts as the face reference when the module is active (`EnrollProfilePhotoAction`, invoked from `UserController` and `TechnicianController`): the portrait is indexed with `external_image_id = user id` and replaces the previous references only after a successful detection — a photo without a detectable face leaves the old references untouched and the flash message reports the outcome. Collaborators that already have photos can be indexed in bulk with `php artisan payroll:enroll-profile-photos --force` (requires `face_recognition_enabled` + credentials and the collaborator's "Registra asistencia" flag). The live-capture dialog (up to 3 photos) remains available for corrections.
 
 ---
 
@@ -140,6 +141,7 @@ All routes are authenticated (`auth`, `verified`) unless noted. Payroll routes u
 | `payroll:sync-holidays {year?}` | Yearly on Dec 1 at 02:00 | Generates LFT mandatory rest days |
 | `payroll:close-period {--period=}` | Daily at 01:00 | Closes the due period, generates payslips + expense, opens the next |
 | `payroll:prune-captures` | Weekly on Monday at 03:00 | Purges attendance captures past the retention window |
+| `payroll:enroll-profile-photos {--user=} {--force}` | Manual | Indexes the profile photos of attendance collaborators (users and technicians) as face references in Rekognition; `--force` re-indexes collaborators that already have an active face |
 
 ---
 

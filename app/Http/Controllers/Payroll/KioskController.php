@@ -35,7 +35,6 @@ class KioskController extends Controller
 
         return Inertia::render('Payroll/Kiosk/Index', [
             'punchTypes' => AttendanceLog::TYPES,
-            'pinFallbackEnabled' => $settings->kiosk_pin_fallback_enabled,
             'faceRecognitionEnabled' => $settings->face_recognition_enabled && $this->faceRecognition->isConfigured(),
             'appName' => config('app.name'),
         ]);
@@ -55,7 +54,6 @@ class KioskController extends Controller
                 'location' => $device->location,
             ],
             'punchTypes' => AttendanceLog::TYPES,
-            'pinFallbackEnabled' => PayrollSetting::current()->kiosk_pin_fallback_enabled,
         ]);
     }
 

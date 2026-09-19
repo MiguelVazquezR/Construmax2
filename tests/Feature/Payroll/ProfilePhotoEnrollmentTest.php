@@ -5,6 +5,7 @@ namespace Tests\Feature\Payroll;
 use App\Models\FaceEnrollment;
 use App\Models\PayrollProfile;
 use App\Models\PayrollSetting;
+use App\Models\Technician;
 use App\Models\User;
 use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -221,6 +222,39 @@ class ProfilePhotoEnrollmentTest extends TestCase
             'status' => FaceEnrollment::STATUS_ACTIVE,
         ]);
         $this->assertSame('Empleado Foto Actualizado', $this->employee->fresh()->name);
+    }
+
+    public function test_technician_store_enrolls_the_profile_photo_when_recognition_is_active(): void
+    {
+        PayrollSetting::current()->update(['face_recognition_enabled' => true]);
+
+        $this->mock(FaceRecognitionService::class, function (MockInterface $mock) {
+            $mock->shouldReceive('isConfigured')->andReturn(true);
+            $mock->shouldReceive('collectionId')->andReturn('construmax-attendance');
+            $mock->shouldReceive('indexFace')->once()->andReturn(['face_id' => 'tech-face', 'quality' => 94.0]);
+        });
+
+        $this->actingAs($this->admin)
+            ->post(route('technicians.store'), [
+                'name' => 'Técnico Con Foto',
+                'email' => 'tecnico.foto@test.com',
+                'phone' => '3311112233',
+                'is_attendance_subject' => true,
+                'photo' => UploadedFile::fake()->image('tecnico.jpg', 400, 400),
+            ])
+            ->assertRedirect(route('technicians.index'));
+
+        $technician = Technician::whereHas('user', fn ($query) => $query->where('email', 'tecnico.foto@test.com'))->first();
+
+        $this->assertNotNull($technician);
+        $this->assertNotNull($technician->user->profile_photo_path);
+        $this->assertDatabaseHas('face_enrollments', [
+            'user_id' => $technician->user_id,
+            'face_id' => 'tech-face',
+            'external_image_id' => (string) $technician->user_id,
+            'status' => FaceEnrollment::STATUS_ACTIVE,
+            'enrolled_by' => $this->admin->id,
+        ]);
     }
 
     public function test_store_rejects_a_file_that_is_not_a_valid_image(): void

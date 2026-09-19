@@ -1,12 +1,11 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
-import { Camera, CircleCheck, Lock, User, WarningFilled } from '@element-plus/icons-vue';
+import { Camera, CircleCheck, WarningFilled } from '@element-plus/icons-vue';
 import axios from 'axios';
 
 const props = defineProps({
     punchTypes: Object,
-    pinFallbackEnabled: Boolean,
     faceRecognitionEnabled: Boolean,
     appName: String,
 });
@@ -19,10 +18,7 @@ const device = ref(null);
 const status = ref('checking'); // checking | authorized | unauthorized
 const clock = ref(new Date());
 
-const employeeNumber = ref('');
-const pin = ref('');
 const selectedType = ref(null);
-const submitting = ref(false);
 const faceSubmitting = ref(false);
 const errorMessage = ref('');
 const result = ref(null);
@@ -95,55 +91,6 @@ const capturePhoto = () => {
     return canvas.toDataURL('image/jpeg', 0.7);
 };
 
-const submit = async () => {
-    errorMessage.value = '';
-
-    if (!employeeNumber.value.trim()) {
-        errorMessage.value = 'Ingresa tu número de empleado.';
-        return;
-    }
-
-    if (!pin.value.trim()) {
-        errorMessage.value = 'Ingresa tu PIN.';
-        return;
-    }
-
-    if (!selectedType.value) {
-        errorMessage.value = 'Selecciona el tipo de marcaje.';
-        return;
-    }
-
-    submitting.value = true;
-
-    try {
-        const { data } = await axios.post(route('attendance.kiosk.punch'), {
-            employee_number: employeeNumber.value.trim(),
-            pin: pin.value.trim(),
-            type: selectedType.value,
-            photo: capturePhoto(),
-        }, {
-            headers: { 'X-Attendance-Device': token.value },
-        });
-
-        result.value = data;
-        employeeNumber.value = '';
-        pin.value = '';
-        selectedType.value = null;
-
-        clearTimeout(resultTimer);
-        resultTimer = setTimeout(() => {
-            result.value = null;
-        }, SESSION_RESET_MS);
-    } catch (error) {
-        const errors = error.response?.data?.errors;
-        errorMessage.value = errors
-            ? Object.values(errors).flat()[0]
-            : 'No se pudo registrar el marcaje. Intenta de nuevo.';
-    } finally {
-        submitting.value = false;
-    }
-};
-
 const submitFace = async () => {
     errorMessage.value = '';
 
@@ -170,8 +117,6 @@ const submitFace = async () => {
         });
 
         result.value = data;
-        employeeNumber.value = '';
-        pin.value = '';
         selectedType.value = null;
 
         clearTimeout(resultTimer);
@@ -182,7 +127,7 @@ const submitFace = async () => {
         const errors = error.response?.data?.errors;
         errorMessage.value = errors
             ? Object.values(errors).flat()[0]
-            : 'No se pudo registrar el marcaje. Intenta de nuevo o usa tu PIN.';
+            : 'No se pudo registrar el marcaje. Intenta de nuevo.';
     } finally {
         faceSubmitting.value = false;
     }
@@ -274,77 +219,34 @@ onBeforeUnmount(() => {
                         </button>
                     </div>
 
-                    <!-- Identification (PIN fallback) -->
-                    <div v-if="pinFallbackEnabled" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                        <div>
-                            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-2">Número de empleado</label>
-                            <el-input
-                                v-model="employeeNumber"
-                                size="large"
-                                inputmode="numeric"
-                                placeholder="EMP-0001"
-                                class="kiosk-input"
-                            >
-                                <template #prefix><el-icon><User /></el-icon></template>
-                            </el-input>
-                        </div>
-                        <div>
-                            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-2">PIN</label>
-                            <el-input
-                                v-model="pin"
-                                size="large"
-                                type="password"
-                                show-password
-                                maxlength="12"
-                                placeholder="••••"
-                                class="kiosk-input"
-                                @keyup.enter="submit"
-                            >
-                                <template #prefix><el-icon><Lock /></el-icon></template>
-                            </el-input>
-                        </div>
-                    </div>
-
+                    <!-- Identification -->
                     <p v-if="errorMessage" class="text-sm text-red-300 bg-red-500/10 border border-red-400/30 rounded-lg px-4 py-3 mb-6">
                         {{ errorMessage }}
                     </p>
 
-                    <div class="mt-auto flex items-center gap-4">
+                    <div class="mt-auto">
                         <el-button
-                            v-if="faceRecognitionEnabled && cameraReady"
+                            v-if="faceRecognitionEnabled"
                             type="success"
                             size="large"
-                            class="!h-14 !text-base flex-1"
+                            class="!h-14 !text-base w-full"
+                            :disabled="!cameraReady"
                             :loading="faceSubmitting"
                             @click="submitFace"
                         >
                             Marcar con rostro
                         </el-button>
-                        <el-button
-                            v-if="pinFallbackEnabled"
-                            type="primary"
-                            color="#f26c17"
-                            size="large"
-                            class="!h-14 !text-base flex-1"
-                            :loading="submitting"
-                            @click="submit"
-                        >
-                            Registrar marcaje
-                        </el-button>
                     </div>
 
                     <p class="text-xs text-slate-500 mt-4">
-                        <template v-if="!pinFallbackEnabled && faceRecognitionEnabled">
-                            Este kiosco identifica por reconocimiento facial: presiona "Marcar con rostro".
+                        <template v-if="!faceRecognitionEnabled">
+                            El reconocimiento facial no está activo en este kiosco. Pide al administrador que lo habilite en Configuración de nómina.
                         </template>
-                        <template v-else-if="!pinFallbackEnabled">
-                            El marcaje con número de empleado y PIN está desactivado en este kiosco.
-                        </template>
-                        <template v-else-if="cameraReady">
-                            La foto del marcaje se guarda como evidencia.
+                        <template v-else-if="!cameraReady">
+                            Se requiere la cámara para identificar tu rostro. Pide ayuda al administrador.
                         </template>
                         <template v-else>
-                            Cámara no disponible: el marcaje se registra solo con número de empleado y PIN.
+                            Presiona "Marcar con rostro" y mira de frente a la cámara.
                         </template>
                     </p>
                 </div>
@@ -368,15 +270,11 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div v-if="faceRecognitionEnabled" class="bg-emerald-500/10 border border-emerald-400/30 rounded-xl px-4 py-3 text-sm text-emerald-200">
-                    Reconocimiento facial activo: acércate a la cámara para identificarte.
+                    Reconocimiento facial activo: presiona "Marcar con rostro" para identificarte.
                 </div>
 
-                <p v-if="!faceRecognitionEnabled && !pinFallbackEnabled" class="bg-red-500/10 border border-red-400/30 rounded-xl px-4 py-3 text-sm text-red-200">
-                    Ningún método de marcaje está habilitado. Pide al administrador que active el reconocimiento facial o el respaldo con PIN.
-                </p>
-
-                <p v-else-if="!pinFallbackEnabled" class="bg-amber-500/10 border border-amber-400/30 rounded-xl px-4 py-3 text-sm text-amber-200">
-                    El respaldo con PIN está desactivado. Si falla el reconocimiento facial, contacta al administrador.
+                <p v-else class="bg-red-500/10 border border-red-400/30 rounded-xl px-4 py-3 text-sm text-red-200">
+                    El reconocimiento facial no está habilitado en este kiosco. Pide al administrador que lo active en Configuración de nómina.
                 </p>
             </section>
         </main>
@@ -400,19 +298,3 @@ onBeforeUnmount(() => {
         </div>
     </div>
 </template>
-
-<style scoped>
-:deep(.kiosk-input .el-input__wrapper) {
-    background: rgba(255, 255, 255, 0.06);
-    box-shadow: none;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-}
-
-:deep(.kiosk-input .el-input__inner) {
-    color: #fff;
-}
-
-:deep(.kiosk-input .el-input__inner::placeholder) {
-    color: rgba(255, 255, 255, 0.4);
-}
-</style>

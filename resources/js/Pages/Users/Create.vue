@@ -3,6 +3,7 @@ import { ref, reactive } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import PayrollProfileFields from '@/Components/Payroll/PayrollProfileFields.vue';
+import PhotoUploader from '@/Components/Forms/PhotoUploader.vue';
 
 const props = defineProps({
     roles: Array, // Recibimos la lista de roles
@@ -13,8 +14,8 @@ const formRef = ref();
 const photoPreview = ref(null);
 
 const handlePhotoChange = (file) => {
-    form.photo = file.raw;
-    photoPreview.value = URL.createObjectURL(file.raw);
+    form.photo = file;
+    photoPreview.value = URL.createObjectURL(file);
 };
 
 const form = useForm({
@@ -108,40 +109,19 @@ const submit = () => {
                         @submit.prevent="submit"
                     >
                         <!-- Sección: Datos de Cuenta -->
-                        <div class="mb-8">
-                            <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 border-b border-gray-100 dark:border-gray-700 pb-2 mb-4 flex items-center gap-2">
+                        <div class="mb-6">
+                            <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 border-b border-gray-100 dark:border-gray-700 pb-2 mb-3 flex items-center gap-2">
                                 <el-icon class="text-primary"><User /></el-icon> Información de la cuenta
                             </h3>
                             
                             <div class="flex flex-col sm:flex-row gap-6">
                                 <!-- Foto de perfil -->
-                                <div class="relative group mx-auto sm:mx-0 shrink-0">
-                                    <el-upload
-                                        class="avatar-uploader"
-                                        action="#"
-                                        :auto-upload="false"
-                                        :show-file-list="false"
-                                        :on-change="handlePhotoChange"
-                                        accept="image/jpeg,image/png,image/webp"
-                                    >
-                                        <div v-if="photoPreview" class="relative">
-                                            <el-avatar :size="100" :src="photoPreview" class="border-2 border-gray-200" />
-                                            <div class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                                                <el-icon class="text-white text-xl"><Camera /></el-icon>
-                                            </div>
-                                        </div>
-                                        <div v-else class="w-[100px] h-[100px] rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 cursor-pointer hover:border-primary transition-colors">
-                                            <div class="text-center text-gray-400">
-                                                <el-icon class="text-xl mb-1"><Plus /></el-icon>
-                                                <div class="text-[10px]">Foto</div>
-                                            </div>
-                                        </div>
-                                    </el-upload>
-                                    <p class="text-center text-xs text-gray-400 mt-2">Opcional</p>
+                                <div class="mx-auto sm:mx-0 shrink-0">
+                                    <PhotoUploader :preview="photoPreview" :max-size-mb="4" @change="handlePhotoChange" />
                                     <p v-if="form.errors.photo" class="text-center text-xs text-red-500 mt-1">{{ form.errors.photo }}</p>
                                 </div>
 
-                                <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <!-- Nombre -->
                                     <el-form-item label="Nombre completo" prop="name" :error="form.errors.name">
                                         <el-input v-model="form.name" placeholder="Ej. Juan Pérez" />
@@ -189,12 +169,12 @@ const submit = () => {
                         </div>
 
                         <!-- Sección: Datos de Empleado -->
-                        <div class="mb-8">
-                            <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 border-b border-gray-100 dark:border-gray-700 pb-2 mb-4 flex items-center gap-2">
+                        <div class="mb-6">
+                            <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 border-b border-gray-100 dark:border-gray-700 pb-2 mb-3 flex items-center gap-2">
                                 <el-icon class="text-primary"><Suitcase /></el-icon> Datos del empleado
                             </h3>
 
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <!-- Departamento -->
                                 <el-form-item label="Departamento" prop="department" :error="form.errors.department" class="md:col-span-1">
                                     <el-select v-model="form.department" placeholder="Seleccionar" class="w-full">
@@ -237,3 +217,14 @@ const submit = () => {
         </div>
     </AppLayout>
 </template>
+
+<style scoped>
+/* Formulario compacto: menos espacio entre campos */
+:deep(.el-form-item) {
+    margin-bottom: 12px;
+}
+
+:deep(.el-form-item__label) {
+    padding-bottom: 4px;
+}
+</style>

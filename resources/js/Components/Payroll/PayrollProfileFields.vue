@@ -22,12 +22,12 @@ const isVisible = computed(() => canManage.value || canManageRemote.value);
 </script>
 
 <template>
-    <div v-if="isVisible" class="mb-8">
-        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 border-b border-gray-100 dark:border-gray-700 pb-2 mb-4 flex items-center gap-2">
+    <div v-if="isVisible" class="mb-6">
+        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 border-b border-gray-100 dark:border-gray-700 pb-2 mb-3 flex items-center gap-2">
             <el-icon class="text-primary"><Suitcase /></el-icon> Nómina y asistencia
         </h3>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <template v-if="canManage">
                 <el-form-item label="Número de empleado" prop="employee_number" :error="form.errors.employee_number">
                     <el-input v-model="form.employee_number" placeholder="Se genera automáticamente" />

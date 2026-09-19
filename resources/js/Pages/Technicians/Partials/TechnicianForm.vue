@@ -6,14 +6,13 @@ import {
     Document, 
     UploadFilled,
     Tools,
-    Plus,
-    Camera,
     Setting
 } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import axios from 'axios';
 import BankAccountsTab from './BankAccountsTab.vue';
 import PayrollProfileFields from '@/Components/Payroll/PayrollProfileFields.vue';
+import PhotoUploader from '@/Components/Forms/PhotoUploader.vue';
 
 const props = defineProps({
     form: {
@@ -162,30 +161,7 @@ const mexicoStates = [
                 
                 <div class="flex flex-col sm:flex-row gap-6 mb-6 items-center sm:items-start">
                     <!-- Foto de Perfil -->
-                    <div class="relative group">
-                        <el-upload
-                            class="avatar-uploader"
-                            action="#"
-                            :auto-upload="false"
-                            :show-file-list="false"
-                            :on-change="(file) => $emit('photo-change', file)"
-                            accept="image/*"
-                        >
-                            <div v-if="photoPreview" class="relative">
-                                <el-avatar :size="100" :src="photoPreview" class="border-2 border-gray-200" />
-                                <div class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                                    <el-icon class="text-white text-xl"><Camera /></el-icon>
-                                </div>
-                            </div>
-                            <div v-else class="w-[100px] h-[100px] rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 cursor-pointer hover:border-primary transition-colors">
-                                <div class="text-center text-gray-400">
-                                    <el-icon class="text-xl mb-1"><Plus /></el-icon>
-                                    <div class="text-[10px]">Foto</div>
-                                </div>
-                            </div>
-                        </el-upload>
-                        <p class="text-center text-xs text-gray-400 mt-2">Opcional</p>
-                    </div>
+                    <PhotoUploader :preview="photoPreview" @change="(file) => $emit('photo-change', file)" />
 
                     <div class="flex-1 w-full grid grid-cols-1 md:grid-cols-2 gap-4">
                         <el-form-item label="Nombre completo" prop="name" class="md:col-span-2">

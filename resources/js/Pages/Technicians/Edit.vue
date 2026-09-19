@@ -81,20 +81,8 @@ const rules = reactive({
 });
 
 const handlePhotoChange = (file) => {
-    const isImage = file.raw.type.startsWith('image/');
-    const isLt2M = file.size / 1024 / 1024 < 2;
-
-    if (!isImage) {
-        ElMessage.error('El archivo debe ser una imagen');
-        return false;
-    }
-    if (!isLt2M) {
-        ElMessage.error('La imagen no debe exceder 2MB');
-        return false;
-    }
-
-    form.photo = file.raw;
-    photoPreview.value = URL.createObjectURL(file.raw);
+    form.photo = file;
+    photoPreview.value = URL.createObjectURL(file);
 };
 
 const handleTaxFileChange = (file) => {
