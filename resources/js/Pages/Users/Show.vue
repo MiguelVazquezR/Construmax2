@@ -1,28 +1,52 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import FaceEnrollmentDialog from '@/Components/Payroll/FaceEnrollmentDialog.vue';
+import VacationAdjustmentDialog from '@/Components/Payroll/VacationAdjustmentDialog.vue';
+import UserStatusDialog from '@/Components/Users/UserStatusDialog.vue';
+import { ElMessageBox } from 'element-plus';
+import { useFlashMessages } from '@/Composables/useFlashMessages';
 import { usePermissions } from '@/Composables/usePermissions';
-import { Back, Edit, User, Ticket, Suitcase, Camera } from '@element-plus/icons-vue';
+import { Back, Edit, User, Ticket, Suitcase, Camera, SwitchButton, Sunny, Delete } from '@element-plus/icons-vue';
 
 const { can } = usePermissions();
 
-defineProps({
+useFlashMessages();
+
+const props = defineProps({
     user: Object,
     faceEnrollment: Object,
+    vacation: Object,
 });
 
 const activeTab = ref('general');
 const faceDialogVisible = ref(false);
+const statusDialog = ref(null);
+const adjustmentDialog = ref(null);
 
 const onFaceSaved = () => {
     router.reload({ only: ['user', 'faceEnrollment'] });
 };
 
+const onVacationSaved = () => {
+    router.reload({ only: ['vacation'] });
+};
+
+const openAdjustmentDialog = (type) => {
+    adjustmentDialog.value?.open(type);
+};
+
 const formatDate = (dateString) => {
     if (!dateString) return '-';
-    const date = new Date(dateString);
+
+    // Dates without time (YYYY-MM-DD) are parsed as local dates: creating them
+    // with `new Date('2026-01-01')` would use UTC midnight and shift the day.
+    const raw = String(dateString);
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+        ? new Date(Number(raw.substring(0, 4)), Number(raw.substring(5, 7)) - 1, Number(raw.substring(8, 10)))
+        : new Date(raw);
+
     const day = date.toLocaleDateString('es-ES', { day: '2-digit' });
     const month = date.toLocaleDateString('es-ES', { month: 'short' });
     const year = date.getFullYear();
@@ -56,6 +80,86 @@ const getPriorityColor = (priority) => {
 const navigateToTicket = (row) => {
     router.visit(route('tickets.show', row.id));
 };
+
+// --- Vacaciones (pestaña Información general) ---
+
+const vacationBalance = computed(() => props.vacation?.balance ?? null);
+const vacationRequests = computed(() => props.vacation?.requests ?? []);
+const vacationAdjustments = computed(() => props.vacation?.adjustments ?? []);
+const canManageVacations = computed(() => props.vacation?.can_manage === true);
+
+const showVacationCard = computed(() => Boolean(props.user.payroll_profile) || vacationAdjustments.value.length > 0);
+
+const vacationSubtitle = computed(() => {
+    const hireDate = props.user.payroll_profile?.hire_date;
+
+    if (! hireDate) {
+        return 'Sin fecha de ingreso: el saldo por antigüedad no se puede calcular.';
+    }
+
+    const season = vacationBalance.value?.current_season ?? 0;
+
+    return `Ingreso: ${formatDate(hireDate)} · ${season > 0 ? `temporada ${season} en curso` : 'sin temporada activa'}`;
+});
+
+const availabilityCaption = computed(() => {
+    if (Number(vacationBalance.value?.available_days ?? 0) <= 0) {
+        return 'Sin días disponibles';
+    }
+
+    const expiring = (vacationBalance.value?.seasons ?? [])
+        .filter((season) => Number(season.available) > 0)
+        .map((season) => season.expiry_date)
+        .sort();
+
+    return expiring.length
+        ? `Los días más antiguos vencen el ${formatDate(expiring[0])}`
+        : 'Saldo acumulado a la fecha';
+});
+
+const formatDays = (value) => {
+    const number = Number(value ?? 0);
+
+    if (! Number.isFinite(number)) return '0';
+
+    return String(Math.round(number * 100) / 100);
+};
+
+const formatSignedDays = (value) => {
+    const number = Number(value ?? 0);
+    const absolute = formatDays(Math.abs(number));
+
+    if (number > 0) return `+${absolute}`;
+    if (number < 0) return `-${absolute}`;
+
+    return '0';
+};
+
+const adjustmentTagType = (type) => ({
+    initial: 'primary',
+    grant: 'success',
+    adjustment: 'warning',
+}[type] || 'info');
+
+const requestStatusTagType = (status) => ({
+    pending: 'warning',
+    approved: 'success',
+    rejected: 'danger',
+    cancelled: 'info',
+}[status] || 'info');
+
+const removeAdjustment = (adjustment) => {
+    ElMessageBox.confirm(
+        `¿Eliminar el movimiento «${adjustment.type_label}» de ${formatSignedDays(adjustment.days)} día(s)? El saldo se recalculará.`,
+        'Eliminar movimiento de saldo',
+        { confirmButtonText: 'Eliminar', cancelButtonText: 'Cancelar', type: 'warning' }
+    ).then(() => {
+        router.delete(route('payroll.vacations.adjustments.destroy', adjustment.id), {
+            preserveScroll: true,
+            onSuccess: onVacationSaved,
+        });
+    }).catch(() => {});
+};
 </script>
 
 <template>
@@ -73,6 +177,15 @@ const navigateToTicket = (row) => {
                     </div>
                 </div>
                 <div class="flex gap-2">
+                    <el-button
+                        v-if="can('users.toggle-status')"
+                        :type="user.is_active ? 'warning' : 'success'"
+                        plain
+                        :icon="SwitchButton"
+                        @click="statusDialog && statusDialog.toggle(user)"
+                    >
+                        {{ user.is_active ? 'Dar de baja' : 'Reactivar' }}
+                    </el-button>
                     <Link v-if="can('users.edit')" :href="route('users.edit', user.id)">
                         <el-button type="primary" color="#f26c17" :icon="Edit">
                             Editar usuario
@@ -164,6 +277,267 @@ const navigateToTicket = (row) => {
                                     <span class="font-mono">{{ user.id }}</span>
                                 </el-descriptions-item>
                             </el-descriptions>
+
+                            <!-- VACACIONES DEL COLABORADOR -->
+                            <div
+                                v-if="showVacationCard && vacationBalance"
+                                class="mt-6 rounded-xl border border-gray-100 dark:border-[#2b2b2e] overflow-hidden"
+                            >
+                                <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4 bg-gray-50 dark:bg-[#252529]/50 border-b border-gray-100 dark:border-[#2b2b2e]">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-9 h-9 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
+                                            <el-icon :size="18"><Sunny /></el-icon>
+                                        </div>
+                                        <div>
+                                            <p class="font-semibold text-gray-800 dark:text-gray-100 text-sm">Vacaciones</p>
+                                            <p class="text-xs text-gray-500 dark:text-gray-400">{{ vacationSubtitle }}</p>
+                                        </div>
+                                    </div>
+
+                                    <div v-if="canManageVacations" class="flex flex-wrap gap-2">
+                                        <el-button size="small" plain @click="openAdjustmentDialog('initial')">
+                                            Saldo inicial
+                                        </el-button>
+                                        <el-button size="small" plain @click="openAdjustmentDialog('grant')">
+                                            Agregar días
+                                        </el-button>
+                                        <el-button size="small" plain @click="openAdjustmentDialog('adjustment')">
+                                            Ajustar días
+                                        </el-button>
+                                    </div>
+                                </div>
+
+                                <div class="p-5 space-y-5">
+                                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
+                                            <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Disponibles</p>
+                                            <p class="text-2xl font-bold text-emerald-600">
+                                                {{ formatDays(vacationBalance.available_days) }}
+                                            </p>
+                                            <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{{ availabilityCaption }}</p>
+                                        </div>
+
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
+                                            <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Tomados</p>
+                                            <p class="text-2xl font-bold text-gray-800 dark:text-gray-100">
+                                                {{ formatDays(vacationBalance.taken_days) }}
+                                            </p>
+                                            <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                                                de {{ formatDays(vacationBalance.accrued_days) }} acumulados
+                                            </p>
+                                        </div>
+
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
+                                            <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Pendientes</p>
+                                            <p class="text-2xl font-bold text-amber-500">
+                                                {{ formatDays(vacationBalance.pending_days) }}
+                                            </p>
+                                            <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                                                en solicitudes por aprobar
+                                            </p>
+                                        </div>
+
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
+                                            <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Ajustes manuales</p>
+                                            <p
+                                                class="text-2xl font-bold"
+                                                :class="Number(vacationBalance.adjustment_days) < 0 ? 'text-red-500' : 'text-blue-600 dark:text-blue-400'"
+                                            >
+                                                {{ formatSignedDays(vacationBalance.adjustment_days) }}
+                                            </p>
+                                            <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                                                saldo inicial y días agregados
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <el-alert
+                                        v-if="! user.payroll_profile?.hire_date"
+                                        type="warning"
+                                        :closable="false"
+                                        show-icon
+                                        title="Sin fecha de ingreso"
+                                        description="Captura la fecha de ingreso en la pestaña Nómina y asistencia para calcular el saldo por antigüedad. Mientras tanto solo cuentan los movimientos manuales."
+                                    />
+
+                                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                                        <div>
+                                            <div class="flex items-center justify-between mb-2">
+                                                <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">Solicitudes recientes</p>
+                                                <Link
+                                                    v-if="vacation?.can_view_module"
+                                                    :href="route('payroll.vacations.index', { user_id: user.id })"
+                                                    class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                                                >
+                                                    Ver todas
+                                                </Link>
+                                            </div>
+
+                                            <el-table
+                                                v-if="vacationRequests.length"
+                                                :data="vacationRequests"
+                                                size="small"
+                                                stripe
+                                                style="width: 100%"
+                                            >
+                                                <el-table-column label="Periodo" min-width="170">
+                                                    <template #default="scope">
+                                                        <span class="text-sm">
+                                                            {{ formatDate(scope.row.start_date) }} — {{ formatDate(scope.row.end_date) }}
+                                                        </span>
+                                                    </template>
+                                                </el-table-column>
+
+                                                <el-table-column label="Días" width="70" align="center">
+                                                    <template #default="scope">
+                                                        <span class="font-medium">{{ formatDays(scope.row.days) }}</span>
+                                                    </template>
+                                                </el-table-column>
+
+                                                <el-table-column label="Estatus" width="120" align="center">
+                                                    <template #default="scope">
+                                                        <el-tag :type="requestStatusTagType(scope.row.status)" size="small" effect="plain">
+                                                            {{ scope.row.status_label }}
+                                                        </el-tag>
+                                                    </template>
+                                                </el-table-column>
+                                            </el-table>
+
+                                            <p v-else class="text-xs text-gray-400 dark:text-gray-500 italic py-4">
+                                                Sin solicitudes de vacaciones registradas.
+                                            </p>
+                                        </div>
+
+                                        <div>
+                                            <div class="flex items-center justify-between mb-2">
+                                                <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                                                    Movimientos de saldo
+                                                    <span v-if="vacationAdjustments.length" class="text-gray-400 font-normal">
+                                                        ({{ vacationAdjustments.length }})
+                                                    </span>
+                                                </p>
+                                            </div>
+
+                                            <el-table
+                                                v-if="vacationAdjustments.length"
+                                                :data="vacationAdjustments"
+                                                size="small"
+                                                stripe
+                                                style="width: 100%"
+                                            >
+                                                <el-table-column label="Tipo" min-width="140">
+                                                    <template #default="scope">
+                                                        <el-tag :type="adjustmentTagType(scope.row.type)" size="small" effect="plain">
+                                                            {{ scope.row.type_label }}
+                                                        </el-tag>
+                                                    </template>
+                                                </el-table-column>
+
+                                                <el-table-column label="Días" width="80" align="center">
+                                                    <template #default="scope">
+                                                        <span
+                                                            class="font-semibold"
+                                                            :class="Number(scope.row.days) < 0 ? 'text-red-500' : 'text-emerald-600'"
+                                                        >
+                                                            {{ formatSignedDays(scope.row.days) }}
+                                                        </span>
+                                                    </template>
+                                                </el-table-column>
+
+                                                <el-table-column label="Motivo" min-width="150">
+                                                    <template #default="scope">
+                                                        <span class="text-xs text-gray-500">{{ scope.row.reason || '—' }}</span>
+                                                    </template>
+                                                </el-table-column>
+
+                                                <el-table-column label="Registró" min-width="140">
+                                                    <template #default="scope">
+                                                        <span class="text-xs text-gray-500">
+                                                            {{ scope.row.author_name || '—' }}
+                                                            <br>
+                                                            {{ formatDate(scope.row.created_at) }}
+                                                        </span>
+                                                    </template>
+                                                </el-table-column>
+
+                                                <el-table-column v-if="canManageVacations" label="" width="60" align="right">
+                                                    <template #default="scope">
+                                                        <el-button
+                                                            :icon="Delete"
+                                                            size="small"
+                                                            text
+                                                            type="danger"
+                                                            title="Eliminar movimiento"
+                                                            @click="removeAdjustment(scope.row)"
+                                                        />
+                                                    </template>
+                                                </el-table-column>
+                                            </el-table>
+
+                                            <p v-else class="text-xs text-gray-400 dark:text-gray-500 italic py-4">
+                                                Sin movimientos manuales registrados.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <el-collapse v-if="(vacationBalance.seasons || []).length">
+                                        <el-collapse-item name="seasons">
+                                            <template #title>
+                                                <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                                                    Detalle por temporada (antigüedad)
+                                                </span>
+                                            </template>
+
+                                            <el-table :data="vacationBalance.seasons" size="small" stripe style="width: 100%">
+                                                <el-table-column label="Temporada" width="110" align="center">
+                                                    <template #default="scope">Año {{ scope.row.season }}</template>
+                                                </el-table-column>
+
+                                                <el-table-column label="Periodo" min-width="190">
+                                                    <template #default="scope">
+                                                        <span class="text-sm">
+                                                            {{ formatDate(scope.row.start) }} — {{ formatDate(scope.row.end) }}
+                                                            <el-tag v-if="scope.row.is_current" size="small" type="primary" effect="plain" class="ml-1">
+                                                                En curso
+                                                            </el-tag>
+                                                        </span>
+                                                    </template>
+                                                </el-table-column>
+
+                                                <el-table-column label="Por derecho" width="100" align="center">
+                                                    <template #default="scope">{{ scope.row.entitled }}</template>
+                                                </el-table-column>
+
+                                                <el-table-column label="Obtenidos" width="100" align="center">
+                                                    <template #default="scope">{{ scope.row.accrued }}</template>
+                                                </el-table-column>
+
+                                                <el-table-column label="Tomados" width="90" align="center">
+                                                    <template #default="scope">{{ scope.row.taken }}</template>
+                                                </el-table-column>
+
+                                                <el-table-column label="Vencidos" width="90" align="center">
+                                                    <template #default="scope">
+                                                        <span :class="{ 'text-red-500': scope.row.expired > 0 }">{{ scope.row.expired }}</span>
+                                                    </template>
+                                                </el-table-column>
+
+                                                <el-table-column label="Disponibles" width="100" align="center">
+                                                    <template #default="scope">
+                                                        <span class="font-semibold text-emerald-600">{{ scope.row.available }}</span>
+                                                    </template>
+                                                </el-table-column>
+
+                                                <el-table-column label="Vence el" width="120" align="center">
+                                                    <template #default="scope">
+                                                        <span class="text-xs text-gray-500">{{ formatDate(scope.row.expiry_date) }}</span>
+                                                    </template>
+                                                </el-table-column>
+                                            </el-table>
+                                        </el-collapse-item>
+                                    </el-collapse>
+                                </div>
+                            </div>
                         </div>
                     </el-tab-pane>
 
@@ -269,6 +643,14 @@ const navigateToTicket = (row) => {
                                 <el-descriptions-item label="Fecha de ingreso">
                                     {{ formatDate(user.payroll_profile.hire_date) }}
                                 </el-descriptions-item>
+                                <el-descriptions-item label="Fecha de baja">
+                                    <template v-if="user.payroll_profile.termination_date">
+                                        <el-tag type="warning" size="small" effect="plain">
+                                            {{ formatDate(user.payroll_profile.termination_date) }}
+                                        </el-tag>
+                                    </template>
+                                    <template v-else>Activo</template>
+                                </el-descriptions-item>
                                 <el-descriptions-item label="Sueldo diario">
                                     {{ user.payroll_profile.daily_salary ? `$${Number(user.payroll_profile.daily_salary).toFixed(2)}` : 'No asignado' }}
                                 </el-descriptions-item>
@@ -347,6 +729,17 @@ const navigateToTicket = (row) => {
             :configured="faceEnrollment.configured"
             :active-count="faceEnrollment.activeCount"
             @saved="onFaceSaved"
+        />
+
+        <UserStatusDialog ref="statusDialog" />
+
+        <VacationAdjustmentDialog
+            v-if="vacation && vacationBalance"
+            ref="adjustmentDialog"
+            :user-id="user.id"
+            :user-name="user.name"
+            :available-days="Number(vacationBalance.available_days)"
+            @saved="onVacationSaved"
         />
     </AppLayout>
 </template>

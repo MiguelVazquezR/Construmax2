@@ -7,7 +7,9 @@ use App\Http\Requests\Payroll\StorePayrollAdjustmentRequest;
 use App\Http\Requests\Payroll\UpdateAttendanceDayOverrideRequest;
 use App\Models\AttendanceDayOverride;
 use App\Models\AttendanceLog;
+use App\Models\Incident;
 use App\Models\PayrollAdjustment;
+use App\Models\PayrollNote;
 use App\Models\PayrollPeriod;
 use App\Models\PayrollSetting;
 use App\Models\Shift;
@@ -15,6 +17,7 @@ use App\Models\User;
 use App\Services\Export\XlsxWriterService;
 use App\Services\Payroll\PayrollCalculatorService;
 use App\Services\Payroll\PayrollPeriodService;
+use App\Services\Payroll\PayslipService;
 use App\Services\Payroll\ScheduleResolverService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -29,6 +32,7 @@ class PayrollPeriodController extends Controller
         private readonly PayrollPeriodService $periodService,
         private readonly PayrollCalculatorService $calculator,
         private readonly ScheduleResolverService $scheduleResolver,
+        private readonly PayslipService $payslipService,
     ) {}
 
     public function index(Request $request): Response
@@ -78,6 +82,97 @@ class PayrollPeriodController extends Controller
             'rows' => $rows,
             'stats' => $stats,
             'adjustments' => $period->adjustments()->with('user:id,name')->get(),
+            'incidents' => $this->periodIncidents($period),
+            'notes' => $this->periodNotes($period),
+            'typeLabels' => PayrollSetting::PERIOD_TYPES,
+        ]);
+    }
+
+    /**
+     * Comments written about every collaborator of the period.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function periodNotes(PayrollPeriod $period): array
+    {
+        return $period->notes()
+            ->with('author:id,name')
+            ->orderBy('created_at')
+            ->get()
+            ->map(fn (PayrollNote $note) => [
+                'id' => $note->id,
+                'user_id' => $note->user_id,
+                'body' => $note->body,
+                'author_name' => $note->author?->name,
+                'created_at' => $note->created_at?->format('d/m/Y H:i'),
+                'updated_at' => $note->updated_at?->format('d/m/Y H:i'),
+                'is_edited' => $note->updated_at?->greaterThan($note->created_at) ?? false,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Incidents that overlap the period so the pre-payroll detail is the only
+     * place needed to review and correct them.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function periodIncidents(PayrollPeriod $period): array
+    {
+        return Incident::query()
+            ->overlapping($period->start_date, $period->end_date)
+            ->with('user:id,name')
+            ->orderBy('start_date')
+            ->get()
+            ->map(fn (Incident $incident) => [
+                'id' => $incident->id,
+                'user_id' => $incident->user_id,
+                'user_name' => $incident->user?->name,
+                'type' => $incident->type,
+                'type_label' => $incident->type_label,
+                'start_date' => $incident->start_date->toDateString(),
+                'end_date' => $incident->end_date?->toDateString(),
+                'days' => (float) $incident->days,
+                'is_paid' => $incident->is_paid,
+                'resolved_is_paid' => $incident->resolvedIsPaid(),
+                'notes' => $incident->notes,
+                'support_url' => $incident->support_url,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Pre-payroll sheet of the whole period: every collaborator with their
+     * totals, concept lines and day-by-day detail (live for open periods,
+     * frozen for closed ones).
+     */
+    public function prePayroll(Request $request, PayrollPeriod $period): Response
+    {
+        $this->authorizePeriods($request);
+
+        $rows = $this->payslipService->prePayrollPayloads($period);
+
+        return Inertia::render('Payroll/Periods/PrePayroll', [
+            'period' => [
+                'id' => $period->id,
+                'label' => $period->label(),
+                'start_date' => $period->start_date->toDateString(),
+                'end_date' => $period->end_date->toDateString(),
+                'status' => $period->status,
+            ],
+            'rows' => $rows,
+            'stats' => [
+                'employees' => $rows->count(),
+                'days_paid' => round($rows->sum('days_paid'), 2),
+                'overtime_hours' => round($rows->sum('overtime_minutes') / 60, 2),
+                'total_gross' => round($rows->sum('total_gross'), 2),
+                'total_deductions' => round($rows->sum('total_deductions'), 2),
+                'total_net' => round($rows->sum('total_net'), 2),
+            ],
+            'notes' => $this->periodNotes($period),
+            'incidents' => $this->periodIncidents($period),
             'typeLabels' => PayrollSetting::PERIOD_TYPES,
         ]);
     }
@@ -85,44 +180,25 @@ class PayrollPeriodController extends Controller
     /**
      * Day-by-day detail of a collaborator inside the period (live for open
      * periods, frozen payslip days for closed ones) plus the weekly schedule
-     * and the raw punches with their evidence.
+     * and the raw punches with their evidence. Accepts an optional "from" /
+     * "to" range (clamped to the period) to narrow the days and punches.
      */
     public function days(Request $request, PayrollPeriod $period, User $user): JsonResponse
     {
         $this->authorizePeriods($request);
 
-        if ($period->isOpen()) {
-            $days = $this->calculator->calculateFor($user, $period)['days'];
-        } else {
-            $payslip = $period->payslips()->where('user_id', $user->id)->with('days')->first();
+        [$from, $to] = $this->resolveDaysRange($request, $period);
 
-            $days = $payslip
-                ? $payslip->days->map(fn ($day) => [
-                    'date' => $day->date->toDateString(),
-                    'status' => $day->status,
-                    'status_label' => null,
-                    'shift' => null,
-                    'expected_minutes' => 0,
-                    'worked_minutes' => $day->worked_minutes,
-                    'late_minutes' => $day->late_minutes,
-                    'late_ignored' => false,
-                    'late_effective_minutes' => $day->late_minutes,
-                    'overtime_minutes' => $day->overtime_minutes,
-                    'first_in' => $day->first_in,
-                    'lunch_start' => $day->lunch_start,
-                    'lunch_end' => $day->lunch_end,
-                    'last_out' => $day->last_out,
-                    'incident_type' => null,
-                    'holiday_name' => null,
-                    'pay_fraction' => null,
-                    'notes' => $day->notes,
-                ])->values()->all()
-                : [];
-        }
+        $days = $this->calculator->daysFor($user, $period);
+
+        $days = array_values(array_filter(
+            $days,
+            fn (array $day) => $day['date'] >= $from && $day['date'] <= $to
+        ));
 
         $logs = AttendanceLog::forUser($user->id)
-            ->whereDate('punched_at', '>=', $period->start_date->toDateString())
-            ->whereDate('punched_at', '<=', $period->end_date->toDateString())
+            ->whereDate('punched_at', '>=', $from)
+            ->whereDate('punched_at', '<=', $to)
             ->with('device:id,name')
             ->orderBy('punched_at')
             ->get()
@@ -152,7 +228,45 @@ class PayrollPeriodController extends Controller
         return response()->json([
             'days' => $days,
             'weekly_schedule' => $this->weeklyScheduleGrid($user),
+            'range' => ['from' => $from, 'to' => $to],
         ]);
+    }
+
+    /**
+     * Requested day range, clamped to the period limits. Anything invalid
+     * falls back to the whole period.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function resolveDaysRange(Request $request, PayrollPeriod $period): array
+    {
+        $periodStart = $period->start_date->toDateString();
+        $periodEnd = $period->end_date->toDateString();
+
+        $from = $this->parseRangeDate($request->input('from')) ?? $periodStart;
+        $to = $this->parseRangeDate($request->input('to')) ?? $periodEnd;
+
+        $from = max($from, $periodStart);
+        $to = min($to, $periodEnd);
+
+        if ($from > $to) {
+            return [$periodStart, $periodEnd];
+        }
+
+        return [$from, $to];
+    }
+
+    private function parseRangeDate(mixed $value): ?string
+    {
+        if (! is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        try {
+            return CarbonImmutable::parse($value)->toDateString();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -286,7 +400,7 @@ class PayrollPeriodController extends Controller
         $rows = [];
 
         if ($period->isOpen()) {
-            foreach ($this->calculator->payrollSubjects() as $user) {
+            foreach ($this->calculator->payrollSubjects($period->start_date) as $user) {
                 $result = $this->calculator->calculateFor($user, $period);
                 $totals = $result['totals'];
 
@@ -297,10 +411,11 @@ class PayrollPeriodController extends Controller
                     $result['snapshot']['department'],
                     $totals,
                     null,
+                    $result['snapshot']['termination_date'],
                 );
             }
         } else {
-            $payslips = $period->payslips()->with('user:id,name')->get();
+            $payslips = $period->payslips()->with(['user:id,name', 'user.payrollProfile'])->get();
 
             foreach ($payslips as $payslip) {
                 $rows[] = $this->buildRow(
@@ -329,6 +444,7 @@ class PayrollPeriodController extends Controller
                         'total_net' => (float) $payslip->total_net,
                     ],
                     $payslip->id,
+                    $payslip->user?->payrollProfile?->termination_date?->toDateString(),
                 );
             }
         }
@@ -341,6 +457,7 @@ class PayrollPeriodController extends Controller
             'overtime_hours' => round(array_sum(array_column($rows, 'overtime_minutes')) / 60, 2),
             'late_minutes' => (int) array_sum(array_column($rows, 'late_minutes')),
             'unpaid_days' => round(array_sum(array_column($rows, 'unpaid_days')), 2),
+            'days_paid' => round(array_sum(array_column($rows, 'days_paid')), 2),
         ];
 
         return [$rows, $stats];
@@ -350,13 +467,14 @@ class PayrollPeriodController extends Controller
      * @param  array<string, mixed>  $totals
      * @return array<string, mixed>
      */
-    private function buildRow(int $userId, ?string $name, ?string $employeeNumber, ?string $department, array $totals, ?int $payslipId): array
+    private function buildRow(int $userId, ?string $name, ?string $employeeNumber, ?string $department, array $totals, ?int $payslipId, ?string $terminationDate = null): array
     {
         return [
             'user_id' => $userId,
             'name' => $name,
             'employee_number' => $employeeNumber,
             'department' => $department,
+            'termination_date' => $terminationDate,
             'days_worked' => round((float) $totals['days_worked'], 2),
             'days_paid' => round((float) $totals['days_paid'], 2),
             'unpaid_days' => round((float) $totals['unpaid_days'], 2),

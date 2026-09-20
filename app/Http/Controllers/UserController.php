@@ -7,13 +7,18 @@ use App\Actions\Payroll\SyncPayrollProfileAction;
 use App\Models\FaceEnrollment;
 use App\Models\PayrollSetting;
 use App\Models\User;
+use App\Models\VacationAdjustment;
+use App\Models\VacationRequest;
 use App\Services\Media\ImageOptimizerService;
 use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
+use App\Services\Payroll\VacationService;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request; // Importar modelo Role
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Spatie\Permission\Models\Role;
 
@@ -24,6 +29,7 @@ class UserController extends Controller
         private readonly FaceRecognitionService $faceRecognition,
         private readonly EnrollProfilePhotoAction $enrollProfilePhotoAction,
         private readonly ImageOptimizerService $imageOptimizer,
+        private readonly VacationService $vacationService,
     ) {}
 
     public function index(Request $request)
@@ -96,7 +102,7 @@ class UserController extends Controller
             ->with('success', $this->userSavedMessage('Usuario creado y roles asignados correctamente.', $photoStatus));
     }
 
-    public function show(User $user)
+    public function show(Request $request, User $user)
     {
         $user->load([
             'employee',
@@ -114,6 +120,7 @@ class UserController extends Controller
                 'activeCount' => FaceEnrollment::where('user_id', $user->id)->where('status', FaceEnrollment::STATUS_ACTIVE)->count(),
                 'configured' => $this->faceRecognition->isConfigured(),
             ],
+            'vacation' => $this->vacationPayload($request, $user),
         ]);
     }
 
@@ -217,6 +224,50 @@ class UserController extends Controller
     }
 
     /**
+     * Vacation information of the collaborator shown in the "Información
+     * general" tab: the live balance, the manual movements registered by the
+     * payroll team and the latest requests.
+     */
+    private function vacationPayload(Request $request, User $user): array
+    {
+        $adjustments = VacationAdjustment::query()
+            ->forUser($user->id)
+            ->with('author:id,name')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (VacationAdjustment $adjustment) => $adjustment->toPayload())
+            ->values()
+            ->all();
+
+        $requests = VacationRequest::query()
+            ->forUser($user->id)
+            ->orderByDesc('start_date')
+            ->orderByDesc('id')
+            ->limit(10)
+            ->get()
+            ->map(fn (VacationRequest $vacationRequest) => [
+                'id' => $vacationRequest->id,
+                'start_date' => $vacationRequest->start_date?->toDateString(),
+                'end_date' => $vacationRequest->end_date?->toDateString(),
+                'days' => (float) $vacationRequest->days,
+                'status' => $vacationRequest->status,
+                'status_label' => $vacationRequest->statusLabel(),
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'can_manage' => $request->user()->can('payroll.vacations.manage'),
+            'can_view_module' => $request->user()->can('payroll.vacations.manage')
+                || $request->user()->can('payroll.vacations.approve'),
+            'balance' => $this->vacationService->balanceFor($user),
+            'adjustments' => $adjustments,
+            'requests' => $requests,
+        ];
+    }
+
+    /**
      * Optional payroll and attendance fields edited from the user form.
      *
      * @return array<string, array<int, mixed>>
@@ -226,6 +277,7 @@ class UserController extends Controller
         return [
             'employee_number' => ['nullable', 'string', 'max:50'],
             'hire_date' => ['nullable', 'date'],
+            'termination_date' => ['nullable', 'date', 'after_or_equal:hire_date'],
             'daily_salary' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
             'daily_hours' => ['nullable', 'numeric', 'min:1', 'max:24'],
             'is_payroll_subject' => ['sometimes', 'boolean'],
@@ -292,12 +344,48 @@ class UserController extends Controller
         return back()->with('success', count($ids).' usuarios eliminados correctamente.');
     }
 
-    public function toggleStatus(User $user)
+    /**
+     * Dismiss or reactivate a user. Dismissing stores the termination date in
+     * the payroll profile so the collaborator leaves the payroll from that date
+     * on; reactivating clears it so they come back.
+     */
+    public function toggleStatus(Request $request, User $user)
     {
-        $user->is_active = ! $user->is_active;
-        $user->save();
-        $message = $user->is_active ? 'Usuario activado.' : 'Usuario dado de baja.';
+        if (! $request->user()->can('users.toggle-status')) {
+            abort(403);
+        }
 
-        return back()->with('success', $message);
+        if ($user->id === 1) {
+            return back()->with('error', 'No se puede dar de baja al super administrador.');
+        }
+
+        if (! $user->is_active) {
+            $user->is_active = true;
+            $user->save();
+            $user->payrollProfile?->update(['termination_date' => null]);
+
+            return back()->with('success', 'Usuario activado. Se eliminó su fecha de baja.');
+        }
+
+        $validated = $request->validate([
+            'termination_date' => ['nullable', 'date'],
+        ]);
+
+        $terminationDate = CarbonImmutable::parse($validated['termination_date'] ?? now()->toDateString())->toDateString();
+        $profile = $user->payrollProfile;
+
+        if ($profile?->hire_date && $terminationDate < $profile->hire_date->toDateString()) {
+            throw ValidationException::withMessages([
+                'termination_date' => 'La fecha de baja no puede ser anterior a la fecha de ingreso ('.$profile->hire_date->format('d/m/Y').').',
+            ]);
+        }
+
+        $user->is_active = false;
+        $user->save();
+        $profile?->update(['termination_date' => $terminationDate]);
+
+        return back()->with('success', $profile
+            ? 'Usuario dado de baja el '.$profile->termination_date->format('d/m/Y').'. Ya no aparecerá en los periodos de nómina posteriores.'
+            : 'Usuario dado de baja.');
     }
 }

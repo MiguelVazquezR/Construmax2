@@ -5,6 +5,7 @@ namespace App\Services\Payroll;
 use App\Models\Incident;
 use App\Models\PayrollSetting;
 use App\Models\User;
+use App\Models\VacationAdjustment;
 use App\Models\VacationRequest;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -43,6 +44,10 @@ class VacationService
      * (oldest season first) and unused leftovers expire after the configured
      * carryover window (18 months by default, art. 76 LFT).
      *
+     * Manual movements (initial balance, granted days and corrections) never
+     * expire and are consumed after every season is exhausted, so the LFT days
+     * are always used before them.
+     *
      * @return array{
      *     hire_date: ?string,
      *     current_season: int,
@@ -50,6 +55,8 @@ class VacationService
      *     accrued_days: float,
      *     taken_days: float,
      *     pending_days: float,
+     *     adjustment_days: float,
+     *     adjustment_available_days: float,
      *     available_days: float,
      *     seasons: array<int, array<string, mixed>>,
      * }
@@ -63,8 +70,15 @@ class VacationService
         $settings = PayrollSetting::current();
         $hire = $user->payrollProfile?->hire_date;
 
+        $adjustmentDays = $this->adjustmentDaysFor($user);
+        $pool = $adjustmentDays;
+
         if (! $hire) {
-            return $this->emptyBalance();
+            return $this->emptyBalance(
+                adjustmentDays: $adjustmentDays,
+                adjustmentAvailable: $pool - $this->approvedDaysFor($user),
+                pendingDays: $this->pendingDaysFor($user),
+            );
         }
 
         $hire = CarbonImmutable::parse($hire->toDateString());
@@ -99,10 +113,16 @@ class VacationService
         }
 
         if ($seasons === []) {
-            return $this->emptyBalance($hire->toDateString());
+            return $this->emptyBalance(
+                hireDate: $hire->toDateString(),
+                adjustmentDays: $adjustmentDays,
+                adjustmentAvailable: $pool - $this->approvedDaysFor($user),
+                pendingDays: $this->pendingDaysFor($user),
+            );
         }
 
-        // FIFO consumption of the approved requests.
+        // FIFO consumption of the approved requests: oldest season first and,
+        // once every season is exhausted, the manual movements of the balance.
         $approved = VacationRequest::query()
             ->forUser($user->id)
             ->approved()
@@ -127,6 +147,10 @@ class VacationService
                 $seasons[$key]['taken'] = round($seasons[$key]['taken'] + $used, 2);
                 $remaining -= $used;
             }
+
+            if ($remaining > 0 && $pool > 0) {
+                $pool = round($pool - min($pool, $remaining), 2);
+            }
         }
 
         $totalAccrued = 0.0;
@@ -146,11 +170,6 @@ class VacationService
             $totalAvailable += $available;
         }
 
-        $pending = VacationRequest::query()
-            ->forUser($user->id)
-            ->pending()
-            ->sum('days');
-
         $current = max(array_keys($seasons));
 
         return [
@@ -159,10 +178,30 @@ class VacationService
             'entitled_days' => (float) $this->entitledDaysForYearOfService($current),
             'accrued_days' => round($totalAccrued, 2),
             'taken_days' => round($totalTaken, 2),
-            'pending_days' => round((float) $pending, 2),
-            'available_days' => round($totalAvailable, 2),
+            'pending_days' => $this->pendingDaysFor($user),
+            'adjustment_days' => $adjustmentDays,
+            'adjustment_available_days' => round($pool, 2),
+            'available_days' => round(max(0.0, $totalAvailable + $pool), 2),
             'seasons' => array_values($seasons),
         ];
+    }
+
+    /**
+     * Net sum of the manual movements registered for the user (signed).
+     */
+    public function adjustmentDaysFor(User $user): float
+    {
+        return round((float) VacationAdjustment::query()->forUser($user->id)->sum('days'), 2);
+    }
+
+    private function approvedDaysFor(User $user): float
+    {
+        return (float) VacationRequest::query()->forUser($user->id)->approved()->sum('days');
+    }
+
+    private function pendingDaysFor(User $user): float
+    {
+        return round((float) VacationRequest::query()->forUser($user->id)->pending()->sum('days'), 2);
     }
 
     /**
@@ -261,18 +300,24 @@ class VacationService
     }
 
     /**
-     * @return array{hire_date: ?string, current_season: int, entitled_days: float, accrued_days: float, taken_days: float, pending_days: float, available_days: float, seasons: array<int, array<string, mixed>>}
+     * @return array{hire_date: ?string, current_season: int, entitled_days: float, accrued_days: float, taken_days: float, pending_days: float, adjustment_days: float, adjustment_available_days: float, available_days: float, seasons: array<int, array<string, mixed>>}
      */
-    private function emptyBalance(?string $hireDate = null): array
-    {
+    private function emptyBalance(
+        ?string $hireDate = null,
+        float $adjustmentDays = 0.0,
+        float $adjustmentAvailable = 0.0,
+        float $pendingDays = 0.0,
+    ): array {
         return [
             'hire_date' => $hireDate,
             'current_season' => 0,
             'entitled_days' => 0.0,
             'accrued_days' => 0.0,
             'taken_days' => 0.0,
-            'pending_days' => 0.0,
-            'available_days' => 0.0,
+            'pending_days' => $pendingDays,
+            'adjustment_days' => $adjustmentDays,
+            'adjustment_available_days' => round($adjustmentAvailable, 2),
+            'available_days' => round(max(0.0, $adjustmentAvailable), 2),
             'seasons' => [],
         ];
     }

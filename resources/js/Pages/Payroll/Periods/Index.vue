@@ -1,9 +1,9 @@
 <script setup>
 import { computed } from 'vue';
-import { Link, router, useForm } from '@inertiajs/vue3';
+import { router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessageBox } from 'element-plus';
-import { Plus, View, Calendar } from '@element-plus/icons-vue';
+import { Plus, Calendar } from '@element-plus/icons-vue';
 import { useFlashMessages } from '@/Composables/useFlashMessages';
 import { usePermissions } from '@/Composables/usePermissions';
 
@@ -21,9 +21,13 @@ const canClose = computed(() => can('payroll.periods.close'));
 
 const form = useForm({});
 
+const openPeriodType = computed(() => props.openPeriod?.type || 'weekly');
+
 const createPeriod = () => {
+    const periodTypeLabel = (props.typeLabels?.[openPeriodType.value] ?? '').toLowerCase();
+
     ElMessageBox.confirm(
-        `¿Crear el periodo de nómina ${typeLabels[openPeriodType.value]?.toLowerCase() ?? ''} actual?`,
+        `¿Crear el periodo de nómina ${periodTypeLabel} actual?`,
         'Crear periodo',
         { confirmButtonText: 'Crear periodo', cancelButtonText: 'Cancelar', type: 'info' }
     ).then(() => {
@@ -31,10 +35,13 @@ const createPeriod = () => {
     }).catch(() => {});
 };
 
-const openPeriodType = computed(() => props.openPeriod?.type || 'weekly');
-
 const changePage = (page) => {
     router.get(route('payroll.periods.index'), { page }, { preserveState: true, replace: true });
+};
+
+// Row click opens the payroll period detail
+const handleRowClick = (row) => {
+    router.visit(route('payroll.periods.show', row.id));
 };
 
 const parseDate = (value) => {
@@ -61,7 +68,7 @@ const statusLabel = (status) => (status === 'open' ? 'Abierto' : 'Cerrado');
                 <div>
                     <h2 class="font-semibold text-gray-800 dark:text-white leading-tight">Periodos de nómina</h2>
                     <p class="text-sm text-gray-500 mt-1">
-                        Pre-nómina en tiempo real, cierre automático y recibos por periodo.
+                        Pre-nómina en tiempo real, cierre automático y recibos por periodo. Haz clic en un periodo para ver su detalle.
                     </p>
                 </div>
                 <div class="flex items-center gap-2">
@@ -102,7 +109,13 @@ const statusLabel = (status) => (status === 'open' ? 'Abierto' : 'Cerrado');
             />
 
             <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-xl border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
-                <el-table :data="periods.data" style="width: 100%" stripe>
+                <el-table
+                    :data="periods.data"
+                    style="width: 100%"
+                    stripe
+                    @row-click="handleRowClick"
+                    row-class-name="cursor-pointer hover:bg-gray-50 dark:hover:bg-[#27272a] transition-colors"
+                >
                     <el-table-column label="Periodo" min-width="200">
                         <template #default="scope">
                             <div class="flex items-center gap-2">
@@ -151,14 +164,6 @@ const statusLabel = (status) => (status === 'open' ? 'Abierto' : 'Cerrado');
                             <span class="font-semibold">{{ scope.row.total_net ? money(scope.row.total_net) : '—' }}</span>
                         </template>
                     </el-table-column>
-
-                    <el-table-column label="" width="110" align="right">
-                        <template #default="scope">
-                            <Link :href="route('payroll.periods.show', scope.row.id)">
-                                <el-button size="small" :icon="View">Ver</el-button>
-                            </Link>
-                        </template>
-                    </el-table-column>
                 </el-table>
 
                 <div class="flex justify-end p-4">
@@ -178,3 +183,9 @@ const statusLabel = (status) => (status === 'open' ? 'Abierto' : 'Cerrado');
         </div>
     </AppLayout>
 </template>
+
+<style scoped>
+:deep(.el-table .cursor-pointer) {
+    cursor: pointer;
+}
+</style>

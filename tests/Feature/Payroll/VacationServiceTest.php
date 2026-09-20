@@ -7,6 +7,7 @@ use App\Models\PayrollProfile;
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
 use App\Models\User;
+use App\Models\VacationAdjustment;
 use App\Models\VacationRequest;
 use App\Services\Payroll\VacationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -197,5 +198,114 @@ class VacationServiceTest extends TestCase
         $days = $this->service->validateRequest($user, '2026-09-14', '2026-09-18');
 
         $this->assertSame(5.0, $days);
+    }
+
+    // --- Manual movements of the balance (initial balance, granted days, adjustments) ---
+
+    public function test_manual_movements_increase_the_available_balance(): void
+    {
+        Carbon::setTestNow('2026-02-01');
+
+        $user = $this->employee('2026-01-01');
+
+        VacationAdjustment::create([
+            'user_id' => $user->id,
+            'type' => VacationAdjustment::TYPE_INITIAL,
+            'days' => 10,
+        ]);
+
+        $balance = $this->service->balanceFor($user);
+
+        // 4 completed weeks of a 12-day season: 0.92 accrued + 10 granted.
+        $this->assertSame(0.92, $balance['seasons'][0]['accrued']);
+        $this->assertSame(10.0, $balance['adjustment_days']);
+        $this->assertSame(10.92, $balance['available_days']);
+    }
+
+    public function test_granted_days_and_manual_adjustments_are_signed(): void
+    {
+        Carbon::setTestNow('2026-02-01');
+
+        $user = $this->employee('2026-01-01');
+
+        VacationAdjustment::create(['user_id' => $user->id, 'type' => VacationAdjustment::TYPE_INITIAL, 'days' => 10]);
+        VacationAdjustment::create(['user_id' => $user->id, 'type' => VacationAdjustment::TYPE_GRANT, 'days' => 2]);
+        VacationAdjustment::create(['user_id' => $user->id, 'type' => VacationAdjustment::TYPE_ADJUSTMENT, 'days' => -1.5]);
+
+        $balance = $this->service->balanceFor($user);
+
+        $this->assertSame(10.5, $balance['adjustment_days']);
+        $this->assertSame(11.42, $balance['available_days']);
+    }
+
+    public function test_manual_movements_are_consumed_after_every_season(): void
+    {
+        Carbon::setTestNow('2026-02-01');
+
+        $user = $this->employee('2026-01-01');
+
+        VacationAdjustment::create([
+            'user_id' => $user->id,
+            'type' => VacationAdjustment::TYPE_INITIAL,
+            'days' => 10,
+        ]);
+
+        VacationRequest::create([
+            'user_id' => $user->id,
+            'start_date' => '2026-02-02',
+            'end_date' => '2026-02-06',
+            'days' => 5,
+            'status' => VacationRequest::STATUS_APPROVED,
+        ]);
+
+        $balance = $this->service->balanceFor($user);
+
+        // The LFT season (0.92) is consumed first; the rest (4.08) comes from the initial balance.
+        $this->assertSame(0.92, $balance['taken_days']);
+        $this->assertSame(5.92, $balance['adjustment_available_days']);
+        $this->assertSame(5.92, $balance['available_days']);
+    }
+
+    public function test_manual_movements_are_available_without_a_hire_date(): void
+    {
+        Carbon::setTestNow('2026-02-01');
+
+        $user = User::factory()->create(['is_active' => true]);
+
+        VacationAdjustment::create(['user_id' => $user->id, 'type' => VacationAdjustment::TYPE_INITIAL, 'days' => 8]);
+        VacationAdjustment::create(['user_id' => $user->id, 'type' => VacationAdjustment::TYPE_GRANT, 'days' => 2]);
+
+        VacationRequest::create([
+            'user_id' => $user->id,
+            'start_date' => '2026-02-02',
+            'end_date' => '2026-02-04',
+            'days' => 3,
+            'status' => VacationRequest::STATUS_APPROVED,
+        ]);
+
+        $balance = $this->service->balanceFor($user);
+
+        $this->assertNull($balance['hire_date']);
+        $this->assertSame([], $balance['seasons']);
+        $this->assertSame(10.0, $balance['adjustment_days']);
+        $this->assertSame(7.0, $balance['available_days']);
+    }
+
+    public function test_a_negative_adjustment_cannot_leave_the_balance_below_zero(): void
+    {
+        Carbon::setTestNow('2026-02-01');
+
+        $user = $this->employee('2026-01-01');
+
+        VacationAdjustment::create([
+            'user_id' => $user->id,
+            'type' => VacationAdjustment::TYPE_ADJUSTMENT,
+            'days' => -5,
+        ]);
+
+        $balance = $this->service->balanceFor($user);
+
+        $this->assertSame(-5.0, $balance['adjustment_days']);
+        $this->assertSame(0.0, $balance['available_days']);
     }
 }

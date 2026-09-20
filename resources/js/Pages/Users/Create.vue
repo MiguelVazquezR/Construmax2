@@ -31,6 +31,7 @@ const form = useForm({
     // Nómina y asistencia (opcional, según permisos)
     employee_number: '',
     hire_date: null,
+    termination_date: null,
     daily_salary: null,
     daily_hours: null,
     is_payroll_subject: false,

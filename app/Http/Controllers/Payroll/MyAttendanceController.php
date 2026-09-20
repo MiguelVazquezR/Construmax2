@@ -118,6 +118,9 @@ class MyAttendanceController extends Controller
                 'employee_number' => $profile->employee_number,
                 'can_remote_attendance' => (bool) $profile->can_remote_attendance,
                 'hire_date' => $profile->hire_date?->toDateString(),
+                'termination_date' => $profile->termination_date?->toDateString(),
+                // Dismissed collaborators keep their history and receipts but cannot punch any more.
+                'can_punch' => ! ($profile->termination_date && $profile->termination_date->toDateString() < CarbonImmutable::today()->toDateString()),
             ],
             'today' => $this->mapDay($today),
             'suggestedNextType' => $this->suggestedNextType($user),

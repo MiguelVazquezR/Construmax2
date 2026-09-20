@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -68,6 +70,39 @@ class PayrollProfile extends Model
         $next = (int) static::query()->max('id') + 1;
 
         return 'EMP-'.str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Whether the collaborator belongs to the payroll on the given date:
+     * from the hire date up to (and including) the termination date.
+     */
+    public function isActiveOn(CarbonInterface|string $date): bool
+    {
+        $value = $date instanceof CarbonInterface ? $date->toDateString() : $date;
+
+        if ($this->hire_date && $this->hire_date->toDateString() > $value) {
+            return false;
+        }
+
+        return $this->termination_date === null || $this->termination_date->toDateString() >= $value;
+    }
+
+    /**
+     * Profiles that are part of the payroll on the given date. Collaborators
+     * terminated before that date (or hired after it) are excluded.
+     */
+    public function scopePayrollSubjectOn(Builder $query, CarbonInterface|string $date): Builder
+    {
+        $value = $date instanceof CarbonInterface ? $date->toDateString() : $date;
+
+        return $query
+            ->where('is_payroll_subject', true)
+            ->where(function (Builder $query) use ($value) {
+                $query->whereNull('hire_date')->orWhereDate('hire_date', '<=', $value);
+            })
+            ->where(function (Builder $query) use ($value) {
+                $query->whereNull('termination_date')->orWhereDate('termination_date', '>=', $value);
+            });
     }
 
     public function user(): BelongsTo

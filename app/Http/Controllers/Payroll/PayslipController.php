@@ -4,14 +4,21 @@ namespace App\Http\Controllers\Payroll;
 
 use App\Http\Controllers\Controller;
 use App\Models\PayrollPeriod;
+use App\Services\Payroll\PayslipService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class PayslipController extends Controller
 {
+    public function __construct(
+        private readonly PayslipService $payslipService,
+    ) {}
+
     /**
-     * Printable payslips of a closed period. Accepts an optional "users"
+     * Printable payslips of a period. Closed periods print the frozen
+     * payslips; open periods print the live pre-payroll, so receipts no
+     * longer require closing the period first. Accepts an optional "users"
      * query parameter with the collaborator ids to print. Collaborators
      * without the management permission can only print their own payslip.
      */
@@ -32,34 +39,7 @@ class PayslipController extends Controller
             abort(403);
         }
 
-        $payslips = $period->payslips()
-            ->with(['user:id,name', 'lines'])
-            ->when($requestedUsers->isNotEmpty(), fn ($query) => $query->whereIn('user_id', $requestedUsers->all()))
-            ->get()
-            ->map(fn ($payslip) => [
-                'id' => $payslip->id,
-                'user_name' => $payslip->user?->name,
-                'employee_number' => $payslip->employee_number,
-                'department' => $payslip->department,
-                'position' => $payslip->position,
-                'days_worked' => (float) $payslip->days_worked,
-                'days_paid' => (float) $payslip->days_paid,
-                'unpaid_days' => (float) $payslip->unpaid_days,
-                'late_minutes' => $payslip->late_minutes,
-                'overtime_minutes' => $payslip->overtime_double_minutes + $payslip->overtime_triple_minutes,
-                'vacation_days' => (float) $payslip->vacation_days,
-                'incapacity_days' => (float) $payslip->incapacity_days,
-                'daily_salary' => (float) $payslip->daily_salary,
-                'total_gross' => (float) $payslip->total_gross,
-                'total_deductions' => (float) $payslip->total_deductions,
-                'total_net' => (float) $payslip->total_net,
-                'lines' => $payslip->lines->map(fn ($line) => [
-                    'concept' => $line->concept,
-                    'type' => $line->type,
-                    'quantity' => $line->quantity !== null ? (float) $line->quantity : null,
-                    'amount' => (float) $line->amount,
-                ])->values(),
-            ]);
+        $payslips = $this->payslipService->printPayloads($period, $requestedUsers->all());
 
         return Inertia::render('Payroll/Payslips/Print', [
             'period' => [
@@ -70,6 +50,7 @@ class PayslipController extends Controller
                 'status' => $period->status,
             ],
             'payslips' => $payslips,
+            'isPreview' => $period->isOpen(),
             'appName' => config('app.name'),
         ]);
     }

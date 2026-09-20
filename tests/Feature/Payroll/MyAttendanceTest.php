@@ -10,6 +10,7 @@ use App\Models\Payslip;
 use App\Models\User;
 use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Mockery\MockInterface;
 use Tests\TestCase;
 
@@ -128,6 +129,43 @@ class MyAttendanceTest extends TestCase
         $log = AttendanceLog::first();
         $this->assertSame(20.6736, $log->latitude);
         $this->assertSame(-103.3445, $log->longitude);
+    }
+
+    public function test_remote_punch_is_rejected_after_the_termination_date(): void
+    {
+        Carbon::setTestNow('2026-09-20 09:00:00');
+
+        $this->employee->payrollProfile->update(['termination_date' => '2026-09-18']);
+
+        $this->actingAs($this->employee)
+            ->postJson(route('payroll.my-attendance.punch'), [
+                'type' => AttendanceLog::TYPE_CHECK_IN,
+                'latitude' => 20.67,
+                'longitude' => -103.34,
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('user');
+
+        $this->assertDatabaseCount('attendance_logs', 0);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_portal_marks_a_dismissed_collaborator_as_unable_to_punch(): void
+    {
+        Carbon::setTestNow('2026-09-20 09:00:00');
+
+        $this->employee->payrollProfile->update(['termination_date' => '2026-09-18']);
+
+        $this->actingAs($this->employee)
+            ->get(route('payroll.my-attendance.index'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('profile.can_punch', false)
+                ->where('profile.termination_date', '2026-09-18')
+            );
+
+        Carbon::setTestNow();
     }
 
     public function test_remote_punch_verifies_the_face_when_recognition_is_enabled(): void

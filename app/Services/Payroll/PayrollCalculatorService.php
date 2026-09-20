@@ -7,6 +7,7 @@ use App\Models\PayrollPeriod;
 use App\Models\PayrollSetting;
 use App\Models\User;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
 class PayrollCalculatorService
@@ -16,17 +17,61 @@ class PayrollCalculatorService
     ) {}
 
     /**
-     * Collaborators enabled for payroll.
+     * Collaborators enabled for payroll on the given date. Their hire date and
+     * termination date decide the window in which they belong to the payroll,
+     * so a dismissed collaborator stops appearing in the periods that start
+     * after the termination date.
      *
      * @return Collection<int, User>
      */
-    public function payrollSubjects(): Collection
+    public function payrollSubjects(CarbonInterface|string|null $onDate = null): Collection
     {
+        $onDate = $onDate ?? CarbonImmutable::today();
+
         return User::query()
-            ->whereHas('payrollProfile', fn ($query) => $query->where('is_payroll_subject', true))
+            ->whereHas('payrollProfile', fn ($query) => $query->payrollSubjectOn($onDate))
             ->with(['payrollProfile', 'employee'])
             ->orderBy('name')
             ->get();
+    }
+
+    /**
+     * Day-by-day detail of a collaborator inside a period: live classification
+     * for open periods, the frozen payslip days for closed ones. Both cases
+     * return the same keys so the UI can render a single table.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function daysFor(User $user, PayrollPeriod $period): array
+    {
+        if ($period->isOpen()) {
+            return $this->calculateFor($user, $period)['days'];
+        }
+
+        $payslip = $period->payslips()->where('user_id', $user->id)->with('days')->first();
+
+        return $payslip
+            ? $payslip->days->map(fn ($day) => [
+                'date' => $day->date->toDateString(),
+                'status' => $day->status,
+                'status_label' => null,
+                'shift' => null,
+                'expected_minutes' => 0,
+                'worked_minutes' => $day->worked_minutes,
+                'late_minutes' => $day->late_minutes,
+                'late_ignored' => false,
+                'late_effective_minutes' => $day->late_minutes,
+                'overtime_minutes' => $day->overtime_minutes,
+                'first_in' => $day->first_in,
+                'lunch_start' => $day->lunch_start,
+                'lunch_end' => $day->lunch_end,
+                'last_out' => $day->last_out,
+                'incident_type' => null,
+                'holiday_name' => null,
+                'pay_fraction' => null,
+                'notes' => $day->notes,
+            ])->values()->all()
+            : [];
     }
 
     /**
@@ -42,7 +87,9 @@ class PayrollCalculatorService
      *    multiplier (LFT art. 75).
      *  - Incidents: paid fraction by type (vacations and paid permissions are
      *    full days; medical leaves use their configured percentage; unpaid
-     *    permissions and unjustified absences are not paid).
+     *    permissions and unjustified absences are not paid). They apply on
+     *    scheduled workdays and also when the collaborator has no schedule,
+     *    whose registered incidents are the only source of truth for the day.
      *  - Late arrivals: only discounted when the settings say so, and only
      *    when the late was not manually ignored.
      *  - Worked rest days count as overtime hours.
@@ -67,6 +114,8 @@ class PayrollCalculatorService
 
         $cursor = CarbonImmutable::parse($period->start_date->toDateString());
         $last = CarbonImmutable::parse($period->end_date->toDateString());
+        $hiredOn = $profile?->hire_date ? CarbonImmutable::parse($profile->hire_date->toDateString()) : null;
+        $terminatedOn = $profile?->termination_date ? CarbonImmutable::parse($profile->termination_date->toDateString()) : null;
 
         $days = [];
         $overtimePoolMinutes = 0.0;
@@ -90,12 +139,32 @@ class PayrollCalculatorService
         ];
 
         while ($cursor->lessThanOrEqualTo($last)) {
+            // Days outside the employment window are not part of the payroll.
+            if ($hiredOn !== null && $cursor->lessThan($hiredOn)) {
+                $cursor = $cursor->addDay();
+
+                continue;
+            }
+
+            if ($terminatedOn !== null && $cursor->greaterThan($terminatedOn)) {
+                break;
+            }
+
             $summary = $this->attendanceDayService->summaryFor($user, $cursor);
             $worked = $summary->workedMinutes;
             $dayFraction = 0.0;
             $countableWorkday = $summary->hasSchedule && $summary->isWorkday && $summary->holidayName === null;
 
-            if ($countableWorkday && $summary->incidentTypeKey !== null) {
+            // Incidents pay on scheduled workdays and also when the collaborator
+            // has no schedule at all: for those days the registered incident is
+            // the only source of truth (e.g. vacations of collaborators without
+            // an assigned shift). Holidays and the rest days of scheduled
+            // collaborators keep their own rules.
+            $incidentApplies = $summary->incidentTypeKey !== null
+                && $summary->holidayName === null
+                && ($countableWorkday || ! $summary->hasSchedule);
+
+            if ($incidentApplies) {
                 // 1. Incident day: paid fraction decided by the type/override.
                 $fraction = $summary->incidentPayPercentage ?? 0.0;
                 $dayFraction += $fraction;
@@ -167,6 +236,7 @@ class PayrollCalculatorService
                 'lunch_end' => $summary->lunchEnd?->format('H:i'),
                 'last_out' => $summary->lastOut?->format('H:i'),
                 'incident_type' => $summary->incidentType,
+                'incident_type_key' => $summary->incidentTypeKey,
                 'holiday_name' => $summary->holidayName,
                 'pay_fraction' => round($dayFraction, 4),
                 'notes' => $summary->notes,
@@ -220,6 +290,7 @@ class PayrollCalculatorService
                 'department' => $user->employee?->department,
                 'position' => $user->employee?->position,
                 'hire_date' => $profile?->hire_date?->toDateString(),
+                'termination_date' => $profile?->termination_date?->toDateString(),
                 'daily_salary' => $dailySalary,
                 'daily_hours' => $dailyHours,
             ],

@@ -3,7 +3,9 @@
 namespace Tests\Feature\Payroll;
 
 use App\Models\AttendanceLog;
+use App\Models\Incident;
 use App\Models\PayrollAdjustment;
+use App\Models\PayrollNote;
 use App\Models\PayrollPeriod;
 use App\Models\PayrollProfile;
 use App\Models\PayrollSetting;
@@ -149,6 +151,87 @@ class PayrollPeriodControllerTest extends TestCase
             );
     }
 
+    public function test_show_exposes_the_incidents_of_the_period(): void
+    {
+        $period = $this->openPeriod();
+
+        Incident::create([
+            'user_id' => $this->employee->id,
+            'type' => Incident::TYPE_ABSENCE_JUSTIFIED,
+            'start_date' => '2026-09-08',
+            'end_date' => '2026-09-08',
+            'days' => 1,
+            'status' => Incident::STATUS_APPROVED,
+        ]);
+
+        // Outside the period: the drawer must not list it.
+        Incident::create([
+            'user_id' => $this->employee->id,
+            'type' => Incident::TYPE_OTHER,
+            'start_date' => '2026-10-05',
+            'end_date' => '2026-10-05',
+            'days' => 1,
+            'status' => Incident::STATUS_APPROVED,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.show', $period))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('incidents', 1)
+                ->where('incidents.0.user_name', 'Empleado Prueba')
+                ->where('incidents.0.type_label', 'Falta justificada')
+                ->where('incidents.0.start_date', '2026-09-08')
+            );
+    }
+
+    public function test_pre_payroll_shows_every_collaborator_with_totals_days_and_lines(): void
+    {
+        $period = $this->openPeriod();
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.pre-payroll', $period))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Payroll/Periods/PrePayroll')
+                ->has('rows', 1)
+                ->where('rows.0.user_name', 'Empleado Prueba')
+                ->where('rows.0.lines.0.concept', 'Sueldo')
+                ->has('rows.0.days', 7)
+                ->where('rows.0.days.0.date', '2026-09-07')
+                ->where('stats.employees', 1)
+            );
+    }
+
+    public function test_pre_payroll_uses_the_frozen_payslips_of_a_closed_period(): void
+    {
+        $period = $this->openPeriod();
+
+        $this->actingAs($this->admin)
+            ->post(route('payroll.periods.close', $period))
+            ->assertRedirect();
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.pre-payroll', $period))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Payroll/Periods/PrePayroll')
+                ->has('rows', 1)
+                ->where('rows.0.user_name', 'Empleado Prueba')
+                ->has('rows.0.lines')
+                ->has('rows.0.days', 7)
+            );
+    }
+
+    public function test_pre_payroll_requires_the_period_permission(): void
+    {
+        $period = $this->openPeriod();
+
+        $this->actingAs($this->employee)
+            ->get(route('payroll.periods.pre-payroll', $period))
+            ->assertForbidden();
+    }
+
     public function test_days_endpoint_returns_the_detail_and_the_weekly_schedule(): void
     {
         $period = $this->openPeriod();
@@ -160,6 +243,241 @@ class PayrollPeriodControllerTest extends TestCase
                 'days' => [['date', 'status', 'punches']],
                 'weekly_schedule' => [['weekday', 'label', 'workday']],
             ]);
+    }
+
+    public function test_days_endpoint_exposes_the_incident_type_key(): void
+    {
+        $period = $this->openPeriod();
+
+        Incident::create([
+            'user_id' => $this->employee->id,
+            'type' => Incident::TYPE_VACATION,
+            'start_date' => '2026-09-08',
+            'end_date' => '2026-09-08',
+            'days' => 1,
+            'status' => Incident::STATUS_APPROVED,
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->get(route('payroll.periods.days', [$period, $this->employee]))
+            ->assertOk()
+            ->json();
+
+        $day = collect($response['days'])->firstWhere('date', '2026-09-08');
+
+        $this->assertSame('vacation', $day['incident_type_key']);
+        $this->assertSame('Vacaciones', $day['incident_type']);
+    }
+
+    public function test_show_exposes_the_comments_of_the_collaborators(): void
+    {
+        $period = $this->openPeriod();
+
+        PayrollNote::create([
+            'payroll_period_id' => $period->id,
+            'user_id' => $this->employee->id,
+            'body' => 'Se le descontará el préstamo en dos pagos.',
+            'created_by' => $this->admin->id,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.show', $period))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('notes', 1)
+                ->where('notes.0.user_id', $this->employee->id)
+                ->where('notes.0.body', 'Se le descontará el préstamo en dos pagos.')
+            );
+    }
+
+    public function test_pre_payroll_exposes_the_comments_of_the_period(): void
+    {
+        $period = $this->openPeriod();
+
+        PayrollNote::create([
+            'payroll_period_id' => $period->id,
+            'user_id' => $this->employee->id,
+            'body' => 'Comentario que viaja a la pre-nómina.',
+            'created_by' => $this->admin->id,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.pre-payroll', $period))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('notes', 1)
+                ->where('notes.0.body', 'Comentario que viaja a la pre-nómina.')
+            );
+    }
+
+    public function test_pre_payroll_exposes_the_incidents_of_the_period(): void
+    {
+        $period = $this->openPeriod();
+
+        Incident::create([
+            'user_id' => $this->employee->id,
+            'type' => Incident::TYPE_ABSENCE_UNJUSTIFIED,
+            'start_date' => '2026-09-08',
+            'end_date' => '2026-09-09',
+            'days' => 2,
+            'status' => Incident::STATUS_APPROVED,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.pre-payroll', $period))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('incidents', 1)
+                ->where('incidents.0.user_name', 'Empleado Prueba')
+                ->where('incidents.0.type_label', 'Falta injustificada')
+                ->where('incidents.0.start_date', '2026-09-08')
+                ->where('incidents.0.end_date', '2026-09-09')
+            );
+    }
+
+    public function test_show_hides_collaborators_terminated_before_the_period(): void
+    {
+        $period = $this->openPeriod();
+
+        $this->employee->payrollProfile->update(['termination_date' => '2026-09-06']);
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.show', $period))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('rows', 0)
+                ->where('stats.employees', 0)
+            );
+    }
+
+    public function test_show_keeps_a_collaborator_terminated_inside_the_period(): void
+    {
+        $period = $this->openPeriod();
+
+        $this->employee->payrollProfile->update(['termination_date' => '2026-09-09']);
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.show', $period))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('rows', 1)
+                ->where('rows.0.termination_date', '2026-09-09')
+                ->where('rows.0.unpaid_days', 3)
+            );
+    }
+
+    public function test_pre_payroll_hides_collaborators_terminated_before_the_period(): void
+    {
+        $period = $this->openPeriod();
+
+        $this->employee->payrollProfile->update(['termination_date' => '2026-09-06']);
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.pre-payroll', $period))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->has('rows', 0));
+    }
+
+    public function test_days_endpoint_filters_by_the_requested_date_range(): void
+    {
+        $period = $this->openPeriod();
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.days', [
+                'period' => $period->id,
+                'user' => $this->employee->id,
+                'from' => '2026-09-08',
+                'to' => '2026-09-10',
+            ]))
+            ->assertOk()
+            ->assertJsonCount(3, 'days')
+            ->assertJsonPath('days.0.date', '2026-09-08')
+            ->assertJsonPath('days.2.date', '2026-09-10')
+            ->assertJsonPath('range.from', '2026-09-08')
+            ->assertJsonPath('range.to', '2026-09-10');
+    }
+
+    public function test_days_endpoint_clamps_the_range_and_only_returns_the_punches_inside_it(): void
+    {
+        $period = $this->openPeriod();
+
+        foreach ([['2026-09-09 08:00:00', AttendanceLog::TYPE_CHECK_IN], ['2026-09-11 18:00:00', AttendanceLog::TYPE_CHECK_OUT]] as [$punchedAt, $type]) {
+            AttendanceLog::create([
+                'user_id' => $this->employee->id,
+                'type' => $type,
+                'punched_at' => $punchedAt,
+                'source' => AttendanceLog::SOURCE_KIOSK,
+                'identifier_method' => AttendanceLog::IDENTIFIER_PIN,
+            ]);
+        }
+
+        $response = $this->actingAs($this->admin)
+            ->get(route('payroll.periods.days', [
+                'period' => $period->id,
+                'user' => $this->employee->id,
+                'from' => '2026-01-01',
+                'to' => '2026-09-09',
+            ]))
+            ->assertOk();
+
+        // The range can never go outside the period.
+        $response->assertJsonPath('range.from', '2026-09-07')
+            ->assertJsonPath('range.to', '2026-09-09')
+            ->assertJsonCount(3, 'days');
+
+        $days = collect($response->json('days'));
+
+        $this->assertCount(1, $days->firstWhere('date', '2026-09-09')['punches']);
+        $this->assertNull($days->firstWhere('date', '2026-09-11'));
+    }
+
+    public function test_days_endpoint_falls_back_to_the_whole_period_with_an_invalid_range(): void
+    {
+        $period = $this->openPeriod();
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.days', [
+                'period' => $period->id,
+                'user' => $this->employee->id,
+                'from' => 'no-es-fecha',
+                'to' => '2026-09-10',
+            ]))
+            ->assertOk()
+            ->assertJsonCount(4, 'days')
+            ->assertJsonPath('days.0.date', '2026-09-07')
+            ->assertJsonPath('range.from', '2026-09-07')
+            ->assertJsonPath('range.to', '2026-09-10');
+    }
+
+    public function test_manual_punch_is_rejected_after_the_termination_date(): void
+    {
+        $period = $this->openPeriod();
+
+        $this->employee->payrollProfile->update(['termination_date' => '2026-09-08']);
+
+        $this->actingAs($this->admin)
+            ->post(route('payroll.attendance-logs.store'), [
+                'user_id' => $this->employee->id,
+                'type' => AttendanceLog::TYPE_CHECK_IN,
+                'punched_at' => '2026-09-10 08:00:00',
+                'edit_reason' => 'Olvidó registrar su entrada',
+            ])
+            ->assertSessionHasErrors('punched_at');
+
+        $this->assertDatabaseCount('attendance_logs', 0);
+
+        // Corrections inside the employment window keep working.
+        $this->actingAs($this->admin)
+            ->post(route('payroll.attendance-logs.store'), [
+                'user_id' => $this->employee->id,
+                'type' => AttendanceLog::TYPE_CHECK_IN,
+                'punched_at' => '2026-09-08 08:00:00',
+                'edit_reason' => 'Olvidó registrar su entrada',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseCount('attendance_logs', 1);
     }
 
     public function test_override_ignores_a_late_arrival(): void

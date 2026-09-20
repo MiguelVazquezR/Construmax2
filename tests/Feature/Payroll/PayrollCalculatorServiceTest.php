@@ -215,6 +215,38 @@ class PayrollCalculatorServiceTest extends TestCase
         $this->assertEqualsWithDelta(0.4, $totals['unpaid_days'], 0.01);
     }
 
+    public function test_incidents_count_as_paid_days_without_an_assigned_schedule(): void
+    {
+        $other = $this->makeEmployee('2024-01-01', 400, withSchedule: false);
+
+        Incident::create([
+            'user_id' => $other->id,
+            'type' => Incident::TYPE_VACATION,
+            'start_date' => '2026-09-08',
+            'end_date' => '2026-09-09',
+            'days' => 2,
+            'status' => Incident::STATUS_APPROVED,
+        ]);
+
+        Incident::create([
+            'user_id' => $other->id,
+            'type' => Incident::TYPE_ABSENCE_UNJUSTIFIED,
+            'start_date' => '2026-09-10',
+            'end_date' => '2026-09-10',
+            'days' => 1,
+            'status' => Incident::STATUS_APPROVED,
+        ]);
+
+        $result = $this->calculator->calculateFor($other, $this->period);
+        $totals = $result['totals'];
+
+        // The two vacation days pay; the unjustified absence does not.
+        $this->assertEqualsWithDelta(2.0, $totals['days_paid'], 0.01);
+        $this->assertEqualsWithDelta(2.0, $totals['vacation_days'], 0.01);
+        $this->assertEqualsWithDelta(1.0, $totals['unpaid_days'], 0.01);
+        $this->assertEqualsWithDelta(800.0, $totals['base_amount'], 0.01);
+    }
+
     public function test_a_worked_holiday_gets_the_extra_day(): void
     {
         Holiday::create([
@@ -291,5 +323,42 @@ class PayrollCalculatorServiceTest extends TestCase
         $this->assertSame('Sueldo', $lines[0]['concept']);
         $this->assertSame('earning', $lines[0]['type']);
         $this->assertEqualsWithDelta(2000.0, (float) $lines[0]['amount'], 0.01);
+    }
+
+    // --- Employment window (hire / termination dates) ---
+
+    public function test_payroll_subjects_depend_on_the_reference_date(): void
+    {
+        $this->user->payrollProfile->update(['termination_date' => '2026-09-10']);
+
+        // Inside the employment window (up to and including the termination date).
+        $this->assertCount(1, $this->calculator->payrollSubjects('2026-09-07'));
+        $this->assertCount(1, $this->calculator->payrollSubjects('2026-09-10'));
+
+        // After the termination date the collaborator leaves the payroll.
+        $this->assertCount(0, $this->calculator->payrollSubjects('2026-09-11'));
+    }
+
+    public function test_payroll_subjects_respect_the_hire_date(): void
+    {
+        $this->user->payrollProfile->update(['hire_date' => '2026-10-01']);
+
+        $this->assertCount(0, $this->calculator->payrollSubjects('2026-09-07'));
+        $this->assertCount(1, $this->calculator->payrollSubjects('2026-10-01'));
+    }
+
+    public function test_days_after_the_termination_date_are_not_calculated(): void
+    {
+        $this->user->payrollProfile->update(['termination_date' => '2026-09-09']);
+
+        $result = $this->calculator->calculateFor($this->user, $this->period);
+
+        $this->assertSame(
+            ['2026-09-07', '2026-09-08', '2026-09-09'],
+            array_column($result['days'], 'date')
+        );
+
+        // Only the days inside the employment window can be unpaid.
+        $this->assertSame(3.0, (float) $result['totals']['unpaid_days']);
     }
 }

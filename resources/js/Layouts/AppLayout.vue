@@ -37,7 +37,7 @@ const toggleSidebar = () => {
             <!-- Sidebar para Desktop (Fijo a la izquierda) -->
             <aside 
                 class="hidden lg:block bg-white shadow-sm dark:bg-[#1e1e20] transition-all duration-300 ease-in-out z-20 flex-shrink-0"
-                :class="isSidebarCollapse ? 'w-16' : 'w-64'"
+                :class="isSidebarCollapse ? 'w-16' : 'w-60'"
             >
                 <AppSidebar :is-collapse="isSidebarCollapse" />
             </aside>

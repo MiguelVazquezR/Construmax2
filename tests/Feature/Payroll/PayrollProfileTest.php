@@ -118,6 +118,36 @@ class PayrollProfileTest extends TestCase
         $this->assertTrue($profile->is_attendance_subject);
     }
 
+    public function test_user_update_saves_the_termination_date(): void
+    {
+        $user = User::factory()->create(['is_active' => true]);
+
+        $this->actingAs($this->admin)
+            ->put(route('users.update', $user), $this->updatePayload($user, [
+                'hire_date' => '2024-01-01',
+                'termination_date' => '2026-09-15',
+                'is_payroll_subject' => true,
+            ]))
+            ->assertRedirect(route('users.index'));
+
+        $profile = PayrollProfile::where('user_id', $user->id)->first();
+
+        $this->assertNotNull($profile);
+        $this->assertSame('2026-09-15', $profile->termination_date->toDateString());
+    }
+
+    public function test_termination_date_cannot_be_before_the_hire_date(): void
+    {
+        $user = User::factory()->create(['is_active' => true]);
+
+        $this->actingAs($this->admin)
+            ->put(route('users.update', $user), $this->updatePayload($user, [
+                'hire_date' => '2024-01-01',
+                'termination_date' => '2023-12-31',
+            ]))
+            ->assertSessionHasErrors('termination_date');
+    }
+
     public function test_kiosk_pin_keeps_its_value_when_left_empty(): void
     {
         $user = User::factory()->create(['is_active' => true]);

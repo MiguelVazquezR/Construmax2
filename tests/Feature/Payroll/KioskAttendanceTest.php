@@ -7,6 +7,7 @@ use App\Models\AttendanceLog;
 use App\Models\PayrollProfile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 class KioskAttendanceTest extends TestCase
@@ -163,5 +164,42 @@ class KioskAttendanceTest extends TestCase
             'pin' => '1234',
             'type' => AttendanceLog::TYPE_CHECK_IN,
         ])->assertForbidden();
+    }
+
+    public function test_punch_is_rejected_after_the_termination_date(): void
+    {
+        Carbon::setTestNow('2026-09-20 09:00:00');
+
+        $this->employee->payrollProfile->update(['termination_date' => '2026-09-19']);
+
+        $this->postJson(route('attendance.kiosk.punch'), [
+            'employee_number' => 'EMP-0100',
+            'pin' => '1234',
+            'type' => AttendanceLog::TYPE_CHECK_IN,
+        ], $this->deviceHeaders())
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('user');
+
+        $this->assertDatabaseCount('attendance_logs', 0);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_punch_is_still_allowed_on_the_termination_date(): void
+    {
+        Carbon::setTestNow('2026-09-19 09:00:00');
+
+        $this->employee->payrollProfile->update(['termination_date' => '2026-09-19']);
+
+        $this->postJson(route('attendance.kiosk.punch'), [
+            'employee_number' => 'EMP-0100',
+            'pin' => '1234',
+            'type' => AttendanceLog::TYPE_CHECK_IN,
+        ], $this->deviceHeaders())
+            ->assertOk();
+
+        $this->assertDatabaseCount('attendance_logs', 1);
+
+        Carbon::setTestNow();
     }
 }

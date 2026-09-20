@@ -35,35 +35,6 @@ class IncidentControllerTest extends TestCase
         ]);
     }
 
-    public function test_index_renders_the_incidents_page(): void
-    {
-        Incident::create([
-            'user_id' => $this->employee->id,
-            'type' => Incident::TYPE_ABSENCE_JUSTIFIED,
-            'start_date' => '2026-09-14',
-            'end_date' => '2026-09-14',
-            'days' => 1,
-            'status' => Incident::STATUS_APPROVED,
-        ]);
-
-        $this->actingAs($this->admin)
-            ->get(route('payroll.incidents.index'))
-            ->assertOk()
-            ->assertInertia(fn ($page) => $page
-                ->component('Payroll/Incidents/Index')
-                ->has('incidents.data', 1)
-                ->has('users')
-                ->has('types')
-            );
-    }
-
-    public function test_index_is_forbidden_without_permission(): void
-    {
-        $this->actingAs($this->employee)
-            ->get(route('payroll.incidents.index'))
-            ->assertForbidden();
-    }
-
     public function test_store_creates_an_incident_with_computed_days(): void
     {
         $this->actingAs($this->admin)

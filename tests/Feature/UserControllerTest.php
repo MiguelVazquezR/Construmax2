@@ -2,8 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Models\PayrollProfile;
 use App\Models\User;
+use App\Models\VacationAdjustment;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -12,6 +16,7 @@ class UserControllerTest extends TestCase
     use RefreshDatabase;
 
     private User $admin;
+
     private User $superAdmin;
 
     protected function setUp(): void
@@ -19,7 +24,18 @@ class UserControllerTest extends TestCase
         parent::setUp();
         // Create super admin first so it gets id=1
         $this->superAdmin = User::factory()->create(['is_active' => true]);
+
+        Permission::create(['name' => 'users.toggle-status', 'guard_name' => 'web', 'category' => 'Usuarios', 'description' => 'Activar o desactivar acceso a usuarios']);
+
         $this->admin = User::factory()->create(['is_active' => true]);
+        $this->admin->givePermissionTo('users.toggle-status');
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
     }
 
     // --- index ---
@@ -110,6 +126,38 @@ class UserControllerTest extends TestCase
             );
     }
 
+    public function test_show_exposes_the_vacation_balance_of_the_collaborator(): void
+    {
+        Carbon::setTestNow('2026-02-01');
+
+        $user = User::factory()->create();
+
+        PayrollProfile::create([
+            'user_id' => $user->id,
+            'hire_date' => '2026-01-01',
+            'is_payroll_subject' => true,
+        ]);
+
+        VacationAdjustment::create([
+            'user_id' => $user->id,
+            'type' => VacationAdjustment::TYPE_INITIAL,
+            'days' => 10,
+            'reason' => 'Saldo previo al sistema',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('users.show', $user))
+            ->assertInertia(fn ($page) => $page
+                ->component('Users/Show')
+                ->has('vacation.balance')
+                ->has('vacation.adjustments', 1)
+                ->has('vacation.requests')
+                ->where('vacation.adjustments.0.type_label', 'Saldo inicial')
+                ->where('vacation.balance.adjustment_days', 10)
+                ->where('vacation.balance.available_days', 10.92)
+            );
+    }
+
     // --- edit ---
 
     public function test_edit_renders_form(): void
@@ -169,7 +217,7 @@ class UserControllerTest extends TestCase
         $user = User::factory()->create(['is_active' => true]);
 
         $this->actingAs($this->admin)
-            ->put(route('users.toggle-status', $user))
+            ->put(route('users.toggle-status', $user), ['termination_date' => '2026-09-20'])
             ->assertRedirect()
             ->assertSessionHas('success');
 
@@ -187,6 +235,107 @@ class UserControllerTest extends TestCase
             'id' => $user->id,
             'is_active' => true,
         ]);
+    }
+
+    public function test_dismissing_a_user_stores_the_termination_date(): void
+    {
+        $user = User::factory()->create(['is_active' => true]);
+
+        PayrollProfile::create([
+            'user_id' => $user->id,
+            'hire_date' => '2024-01-01',
+            'is_payroll_subject' => true,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->put(route('users.toggle-status', $user), ['termination_date' => '2026-09-15'])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('payroll_profiles', [
+            'user_id' => $user->id,
+            'termination_date' => '2026-09-15 00:00:00',
+        ]);
+    }
+
+    public function test_dismissing_a_user_defaults_the_termination_date_to_today(): void
+    {
+        $user = User::factory()->create(['is_active' => true]);
+
+        PayrollProfile::create([
+            'user_id' => $user->id,
+            'hire_date' => '2024-01-01',
+            'is_payroll_subject' => true,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->put(route('users.toggle-status', $user))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $profile = PayrollProfile::where('user_id', $user->id)->first();
+
+        $this->assertNotNull($profile->termination_date);
+        $this->assertSame(now()->toDateString(), $profile->termination_date->toDateString());
+    }
+
+    public function test_reactivating_a_user_clears_the_termination_date(): void
+    {
+        $user = User::factory()->create(['is_active' => false]);
+
+        PayrollProfile::create([
+            'user_id' => $user->id,
+            'hire_date' => '2024-01-01',
+            'termination_date' => '2026-09-15',
+            'is_payroll_subject' => true,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->put(route('users.toggle-status', $user))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertNull(PayrollProfile::where('user_id', $user->id)->first()->termination_date);
+    }
+
+    public function test_termination_date_cannot_be_before_the_hire_date(): void
+    {
+        $user = User::factory()->create(['is_active' => true]);
+
+        PayrollProfile::create([
+            'user_id' => $user->id,
+            'hire_date' => '2024-01-01',
+            'is_payroll_subject' => true,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->put(route('users.toggle-status', $user), ['termination_date' => '2023-12-31'])
+            ->assertSessionHasErrors('termination_date');
+
+        // The user stays active.
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'is_active' => true]);
+    }
+
+    public function test_toggle_status_requires_the_permission(): void
+    {
+        $user = User::factory()->create(['is_active' => true]);
+        $plain = User::factory()->create(['is_active' => true]);
+
+        $this->actingAs($plain)
+            ->put(route('users.toggle-status', $user), ['termination_date' => '2026-09-15'])
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'is_active' => true]);
+    }
+
+    public function test_the_super_admin_cannot_be_dismissed(): void
+    {
+        $this->actingAs($this->admin)
+            ->put(route('users.toggle-status', $this->superAdmin), ['termination_date' => '2026-09-15'])
+            ->assertRedirect()
+            ->assertSessionHas('error');
+
+        $this->assertDatabaseHas('users', ['id' => $this->superAdmin->id, 'is_active' => true]);
     }
 
     // --- destroy ---

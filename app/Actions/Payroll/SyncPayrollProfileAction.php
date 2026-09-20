@@ -15,6 +15,7 @@ class SyncPayrollProfileAction
     private const MANAGE_FIELDS = [
         'employee_number',
         'hire_date',
+        'termination_date',
         'daily_salary',
         'daily_hours',
         'is_payroll_subject',

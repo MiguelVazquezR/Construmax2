@@ -43,6 +43,21 @@ const isVisible = computed(() => canManage.value || canManageRemote.value);
                     />
                 </el-form-item>
 
+                <el-form-item
+                    v-if="showPayrollFields"
+                    label="Fecha de baja"
+                    prop="termination_date"
+                    :error="form.errors.termination_date"
+                >
+                    <el-date-picker
+                        v-model="form.termination_date"
+                        type="date"
+                        value-format="YYYY-MM-DD"
+                        placeholder="Vacío si sigue activo"
+                        class="w-full"
+                    />
+                </el-form-item>
+
                 <el-form-item label="PIN de kiosco" prop="kiosk_pin" :error="form.errors.kiosk_pin">
                     <el-input
                         v-model="form.kiosk_pin"
@@ -110,6 +125,7 @@ const isVisible = computed(() => canManage.value || canManageRemote.value);
         <p class="text-xs text-gray-400 dark:text-gray-500">
             El PIN de kiosco funciona como respaldo cuando el reconocimiento facial no identifica al colaborador.
             La asistencia remota permite marcar entrada y salida desde su cuenta con ubicación.
+            Con fecha de baja, el colaborador se incluye en la nómina hasta ese día y deja de aparecer en los periodos posteriores.
         </p>
     </div>
 </template>

@@ -54,6 +54,12 @@ class RegisterAttendancePunchAction
         $punchedAt = isset($data['punched_at']) ? Carbon::parse($data['punched_at']) : now();
         $source = $data['source'] ?? AttendanceLog::SOURCE_KIOSK;
 
+        if ($profile->termination_date && $punchedAt->toDateString() > $profile->termination_date->toDateString()) {
+            throw ValidationException::withMessages([
+                'user' => 'El colaborador fue dado de baja el '.$profile->termination_date->format('d/m/Y').': ya no puede registrar asistencia.',
+            ]);
+        }
+
         if ($this->alreadyRegistered($user->id, $type, $punchedAt)) {
             throw ValidationException::withMessages([
                 'type' => 'Este marcaje ya se registró hace unos momentos.',

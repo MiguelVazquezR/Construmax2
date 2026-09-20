@@ -46,6 +46,7 @@ const typeEntries = computed(() =>
 );
 
 const canRemote = computed(() => props.profile?.can_remote_attendance === true);
+const canPunch = computed(() => props.profile?.can_punch !== false);
 const faceVerificationActive = computed(
     () => props.faceRecognition?.enabled === true && props.faceRecognition?.configured === true
 );
@@ -346,7 +347,17 @@ onBeforeUnmount(() => {
                                 </div>
 
                                 <el-alert
-                                    v-if="!canRemote"
+                                    v-if="!canPunch"
+                                    type="warning"
+                                    :closable="false"
+                                    show-icon
+                                    class="mb-4"
+                                    title="Ya no puedes registrar asistencia"
+                                    :description="`Estás dado de baja desde el ${fmtDate(profile.termination_date)}. Tu historial, tus vacaciones y tus recibos siguen disponibles.`"
+                                />
+
+                                <el-alert
+                                    v-else-if="!canRemote"
                                     type="warning"
                                     :closable="false"
                                     show-icon

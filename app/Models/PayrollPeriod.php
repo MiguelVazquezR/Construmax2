@@ -55,6 +55,11 @@ class PayrollPeriod extends Model
         return $this->hasMany(PayrollAdjustment::class);
     }
 
+    public function notes(): HasMany
+    {
+        return $this->hasMany(PayrollNote::class, 'payroll_period_id');
+    }
+
     public function closer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'closed_by');

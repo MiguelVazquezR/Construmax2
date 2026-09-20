@@ -2,8 +2,9 @@
 import { computed, reactive, ref } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import VacationAdjustmentDialog from '@/Components/Payroll/VacationAdjustmentDialog.vue';
 import { ElMessageBox } from 'element-plus';
-import { Plus, CircleCheck, Close, Calendar } from '@element-plus/icons-vue';
+import { Plus, CircleCheck, Close, Calendar, Delete } from '@element-plus/icons-vue';
 import { useFlashMessages } from '@/Composables/useFlashMessages';
 import { usePermissions } from '@/Composables/usePermissions';
 
@@ -12,6 +13,8 @@ const props = defineProps({
     users: Array,
     statuses: Object,
     balance: Object,
+    adjustments: Array,
+    selectedUser: Object,
     selectedUserId: Number,
     filters: Object,
 });
@@ -20,6 +23,7 @@ useFlashMessages();
 
 const { can } = usePermissions();
 const canApprove = computed(() => can('payroll.vacations.approve'));
+const canManage = computed(() => can('payroll.vacations.manage'));
 
 const activeTab = ref('requests');
 
@@ -45,6 +49,36 @@ const changePage = (page) => {
 
 const selectBalanceUser = () => {
     applyFilters();
+};
+
+// --- Manual movements of the balance ---
+
+const adjustmentDialog = ref(null);
+
+// The collaborator is resolved by the backend: the balance can be reviewed
+// for any user, even when they are not part of the attendance kiosk list.
+const selectedUser = computed(() => props.selectedUser || null);
+
+const openAdjustmentDialog = (type) => {
+    adjustmentDialog.value?.open(type);
+};
+
+const onAdjustmentSaved = () => {
+    router.reload({ only: ['balance', 'adjustments'] });
+};
+
+const removeAdjustment = (adjustment) => {
+    ElMessageBox.confirm(
+        `¿Eliminar el movimiento «${adjustment.type_label}» de ${formatSignedDays(adjustment.days)} día(s)? El saldo se recalculará.`,
+        'Eliminar movimiento de saldo',
+        { confirmButtonText: 'Eliminar', cancelButtonText: 'Cancelar', type: 'warning' }
+    ).then(() => {
+        router.delete(route('payroll.vacations.adjustments.destroy', adjustment.id), {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: onAdjustmentSaved,
+        });
+    }).catch(() => {});
 };
 
 // --- Review ---
@@ -130,6 +164,22 @@ const statusTagType = (status) => ({
     rejected: 'danger',
     cancelled: 'info',
 }[status] || 'info');
+
+const adjustmentTagType = (type) => ({
+    initial: 'primary',
+    grant: 'success',
+    adjustment: 'warning',
+}[type] || 'info');
+
+const formatSignedDays = (value) => {
+    const number = Number(value ?? 0);
+    const absolute = Math.round(Math.abs(number) * 100) / 100;
+
+    if (number > 0) return `+${absolute}`;
+    if (number < 0) return `-${absolute}`;
+
+    return '0';
+};
 
 const seasonStatusLabel = (season) => {
     if (season.is_current) return 'En curso';
@@ -280,8 +330,17 @@ const seasonStatusLabel = (season) => {
                                 <el-option v-for="user in users" :key="user.id" :label="user.name" :value="user.id" />
                             </el-select>
 
-                            <template v-if="balance && balance.hire_date">
-                                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <template v-if="balance">
+                                <el-alert
+                                    v-if="! balance.hire_date"
+                                    type="warning"
+                                    :closable="false"
+                                    show-icon
+                                    title="Sin fecha de ingreso"
+                                    description="Captura la fecha de ingreso del colaborador en Usuarios → Nómina y asistencia para calcular el saldo por antigüedad. Mientras tanto solo cuentan los movimientos manuales."
+                                />
+
+                                <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
                                     <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
                                         <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Disponibles</p>
                                         <p class="text-2xl font-bold text-emerald-600">{{ balance.available_days }}</p>
@@ -298,9 +357,87 @@ const seasonStatusLabel = (season) => {
                                         <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Pendientes</p>
                                         <p class="text-2xl font-bold text-amber-500">{{ balance.pending_days }}</p>
                                     </div>
+                                    <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
+                                        <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Ajustes manuales</p>
+                                        <p
+                                            class="text-2xl font-bold"
+                                            :class="Number(balance.adjustment_days) < 0 ? 'text-red-500' : 'text-blue-600 dark:text-blue-400'"
+                                        >
+                                            {{ formatSignedDays(balance.adjustment_days) }}
+                                        </p>
+                                    </div>
                                 </div>
 
-                                <el-table :data="balance.seasons" style="width: 100%" stripe>
+                                <!-- Manual movements of the balance (they never expire) -->
+                                <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
+                                    <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-gray-50 dark:bg-[#252529]/50 border-b border-gray-100 dark:border-[#2b2b2e]">
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Movimientos manuales del saldo</p>
+                                            <p class="text-xs text-gray-500 dark:text-gray-400">
+                                                Saldo inicial, días agregados y correcciones. No vencen y se consumen al final.
+                                            </p>
+                                        </div>
+                                        <div v-if="canManage" class="flex flex-wrap gap-2">
+                                            <el-button size="small" plain @click="openAdjustmentDialog('initial')">Saldo inicial</el-button>
+                                            <el-button size="small" plain @click="openAdjustmentDialog('grant')">Agregar días</el-button>
+                                            <el-button size="small" plain @click="openAdjustmentDialog('adjustment')">Ajustar días</el-button>
+                                        </div>
+                                    </div>
+
+                                    <el-table v-if="adjustments.length" :data="adjustments" style="width: 100%" stripe size="small">
+                                        <el-table-column label="Tipo" min-width="150">
+                                            <template #default="scope">
+                                                <el-tag :type="adjustmentTagType(scope.row.type)" size="small" effect="plain">
+                                                    {{ scope.row.type_label }}
+                                                </el-tag>
+                                            </template>
+                                        </el-table-column>
+
+                                        <el-table-column label="Días" width="90" align="center">
+                                            <template #default="scope">
+                                                <span
+                                                    class="font-semibold"
+                                                    :class="Number(scope.row.days) < 0 ? 'text-red-500' : 'text-emerald-600'"
+                                                >
+                                                    {{ formatSignedDays(scope.row.days) }}
+                                                </span>
+                                            </template>
+                                        </el-table-column>
+
+                                        <el-table-column label="Motivo" min-width="180">
+                                            <template #default="scope">
+                                                <span class="text-xs text-gray-500">{{ scope.row.reason || '—' }}</span>
+                                            </template>
+                                        </el-table-column>
+
+                                        <el-table-column label="Registró" min-width="160">
+                                            <template #default="scope">
+                                                <span class="text-xs text-gray-500">
+                                                    {{ scope.row.author_name || '—' }} · {{ formatDate(scope.row.created_at) }}
+                                                </span>
+                                            </template>
+                                        </el-table-column>
+
+                                        <el-table-column v-if="canManage" label="" width="70" align="right">
+                                            <template #default="scope">
+                                                <el-button
+                                                    :icon="Delete"
+                                                    size="small"
+                                                    text
+                                                    type="danger"
+                                                    title="Eliminar movimiento"
+                                                    @click="removeAdjustment(scope.row)"
+                                                />
+                                            </template>
+                                        </el-table-column>
+                                    </el-table>
+
+                                    <p v-else class="text-xs text-gray-400 dark:text-gray-500 italic px-4 py-4">
+                                        Sin movimientos manuales registrados para este colaborador.
+                                    </p>
+                                </div>
+
+                                <el-table v-if="balance.seasons.length" :data="balance.seasons" style="width: 100%" stripe>
                                     <el-table-column label="Temporada" width="120" align="center">
                                         <template #default="scope">
                                             Año {{ scope.row.season }}
@@ -400,5 +537,14 @@ const seasonStatusLabel = (season) => {
                 </div>
             </template>
         </el-dialog>
+
+        <VacationAdjustmentDialog
+            v-if="selectedUser"
+            ref="adjustmentDialog"
+            :user-id="selectedUser.id"
+            :user-name="selectedUser.name"
+            :available-days="Number(balance?.available_days || 0)"
+            @saved="onAdjustmentSaved"
+        />
     </AppLayout>
 </template>

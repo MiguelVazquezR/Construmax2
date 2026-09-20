@@ -42,6 +42,7 @@ const form = useForm({
     // Nómina y asistencia (opcional, según permisos)
     employee_number: profile.employee_number || '',
     hire_date: profile.hire_date ? String(profile.hire_date).substring(0, 10) : null,
+    termination_date: profile.termination_date ? String(profile.termination_date).substring(0, 10) : null,
     daily_salary: toNumber(profile.daily_salary),
     daily_hours: toNumber(profile.daily_hours),
     is_payroll_subject: Boolean(profile.is_payroll_subject),

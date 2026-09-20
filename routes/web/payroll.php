@@ -7,11 +7,13 @@ use App\Http\Controllers\Payroll\HolidayController;
 use App\Http\Controllers\Payroll\IncidentController;
 use App\Http\Controllers\Payroll\KioskController;
 use App\Http\Controllers\Payroll\MyAttendanceController;
+use App\Http\Controllers\Payroll\PayrollNoteController;
 use App\Http\Controllers\Payroll\PayrollPeriodController;
 use App\Http\Controllers\Payroll\PayrollSettingController;
 use App\Http\Controllers\Payroll\PayslipController;
 use App\Http\Controllers\Payroll\ShiftAssignmentController;
 use App\Http\Controllers\Payroll\ShiftController;
+use App\Http\Controllers\Payroll\VacationAdjustmentController;
 use App\Http\Controllers\Payroll\VacationController;
 use Illuminate\Support\Facades\Route;
 
@@ -40,8 +42,8 @@ Route::middleware(['auth', 'verified'])->prefix('payroll')->name('payroll.')->gr
     Route::post('/holidays/sync', [HolidayController::class, 'sync'])->name('holidays.sync');
     Route::delete('/holidays/{holiday}', [HolidayController::class, 'destroy'])->name('holidays.destroy');
 
-    // Incidents (absences, medical leaves, permissions...)
-    Route::get('/incidents', [IncidentController::class, 'index'])->name('incidents.index');
+    // Incidents (absences, medical leaves, permissions...). They are managed
+    // from the payroll period detail, so there is no standalone screen.
     Route::post('/incidents', [IncidentController::class, 'store'])->name('incidents.store');
     Route::delete('/incidents/{incident}', [IncidentController::class, 'destroy'])->name('incidents.destroy');
 
@@ -53,10 +55,16 @@ Route::middleware(['auth', 'verified'])->prefix('payroll')->name('payroll.')->gr
     Route::post('/vacations/{vacationRequest}/approve', [VacationController::class, 'approve'])->name('vacations.approve');
     Route::post('/vacations/{vacationRequest}/reject', [VacationController::class, 'reject'])->name('vacations.reject');
 
+    // Manual movements of the vacation balance (initial balance, granted days
+    // and corrections) registered from the collaborator profile
+    Route::post('/users/{user}/vacation-adjustments', [VacationAdjustmentController::class, 'store'])->name('vacations.adjustments.store');
+    Route::delete('/vacation-adjustments/{adjustment}', [VacationAdjustmentController::class, 'destroy'])->name('vacations.adjustments.destroy');
+
     // Payroll periods: pre-payroll, attendance corrections, adjustments and closing
     Route::get('/periods', [PayrollPeriodController::class, 'index'])->name('periods.index');
     Route::post('/periods', [PayrollPeriodController::class, 'store'])->name('periods.store');
     Route::get('/periods/{period}', [PayrollPeriodController::class, 'show'])->name('periods.show');
+    Route::get('/periods/{period}/pre-payroll', [PayrollPeriodController::class, 'prePayroll'])->name('periods.pre-payroll');
     Route::get('/periods/{period}/export', [PayrollPeriodController::class, 'export'])->name('periods.export');
     Route::get('/periods/{period}/employees/{user}/days', [PayrollPeriodController::class, 'days'])->name('periods.days');
     Route::put('/periods/{period}/employees/{user}/override', [PayrollPeriodController::class, 'updateOverride'])->name('periods.override');
@@ -64,6 +72,11 @@ Route::middleware(['auth', 'verified'])->prefix('payroll')->name('payroll.')->gr
     Route::post('/periods/{period}/close', [PayrollPeriodController::class, 'close'])->name('periods.close');
     Route::post('/periods/{period}/reopen', [PayrollPeriodController::class, 'reopen'])->name('periods.reopen');
     Route::delete('/adjustments/{adjustment}', [PayrollPeriodController::class, 'destroyAdjustment'])->name('adjustments.destroy');
+
+    // Comments about a collaborator inside a period (bottom of every panel)
+    Route::post('/periods/{period}/notes', [PayrollNoteController::class, 'store'])->name('periods.notes.store');
+    Route::put('/notes/{note}', [PayrollNoteController::class, 'update'])->name('notes.update');
+    Route::delete('/notes/{note}', [PayrollNoteController::class, 'destroy'])->name('notes.destroy');
 
     // Manual attendance corrections (audited)
     Route::post('/attendance-logs', [AttendanceLogController::class, 'store'])->name('attendance-logs.store');

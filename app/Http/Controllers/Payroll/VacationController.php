@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Payroll\ReviewVacationRequest;
 use App\Http\Requests\Payroll\StoreVacationRequest;
 use App\Models\User;
+use App\Models\VacationAdjustment;
 use App\Models\VacationRequest;
 use App\Services\Payroll\VacationService;
 use Illuminate\Http\JsonResponse;
@@ -48,6 +49,8 @@ class VacationController extends Controller
             'users' => $this->attendanceUsers(),
             'statuses' => VacationRequest::STATUSES,
             'balance' => $selectedUser ? $this->vacationService->balanceFor($selectedUser) : null,
+            'adjustments' => $this->adjustmentsFor($selectedUser),
+            'selectedUser' => $selectedUser ? ['id' => $selectedUser->id, 'name' => $selectedUser->name] : null,
             'selectedUserId' => $selectedUserId,
             'filters' => $request->only(['status', 'user_id']),
         ]);
@@ -144,6 +147,26 @@ class VacationController extends Controller
     private function canManage(Request $request): bool
     {
         return $request->user()->can('payroll.vacations.manage');
+    }
+
+    /**
+     * Manual movements of the balance of the selected collaborator.
+     */
+    private function adjustmentsFor(?User $user): array
+    {
+        if (! $user) {
+            return [];
+        }
+
+        return VacationAdjustment::query()
+            ->forUser($user->id)
+            ->with('author:id,name')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (VacationAdjustment $adjustment) => $adjustment->toPayload())
+            ->values()
+            ->all();
     }
 
     private function attendanceUsers()
