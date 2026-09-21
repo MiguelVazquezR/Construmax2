@@ -149,7 +149,7 @@ onMounted(resolveCurrentDevice);
                         Dispositivos de asistencia
                     </h2>
                     <p class="text-sm text-gray-500 mt-1">
-                        Tablets o pantallas autorizadas para abrir el kiosco de marcaje facial.
+                        Tablets o pantallas autorizadas para abrir el kiosco de registro facial.
                     </p>
                 </div>
                 <div class="flex items-center gap-2">

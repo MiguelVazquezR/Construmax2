@@ -66,7 +66,8 @@ POST   /users/bulk-delete          users.bulk-destroy
 | Daily salary / daily hours | Payroll basis |
 | Subject to payroll / records attendance | `is_payroll_subject`, `is_attendance_subject` |
 | Remote attendance | `can_remote_attendance` — requires `payroll.remote-attendance.manage`; other fields require `payroll.profiles.manage` (enforced by `SyncPayrollProfileAction::sanitizeFor`) |
-| Kiosk PIN | Hashed; empty value keeps the stored one; `has_kiosk_pin` exposed as a boolean flag |
+| Assigned shift | `shift_id` — selector of the active shifts (with an info icon that opens a summary popover: worked days, schedules and meal time). Saved through `AssignUserShiftAction`: creates/updates the individual fixed assignment starting on the hire date. Only applied with `payroll.profiles.manage` |
+| Kiosk PIN | Backend only (the form no longer exposes it): hashed, an empty value keeps the stored one and `has_kiosk_pin` is exposed as a boolean flag |
 
 ### User show page
 - Hero card: avatar, name, email, roles, department

@@ -1,9 +1,9 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessageBox } from 'element-plus';
-import { Back, Download, Lock, Unlock, Document, Tickets, Expand, Fold } from '@element-plus/icons-vue';
+import { Back, Download, Lock, Unlock, Document, Tickets, Expand, Fold, ArrowLeft, ArrowRight } from '@element-plus/icons-vue';
 import { useFlashMessages } from '@/Composables/useFlashMessages';
 import { usePermissions } from '@/Composables/usePermissions';
 import EmployeePeriodPanel from '@/Components/Payroll/EmployeePeriodPanel.vue';
@@ -15,6 +15,8 @@ const props = defineProps({
     adjustments: Array,
     incidents: Array,
     notes: Array,
+    previousPeriod: Object,
+    nextPeriod: Object,
     typeLabels: Object,
 });
 
@@ -56,8 +58,36 @@ const handlePanelsChange = (names) => {
     mountedPanels.value = Array.from(new Set([...mountedPanels.value, ...names]));
 };
 
+// --- Collaborator filter: shows only the selected collaborators' panels ---
+
+const collaboratorFilter = ref([]);
+
+const visibleRows = computed(() => {
+    const rows = props.rows || [];
+
+    if (collaboratorFilter.value.length === 0) {
+        return rows;
+    }
+
+    return rows.filter((row) => collaboratorFilter.value.includes(row.user_id));
+});
+
+// The selection travels to the pre-payroll and the receipts, so both pages
+// can be printed for a subset of the period's collaborators.
+const selectedUserIds = computed(() => (collaboratorFilter.value.length > 0 ? [...collaboratorFilter.value] : null));
+
+const collaboratorLabel = (row) => `${row.name}${row.employee_number ? ` · ${row.employee_number}` : ''}`;
+
+// Opening the filter expands the panels of the selected collaborators.
+watch(collaboratorFilter, (selected) => {
+    if (selected.length > 0) {
+        activePanels.value = [...selected];
+        handlePanelsChange(selected);
+    }
+});
+
 const expandAll = () => {
-    activePanels.value = props.rows.map((row) => row.user_id);
+    activePanels.value = visibleRows.value.map((row) => row.user_id);
     handlePanelsChange(activePanels.value);
 };
 
@@ -128,11 +158,21 @@ const exportPeriod = () => {
 };
 
 const openPayslips = () => {
-    window.open(route('payroll.periods.payslips.print', props.period.id), '_blank');
+    const users = selectedUserIds.value;
+
+    window.open(
+        route('payroll.periods.payslips.print', { period: props.period.id, ...(users ? { users } : {}) }),
+        '_blank'
+    );
 };
 
 const openPrePayroll = () => {
-    window.open(route('payroll.periods.pre-payroll', props.period.id), '_blank');
+    const users = selectedUserIds.value;
+
+    window.open(
+        route('payroll.periods.pre-payroll', { period: props.period.id, ...(users ? { users } : {}) }),
+        '_blank'
+    );
 };
 </script>
 
@@ -144,6 +184,30 @@ const openPrePayroll = () => {
                     <Link :href="route('payroll.periods.index')">
                         <el-button :icon="Back" circle plain />
                     </Link>
+                    <div class="flex items-center gap-1">
+                        <el-tooltip
+                            :content="previousPeriod ? `Periodo anterior · ${previousPeriod.label}` : 'No hay periodo anterior'"
+                            placement="bottom"
+                        >
+                            <span>
+                                <Link v-if="previousPeriod" :href="route('payroll.periods.show', previousPeriod.id)">
+                                    <el-button :icon="ArrowLeft" circle plain />
+                                </Link>
+                                <el-button v-else :icon="ArrowLeft" circle plain disabled />
+                            </span>
+                        </el-tooltip>
+                        <el-tooltip
+                            :content="nextPeriod ? `Periodo siguiente · ${nextPeriod.label}` : 'No hay periodo siguiente'"
+                            placement="bottom"
+                        >
+                            <span>
+                                <Link v-if="nextPeriod" :href="route('payroll.periods.show', nextPeriod.id)">
+                                    <el-button :icon="ArrowRight" circle plain />
+                                </Link>
+                                <el-button v-else :icon="ArrowRight" circle plain disabled />
+                            </span>
+                        </el-tooltip>
+                    </div>
                     <div>
                         <h2 class="font-semibold text-gray-800 dark:text-white leading-tight">
                             Nómina {{ formatDate(period.start_date) }} — {{ formatDate(period.end_date) }}
@@ -160,18 +224,22 @@ const openPrePayroll = () => {
                 <div class="flex items-center gap-2">
                     <el-button
                         :icon="Document"
-                        :title="period.status === 'open'
-                            ? 'Imprimir la pre-nómina del periodo abierto'
-                            : 'Imprimir los recibos del periodo cerrado'"
+                        :title="collaboratorFilter.length > 0
+                            ? 'Imprimir los recibos de los colaboradores seleccionados'
+                            : (period.status === 'open'
+                                ? 'Imprimir la pre-nómina del periodo abierto'
+                                : 'Imprimir los recibos del periodo cerrado')"
                         @click="openPayslips"
                     >
                         Recibos
                     </el-button>
                     <el-button
                         :icon="Tickets"
-                        :title="period.status === 'open'
-                            ? 'Ver la pre-nómina de todos los colaboradores (cálculo en tiempo real)'
-                            : 'Ver la nómina de todos los colaboradores del periodo'"
+                        :title="collaboratorFilter.length > 0
+                            ? 'Ver la pre-nómina de los colaboradores seleccionados'
+                            : (period.status === 'open'
+                                ? 'Ver la pre-nómina de todos los colaboradores (cálculo en tiempo real)'
+                                : 'Ver la nómina de todos los colaboradores del periodo')"
                         @click="openPrePayroll"
                     >
                         Pre-nómina
@@ -241,15 +309,38 @@ const openPrePayroll = () => {
                     :disabled-date="disableOutsidePeriod"
                 />
                 <el-button v-if="isFiltered" size="small" @click="resetRange">Ver todo el periodo</el-button>
+                <el-divider direction="vertical" />
+                <div class="flex items-center gap-3">
+                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap">Colaborador</span>
+                    <el-select
+                        v-model="collaboratorFilter"
+                        multiple
+                        collapse-tags
+                        collapse-tags-tooltip
+                        filterable
+                        clearable
+                        placeholder="Todos los colaboradores"
+                        class="w-64"
+                    >
+                        <el-option
+                            v-for="row in rows"
+                            :key="row.user_id"
+                            :label="collaboratorLabel(row)"
+                            :value="row.user_id"
+                        />
+                    </el-select>
+                </div>
                 <span class="text-xs text-gray-500">
-                    Mostrando <strong>{{ rangeLabel }}</strong> en los días y marcajes de todos los colaboradores.
+                    Mostrando <strong>{{ rangeLabel }}</strong> en los días y registros.
                 </span>
             </div>
 
             <!-- Collaborators: the detail of every one of them, collapsible -->
             <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-xl border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
                 <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 dark:border-[#2b2b2e]">
-                    <p class="font-semibold text-gray-800 dark:text-gray-200">Colaboradores ({{ rows.length }})</p>
+                    <p class="font-semibold text-gray-800 dark:text-gray-200">
+                        Colaboradores ({{ visibleRows.length }}<template v-if="collaboratorFilter.length > 0"> de {{ rows.length }}</template>)
+                    </p>
                     <div class="flex gap-2">
                         <el-button size="small" :icon="Expand" @click="expandAll">Expandir todos</el-button>
                         <el-button size="small" :icon="Fold" @click="collapseAll">Contraer todos</el-button>
@@ -257,7 +348,7 @@ const openPrePayroll = () => {
                 </div>
 
                 <el-collapse v-model="activePanels" class="payroll-panels" @change="handlePanelsChange">
-                    <el-collapse-item v-for="row in rows" :key="row.user_id" :name="row.user_id">
+                    <el-collapse-item v-for="row in visibleRows" :key="row.user_id" :name="row.user_id">
                         <template #title>
                             <div class="flex flex-wrap items-center gap-x-5 gap-y-1 w-full pr-4">
                                 <div class="flex items-center gap-3 min-w-[230px]">

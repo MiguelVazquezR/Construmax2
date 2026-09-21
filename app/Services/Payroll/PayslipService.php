@@ -80,6 +80,7 @@ class PayslipService
             ->with(['user:id,name', 'user.payrollProfile', 'lines', 'days'])
             ->when($userIds !== [], fn ($query) => $query->whereIn('user_id', $userIds))
             ->get()
+            ->sortBy(fn (Payslip $payslip) => mb_strtolower((string) $payslip->user?->name))
             ->map(fn (Payslip $payslip) => $this->mapPayslip($payslip, $withDays))
             ->values();
     }

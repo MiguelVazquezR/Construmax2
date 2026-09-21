@@ -21,7 +21,7 @@ class StoreAttendanceLogRequest extends FormRequest
             'user_id' => ['required', 'integer', 'exists:users,id'],
             'type' => ['required', Rule::in(array_keys(AttendanceLog::TYPES))],
             'punched_at' => ['required', 'date'],
-            'edit_reason' => ['required', 'string', 'max:255'],
+            'edit_reason' => ['nullable', 'string', 'max:255'],
         ];
     }
 
@@ -29,9 +29,9 @@ class StoreAttendanceLogRequest extends FormRequest
     {
         return [
             'user_id.required' => 'Selecciona al colaborador.',
-            'type.required' => 'Selecciona el tipo de marcaje.',
-            'punched_at.required' => 'Indica la fecha y hora del marcaje.',
-            'edit_reason.required' => 'Describe el motivo del registro manual.',
+            'type.required' => 'Selecciona el tipo de registro.',
+            'punched_at.required' => 'Indica la fecha y hora del registro.',
+            'edit_reason.max' => 'El motivo no puede exceder los 255 caracteres.',
         ];
     }
 
@@ -52,7 +52,7 @@ class StoreAttendanceLogRequest extends FormRequest
             if ($punchedAt->toDateString() > $profile->termination_date->toDateString()) {
                 $validator->errors()->add(
                     'punched_at',
-                    'El colaborador fue dado de baja el '.$profile->termination_date->format('d/m/Y').': no se pueden registrar marcajes posteriores.'
+                    'El colaborador fue dado de baja el '.$profile->termination_date->format('d/m/Y').': no se pueden guardar registros posteriores.'
                 );
             }
         });

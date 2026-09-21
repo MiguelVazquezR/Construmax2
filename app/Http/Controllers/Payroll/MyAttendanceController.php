@@ -177,7 +177,7 @@ class MyAttendanceController extends Controller
         if ($settings->face_recognition_enabled && $this->faceRecognition->isConfigured()) {
             if (empty($validated['photo'])) {
                 throw ValidationException::withMessages([
-                    'photo' => 'Se requiere la foto de tu rostro para registrar el marcaje remoto.',
+                    'photo' => 'Se requiere la foto de tu rostro para registrar la asistencia remota.',
                 ]);
             }
 

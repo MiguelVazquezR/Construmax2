@@ -8,6 +8,10 @@ import PhotoUploader from '@/Components/Forms/PhotoUploader.vue';
 const props = defineProps({
     roles: Array, // Recibimos la lista de roles
     faceRecognitionEnabled: Boolean,
+    shifts: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const formRef = ref();
@@ -37,7 +41,7 @@ const form = useForm({
     is_payroll_subject: false,
     is_attendance_subject: false,
     can_remote_attendance: false,
-    kiosk_pin: '',
+    shift_id: null,
 });
 
 const rules = reactive({
@@ -200,7 +204,7 @@ const submit = () => {
                         </div>
 
                         <!-- Sección: Nómina y asistencia -->
-                        <PayrollProfileFields :form="form" />
+                        <PayrollProfileFields :form="form" :shifts="shifts" />
 
                         <!-- Botones de Acción -->
                         <div class="flex justify-end gap-3 pt-4 border-t border-gray-100 dark:border-gray-700">

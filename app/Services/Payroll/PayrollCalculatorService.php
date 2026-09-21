@@ -86,10 +86,11 @@ class PayrollCalculatorService
      *  - Holiday: paid rest day; when worked, an extra day at the configured
      *    multiplier (LFT art. 75).
      *  - Incidents: paid fraction by type (vacations and paid permissions are
-     *    full days; medical leaves use their configured percentage; unpaid
-     *    permissions and unjustified absences are not paid). They apply on
-     *    scheduled workdays and also when the collaborator has no schedule,
-     *    whose registered incidents are the only source of truth for the day.
+     *    full days; medical leaves use their configured percentage; justified
+     *    absences, unpaid permissions and unjustified absences are not paid).
+     *    They apply on scheduled workdays and also when the collaborator has
+     *    no schedule, whose registered incidents are the only source of truth
+     *    for the day.
      *  - Late arrivals: only discounted when the settings say so, and only
      *    when the late was not manually ignored.
      *  - Worked rest days count as overtime hours.

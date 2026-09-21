@@ -95,7 +95,7 @@ const submitFace = async () => {
     errorMessage.value = '';
 
     if (!selectedType.value) {
-        errorMessage.value = 'Selecciona el tipo de marcaje.';
+        errorMessage.value = 'Selecciona el tipo de registro.';
         return;
     }
 
@@ -127,7 +127,7 @@ const submitFace = async () => {
         const errors = error.response?.data?.errors;
         errorMessage.value = errors
             ? Object.values(errors).flat()[0]
-            : 'No se pudo registrar el marcaje. Intenta de nuevo.';
+            : 'No se pudo guardar el registro. Intenta de nuevo.';
     } finally {
         faceSubmitting.value = false;
     }
@@ -201,7 +201,7 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div class="bg-white/5 border border-white/10 rounded-2xl p-8 flex-1 flex flex-col">
-                    <h2 class="text-xl font-semibold mb-6">Registra tu marcaje</h2>
+                    <h2 class="text-xl font-semibold mb-6">Registra tu asistencia</h2>
 
                     <!-- Punch type -->
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
@@ -234,7 +234,7 @@ onBeforeUnmount(() => {
                             :loading="faceSubmitting"
                             @click="submitFace"
                         >
-                            Marcar con rostro
+                            Registrar con rostro
                         </el-button>
                     </div>
 
@@ -246,7 +246,7 @@ onBeforeUnmount(() => {
                             Se requiere la cámara para identificar tu rostro. Pide ayuda al administrador.
                         </template>
                         <template v-else>
-                            Presiona "Marcar con rostro" y mira de frente a la cámara.
+                            Presiona "Registrar con rostro" y mira de frente a la cámara.
                         </template>
                     </p>
                 </div>
@@ -270,7 +270,7 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div v-if="faceRecognitionEnabled" class="bg-emerald-500/10 border border-emerald-400/30 rounded-xl px-4 py-3 text-sm text-emerald-200">
-                    Reconocimiento facial activo: presiona "Marcar con rostro" para identificarte.
+                    Reconocimiento facial activo: presiona "Registrar con rostro" para identificarte.
                 </div>
 
                 <p v-else class="bg-red-500/10 border border-red-400/30 rounded-xl px-4 py-3 text-sm text-red-200">
@@ -290,7 +290,7 @@ onBeforeUnmount(() => {
                 </p>
                 <p class="text-slate-300 text-sm mt-6">
                     <template v-if="result.suggested_next_label">
-                        Siguiente marcaje sugerido: <span class="font-semibold text-slate-100">{{ result.suggested_next_label }}</span>
+                        Siguiente registro sugerido: <span class="font-semibold text-slate-100">{{ result.suggested_next_label }}</span>
                     </template>
                 </p>
                 <p class="text-slate-400 text-xs mt-8">Puedes retirarte, el kiosco se reinicia en unos segundos.</p>

@@ -84,8 +84,25 @@ class PayrollPeriodController extends Controller
             'adjustments' => $period->adjustments()->with('user:id,name')->get(),
             'incidents' => $this->periodIncidents($period),
             'notes' => $this->periodNotes($period),
+            'previousPeriod' => $this->adjacentPeriod($period, 'before'),
+            'nextPeriod' => $this->adjacentPeriod($period, 'after'),
             'typeLabels' => PayrollSetting::PERIOD_TYPES,
         ]);
+    }
+
+    /**
+     * Immediate previous/next period so the view can jump between them.
+     *
+     * @return array{id: int, label: string}|null
+     */
+    private function adjacentPeriod(PayrollPeriod $period, string $direction): ?array
+    {
+        $query = PayrollPeriod::query()
+            ->where('start_date', $direction === 'before' ? '<' : '>', $period->start_date);
+
+        $adjacent = ($direction === 'before' ? $query->orderByDesc('start_date') : $query->orderBy('start_date'))->first();
+
+        return $adjacent ? ['id' => $adjacent->id, 'label' => $adjacent->label()] : null;
     }
 
     /**
@@ -146,13 +163,21 @@ class PayrollPeriodController extends Controller
     /**
      * Pre-payroll sheet of the whole period: every collaborator with their
      * totals, concept lines and day-by-day detail (live for open periods,
-     * frozen for closed ones).
+     * frozen for closed ones). Accepts an optional "users" query parameter
+     * (array or comma-separated ids) to include only those collaborators.
      */
     public function prePayroll(Request $request, PayrollPeriod $period): Response
     {
         $this->authorizePeriods($request);
 
-        $rows = $this->payslipService->prePayrollPayloads($period);
+        $userIds = collect(is_array($request->input('users')) ? $request->input('users') : explode(',', (string) $request->input('users')))
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $rows = $this->payslipService->prePayrollPayloads($period, $userIds);
 
         return Inertia::render('Payroll/Periods/PrePayroll', [
             'period' => [
@@ -205,13 +230,15 @@ class PayrollPeriodController extends Controller
             ->groupBy(fn (AttendanceLog $log) => $log->punched_at->toDateString());
 
         foreach ($days as $index => $day) {
-            $days[$index]['punches'] = collect($logs[$day['date']] ?? [])
+            $dayLogs = collect($logs[$day['date']] ?? []);
+
+            $days[$index]['punches'] = $dayLogs
                 ->map(fn (AttendanceLog $log) => [
                     'id' => $log->id,
                     'type' => $log->type,
                     'type_label' => $log->type_label,
                     'time' => $log->punched_at->format('H:i'),
-                    'punched_at' => $log->punched_at->format('Y-m-d H:i'),
+                    'punched_at' => $log->punched_at->format('Y-m-d H:i:s'),
                     'source' => $log->source,
                     'identifier_method' => $log->identifier_method,
                     'capture_url' => $log->capture_url,
@@ -223,6 +250,9 @@ class PayrollPeriodController extends Controller
                 ])
                 ->values()
                 ->all();
+
+            // Recommended next punch of the day (entry → lunch start → lunch end → exit).
+            $days[$index]['suggested_next'] = AttendanceLog::nextSuggestedType($dayLogs);
         }
 
         return response()->json([
@@ -415,7 +445,11 @@ class PayrollPeriodController extends Controller
                 );
             }
         } else {
-            $payslips = $period->payslips()->with(['user:id,name', 'user.payrollProfile'])->get();
+            $payslips = $period->payslips()
+                ->with(['user:id,name', 'user.payrollProfile'])
+                ->get()
+                ->sortBy(fn ($payslip) => mb_strtolower((string) $payslip->user?->name))
+                ->values();
 
             foreach ($payslips as $payslip) {
                 $rows[] = $this->buildRow(

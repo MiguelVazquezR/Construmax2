@@ -29,23 +29,26 @@ class AttendanceLogController extends Controller
             'user_agent' => $request->userAgent(),
             'edited_by' => $request->user()->id,
             'edited_at' => now(),
-            'edit_reason' => $validated['edit_reason'],
+            'edit_reason' => $validated['edit_reason'] ?? null,
         ]);
 
-        return back()->with('success', 'Marcaje registrado manualmente.');
+        return back()->with('success', 'Registro guardado manualmente.');
     }
 
     public function update(UpdateAttendanceLogRequest $request, AttendanceLog $attendanceLog): RedirectResponse
     {
+        $reason = trim((string) ($request->validated('edit_reason') ?? ''));
+
         $attendanceLog->update([
             'punched_at' => $request->validated('punched_at'),
             'type' => $request->validated('type') ?? $attendanceLog->type,
             'edited_by' => $request->user()->id,
             'edited_at' => now(),
-            'edit_reason' => $request->validated('edit_reason'),
+            // An empty reason keeps the one stored by a previous correction.
+            'edit_reason' => $reason !== '' ? $reason : $attendanceLog->edit_reason,
         ]);
 
-        return back()->with('success', 'Marcaje actualizado y auditado.');
+        return back()->with('success', 'Registro actualizado y auditado.');
     }
 
     public function destroy(Request $request, AttendanceLog $attendanceLog): RedirectResponse
@@ -56,6 +59,6 @@ class AttendanceLogController extends Controller
 
         $attendanceLog->delete();
 
-        return back()->with('success', 'Marcaje eliminado.');
+        return back()->with('success', 'Registro eliminado.');
     }
 }

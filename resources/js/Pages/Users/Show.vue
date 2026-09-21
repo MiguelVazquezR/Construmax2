@@ -672,11 +672,6 @@ const removeAdjustment = (adjustment) => {
                                         {{ user.payroll_profile.can_remote_attendance ? 'Habilitada' : 'Deshabilitada' }}
                                     </el-tag>
                                 </el-descriptions-item>
-                                <el-descriptions-item label="PIN de kiosco">
-                                    <el-tag :type="user.payroll_profile.has_kiosk_pin ? 'success' : 'info'" size="small" effect="plain">
-                                        {{ user.payroll_profile.has_kiosk_pin ? 'Configurado' : 'Sin configurar' }}
-                                    </el-tag>
-                                </el-descriptions-item>
                             </el-descriptions>
 
                             <div

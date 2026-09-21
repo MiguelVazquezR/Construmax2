@@ -37,7 +37,7 @@ const handleChange = (file) => {
 </script>
 
 <template>
-    <div class="relative group">
+    <div class="photo-uploader text-center">
         <el-upload
             class="avatar-uploader"
             action="#"
@@ -46,19 +46,42 @@ const handleChange = (file) => {
             :on-change="handleChange"
             accept="image/jpeg,image/png,image/webp"
         >
-            <div v-if="preview" class="relative">
-                <el-avatar :size="100" :src="preview" class="border-2 border-gray-200" />
-                <div class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                    <el-icon class="text-white text-xl"><Camera /></el-icon>
+            <div v-if="preview" class="photo-preview relative">
+                <el-avatar :size="104" :src="preview" class="border border-gray-200 dark:border-[#3f3f46]" />
+                <div class="photo-overlay absolute inset-0 flex items-center justify-center rounded-full bg-black/45 opacity-0 transition-opacity">
+                    <el-icon class="text-white" :size="20"><Camera /></el-icon>
                 </div>
             </div>
-            <div v-else class="w-[100px] h-[100px] rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 cursor-pointer hover:border-primary transition-colors">
-                <div class="text-center text-gray-400">
-                    <el-icon class="text-xl mb-1"><Plus /></el-icon>
-                    <div class="text-[10px]">Foto</div>
+
+            <div v-else class="photo-empty flex h-[104px] w-[104px] items-center justify-center rounded-full border-2 border-dashed border-gray-300 bg-gray-50 transition-colors dark:border-[#3f3f46] dark:bg-[#252529]">
+                <div class="photo-empty-content text-center text-gray-400 transition-colors">
+                    <el-icon :size="20"><Plus /></el-icon>
+                    <p class="mt-0.5 text-[10px] font-medium">Subir foto</p>
                 </div>
             </div>
         </el-upload>
-        <p v-if="hint" class="text-center text-xs text-gray-400 mt-2">{{ hint }}</p>
+
+        <p v-if="hint" class="mt-2 text-xs text-gray-400">{{ hint }}</p>
     </div>
 </template>
+
+<style scoped>
+.avatar-uploader :deep(.el-upload) {
+    border-radius: 50%;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.photo-preview:hover .photo-overlay {
+    opacity: 1;
+}
+
+.photo-empty:hover {
+    border-color: #f26c17;
+}
+
+.photo-empty:hover .photo-empty-content {
+    color: #f26c17;
+}
+</style>

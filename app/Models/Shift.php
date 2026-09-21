@@ -17,9 +17,12 @@ class Shift extends Model
 
     public const TYPE_FLEXIBLE = 'flexible';
 
+    public const TYPE_PER_DAY = 'per_day';
+
     public const TYPES = [
         self::TYPE_FIXED => 'Fijo',
         self::TYPE_FLEXIBLE => 'Flexible',
+        self::TYPE_PER_DAY => 'Por día',
     ];
 
     /**
@@ -45,6 +48,7 @@ class Shift extends Model
         'meal_minutes',
         'is_meal_paid',
         'days',
+        'day_schedules',
         'required_daily_hours',
         'late_tolerance_minutes',
         'is_active',
@@ -53,6 +57,7 @@ class Shift extends Model
 
     protected $casts = [
         'days' => 'array',
+        'day_schedules' => 'array',
         'is_meal_paid' => 'boolean',
         'is_active' => 'boolean',
         'required_daily_hours' => 'decimal:2',
@@ -70,9 +75,63 @@ class Shift extends Model
         return $this->hasMany(ShiftAssignment::class);
     }
 
+    /**
+     * Active shifts ready to feed the shift selector of the user and
+     * technician forms.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function optionList(): array
+    {
+        return static::query()
+            ->active()
+            ->orderBy('name')
+            ->get([
+                'id',
+                'name',
+                'type',
+                'start_time',
+                'end_time',
+                'meal_minutes',
+                'is_meal_paid',
+                'days',
+                'day_schedules',
+                'required_daily_hours',
+            ])
+            ->toArray();
+    }
+
     public function isFlexible(): bool
     {
         return $this->type === self::TYPE_FLEXIBLE;
+    }
+
+    public function isPerDay(): bool
+    {
+        return $this->type === self::TYPE_PER_DAY;
+    }
+
+    /**
+     * Schedule configured for a weekday of a per-day shift (null on rest days
+     * or when the day has no start/end times configured).
+     *
+     * @return array{start_time: string, end_time: string, meal_minutes: int}|null
+     */
+    public function dayScheduleFor(CarbonInterface $date): ?array
+    {
+        $schedules = $this->day_schedules ?? [];
+        $weekday = $date->isoWeekday();
+        $schedule = $schedules[(string) $weekday] ?? $schedules[$weekday] ?? null;
+
+        if (! is_array($schedule) || empty($schedule['start_time']) || empty($schedule['end_time'])) {
+            return null;
+        }
+
+        return [
+            'start_time' => (string) $schedule['start_time'],
+            'end_time' => (string) $schedule['end_time'],
+            'meal_minutes' => (int) ($schedule['meal_minutes'] ?? 0),
+        ];
     }
 
     /**
@@ -80,22 +139,47 @@ class Shift extends Model
      */
     public function isWorkday(CarbonInterface $date): bool
     {
+        if ($this->isPerDay()) {
+            return $this->dayScheduleFor($date) !== null;
+        }
+
         return in_array((int) $date->isoWeekday(), $this->days ?? [], true);
     }
 
     /**
-     * Expected minutes per working day (net of unpaid meal time).
+     * Expected minutes per working day (net of unpaid meal time). Per-day
+     * shifts use the schedule configured for the given date.
      */
-    public function expectedDailyMinutes(): int
+    public function expectedDailyMinutes(?CarbonInterface $date = null): int
     {
-        if ($this->isFlexible() || ! $this->start_time || ! $this->end_time) {
+        if ($this->isFlexible() || (! $this->isPerDay() && (! $this->start_time || ! $this->end_time))) {
             $hours = (float) ($this->required_daily_hours ?? 0);
 
             return (int) round($hours * 60);
         }
 
-        $start = Carbon::parse($this->start_time);
-        $end = Carbon::parse($this->end_time);
+        $mealMinutes = (int) $this->meal_minutes;
+        $start = $this->start_time;
+        $end = $this->end_time;
+
+        if ($this->isPerDay()) {
+            $schedule = $this->dayScheduleFor($date ?? Carbon::today());
+
+            if (! $schedule) {
+                return 0;
+            }
+
+            $start = $schedule['start_time'];
+            $end = $schedule['end_time'];
+            $mealMinutes = $schedule['meal_minutes'];
+        }
+
+        if (! $start || ! $end) {
+            return 0;
+        }
+
+        $start = Carbon::parse($start);
+        $end = Carbon::parse($end);
 
         if ($end->lessThanOrEqualTo($start)) {
             $end->addDay();
@@ -104,35 +188,45 @@ class Shift extends Model
         $minutes = $start->diffInMinutes($end);
 
         if (! $this->is_meal_paid) {
-            $minutes -= (int) $this->meal_minutes;
+            $minutes -= $mealMinutes;
         }
 
         return max(0, (int) $minutes);
     }
 
     /**
-     * Expected start datetime for a given date (null for flexible shifts).
+     * Expected start datetime for a given date (null for flexible shifts and
+     * for rest days of a per-day shift).
      */
     public function expectedStartFor(CarbonInterface $date): ?Carbon
     {
-        if ($this->isFlexible() || ! $this->start_time) {
+        $startTime = $this->isPerDay()
+            ? $this->dayScheduleFor($date)['start_time'] ?? null
+            : $this->start_time;
+
+        if ($this->isFlexible() || ! $startTime) {
             return null;
         }
 
-        return Carbon::parse($date->toDateString().' '.$this->start_time);
+        return Carbon::parse($date->toDateString().' '.$startTime);
     }
 
     /**
-     * Expected end datetime for a given date (null for flexible shifts).
+     * Expected end datetime for a given date (null for flexible shifts and
+     * for rest days of a per-day shift).
      */
     public function expectedEndFor(CarbonInterface $date): ?Carbon
     {
-        if ($this->isFlexible() || ! $this->end_time) {
+        $schedule = $this->isPerDay() ? $this->dayScheduleFor($date) : null;
+        $startTime = $this->isPerDay() ? $schedule['start_time'] ?? null : $this->start_time;
+        $endTime = $this->isPerDay() ? $schedule['end_time'] ?? null : $this->end_time;
+
+        if ($this->isFlexible() || ! $startTime || ! $endTime) {
             return null;
         }
 
-        $start = Carbon::parse($date->toDateString().' '.$this->start_time);
-        $end = Carbon::parse($date->toDateString().' '.$this->end_time);
+        $start = Carbon::parse($date->toDateString().' '.$startTime);
+        $end = Carbon::parse($date->toDateString().' '.$endTime);
 
         if ($end->lessThanOrEqualTo($start)) {
             $end->addDay();

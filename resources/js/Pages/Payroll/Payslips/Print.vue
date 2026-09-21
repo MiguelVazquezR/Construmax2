@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted } from 'vue';
+import { onBeforeUnmount, onMounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { Printer, Back } from '@element-plus/icons-vue';
 
@@ -8,6 +8,17 @@ const props = defineProps({
     payslips: Array,
     isPreview: Boolean,
     appName: String,
+});
+
+// The receipts are a light-only document: while the page is open the dark
+// theme is removed and the user preference is restored when leaving.
+const hadDarkTheme = document.documentElement.classList.contains('dark');
+document.documentElement.classList.remove('dark');
+
+onBeforeUnmount(() => {
+    if (hadDarkTheme) {
+        document.documentElement.classList.add('dark');
+    }
 });
 
 const money = (value) =>
@@ -201,6 +212,7 @@ onMounted(() => {
 <style scoped>
 .payslips-page {
     background: #f4f6f8;
+    color-scheme: light;
 }
 
 .payslips-container {

@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Payroll\AssignUserShiftAction;
 use App\Actions\Payroll\EnrollProfilePhotoAction;
 use App\Actions\Payroll\SyncPayrollProfileAction;
+use App\Models\Shift;
+use App\Models\ShiftAssignment;
 use App\Models\Technician;
 use App\Models\TechnicianBankAccount;
 use App\Models\TechnicianPayment;
@@ -24,6 +27,7 @@ class TechnicianController extends Controller
         private readonly ImageOptimizerService $imageOptimizer,
         private readonly SyncPayrollProfileAction $syncPayrollProfileAction,
         private readonly EnrollProfilePhotoAction $enrollProfilePhotoAction,
+        private readonly AssignUserShiftAction $assignUserShiftAction,
     ) {}
 
     public function index(Request $request)
@@ -76,6 +80,8 @@ class TechnicianController extends Controller
         // Pasamos las especialidades también al formulario de creación si lo necesitas
         return Inertia::render('Technicians/Create', [
             'availableSpecialties' => TechnicianSpecialty::active()->orderBy('name')->pluck('name'),
+            'shifts' => Shift::optionList(),
+            'currentShiftId' => null,
         ]);
     }
 
@@ -156,6 +162,8 @@ class TechnicianController extends Controller
 
             $this->syncPayrollProfileAction->execute($technician->user, $payrollProfile);
 
+            $this->assignUserShiftAction->executeFromForm($request, $technician->user, $validated);
+
             // The profile photo doubles as the face reference of the attendance kiosk.
             if ($optimizedPhotoPath !== null) {
                 $this->enrollProfilePhotoAction->execute($technician->user, $optimizedPhotoPath, $request->user());
@@ -227,6 +235,8 @@ class TechnicianController extends Controller
         return Inertia::render('Technicians/Edit', [
             'technician' => $technician->load(['user.payrollProfile', 'bankAccounts.media']),
             'availableSpecialties' => TechnicianSpecialty::active()->orderBy('name')->pluck('name'),
+            'shifts' => Shift::optionList(),
+            'currentShiftId' => ShiftAssignment::currentFor($technician->user)?->shift_id,
         ]);
     }
 
@@ -304,6 +314,8 @@ class TechnicianController extends Controller
 
             $this->syncPayrollProfileAction->execute($technician->user, $payrollProfile);
 
+            $this->assignUserShiftAction->executeFromForm($request, $technician->user, $validated);
+
             // The profile photo doubles as the face reference of the attendance kiosk.
             if ($optimizedPhotoPath !== null) {
                 $this->enrollProfilePhotoAction->execute($technician->user, $optimizedPhotoPath, $request->user());
@@ -341,6 +353,7 @@ class TechnicianController extends Controller
             'is_attendance_subject' => ['sometimes', 'boolean'],
             'can_remote_attendance' => ['sometimes', 'boolean'],
             'kiosk_pin' => ['nullable', 'string', 'min:4', 'max:12', 'regex:/^[0-9]+$/'],
+            'shift_id' => ['nullable', 'integer', 'exists:shifts,id'],
         ];
     }
 

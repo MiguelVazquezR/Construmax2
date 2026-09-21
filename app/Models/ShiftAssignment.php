@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -87,6 +88,23 @@ class ShiftAssignment extends Model
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
+    }
+
+    /**
+     * Individual fixed assignment effective today (the one resolved first by
+     * the schedule resolver). Null when the collaborator falls back to their
+     * department assignment.
+     */
+    public static function currentFor(User $user): ?self
+    {
+        return static::query()
+            ->where('user_id', $user->id)
+            ->where('type', self::TYPE_FIXED)
+            ->where('is_active', true)
+            ->effectiveOn(CarbonImmutable::today())
+            ->orderByDesc('start_date')
+            ->orderByDesc('id')
+            ->first();
     }
 
     public function scopeEffectiveOn(Builder $query, CarbonInterface $date): Builder

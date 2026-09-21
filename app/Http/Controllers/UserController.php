@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Payroll\AssignUserShiftAction;
 use App\Actions\Payroll\EnrollProfilePhotoAction;
 use App\Actions\Payroll\SyncPayrollProfileAction;
 use App\Models\FaceEnrollment;
 use App\Models\PayrollSetting;
+use App\Models\Shift;
+use App\Models\ShiftAssignment;
 use App\Models\User;
 use App\Models\VacationAdjustment;
 use App\Models\VacationRequest;
@@ -30,6 +33,7 @@ class UserController extends Controller
         private readonly EnrollProfilePhotoAction $enrollProfilePhotoAction,
         private readonly ImageOptimizerService $imageOptimizer,
         private readonly VacationService $vacationService,
+        private readonly AssignUserShiftAction $assignUserShiftAction,
     ) {}
 
     public function index(Request $request)
@@ -54,6 +58,8 @@ class UserController extends Controller
         return Inertia::render('Users/Create', [
             'roles' => Role::all(),
             'faceRecognitionEnabled' => $this->faceRecognitionEnabled(),
+            'shifts' => Shift::optionList(),
+            'currentShiftId' => null,
         ]);
     }
 
@@ -93,6 +99,8 @@ class UserController extends Controller
 
             $this->syncPayrollProfileAction->execute($user, $payrollProfile);
 
+            $this->assignUserShiftAction->executeFromForm($request, $user, $validated);
+
             return $request->hasFile('photo')
                 ? $this->applyProfilePhoto($user, $request->file('photo'), $request->user())
                 : null;
@@ -130,6 +138,8 @@ class UserController extends Controller
             'user' => $user->load(['employee', 'payrollProfile', 'roles']),
             'roles' => Role::all(), // Enviamos roles para la edición
             'faceRecognitionEnabled' => $this->faceRecognitionEnabled(),
+            'shifts' => Shift::optionList(),
+            'currentShiftId' => ShiftAssignment::currentFor($user)?->shift_id,
         ]);
     }
 
@@ -175,6 +185,8 @@ class UserController extends Controller
             );
 
             $this->syncPayrollProfileAction->execute($user, $payrollProfile);
+
+            $this->assignUserShiftAction->executeFromForm($request, $user, $validated);
 
             return $request->hasFile('photo')
                 ? $this->applyProfilePhoto($user, $request->file('photo'), $request->user())
@@ -284,6 +296,7 @@ class UserController extends Controller
             'is_attendance_subject' => ['sometimes', 'boolean'],
             'can_remote_attendance' => ['sometimes', 'boolean'],
             'kiosk_pin' => ['nullable', 'string', 'min:4', 'max:12', 'regex:/^[0-9]+$/'],
+            'shift_id' => ['nullable', 'integer', 'exists:shifts,id'],
         ];
     }
 

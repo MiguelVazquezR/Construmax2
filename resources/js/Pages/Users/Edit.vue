@@ -9,6 +9,14 @@ const props = defineProps({
     user: Object,
     roles: Array, // Lista de roles disponibles
     faceRecognitionEnabled: Boolean,
+    shifts: {
+        type: Array,
+        default: () => [],
+    },
+    currentShiftId: {
+        type: Number,
+        default: null,
+    },
 });
 
 const formRef = ref();
@@ -48,7 +56,7 @@ const form = useForm({
     is_payroll_subject: Boolean(profile.is_payroll_subject),
     is_attendance_subject: Boolean(profile.is_attendance_subject),
     can_remote_attendance: Boolean(profile.can_remote_attendance),
-    kiosk_pin: '',
+    shift_id: props.currentShiftId ?? null,
 });
 
 const rules = reactive({
@@ -207,7 +215,7 @@ const submit = () => {
                         </div>
 
                         <!-- Sección: Nómina y asistencia -->
-                        <PayrollProfileFields :form="form" />
+                        <PayrollProfileFields :form="form" :shifts="shifts" />
 
                         <!-- Botones -->
                         <div class="flex justify-end gap-3 pt-4 border-t border-gray-100 dark:border-gray-700">

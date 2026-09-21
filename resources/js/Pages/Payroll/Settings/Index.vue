@@ -354,7 +354,7 @@ const submit = () => {
                     <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-6">
                         <h3 class="font-bold text-gray-800 dark:text-gray-100 mb-4">Evidencia de asistencia</h3>
 
-                        <el-form-item label="Conservar fotos de marcaje (meses)" prop="attendance_capture_retention_months" :error="form.errors.attendance_capture_retention_months">
+                        <el-form-item label="Conservar fotos de registro (meses)" prop="attendance_capture_retention_months" :error="form.errors.attendance_capture_retention_months">
                             <el-input-number
                                 v-model="form.attendance_capture_retention_months"
                                 :min="1"
@@ -365,7 +365,7 @@ const submit = () => {
                         </el-form-item>
 
                         <p class="text-xs text-gray-400 dark:text-gray-500">
-                            Las fotos capturadas en cada marcaje se eliminan automáticamente al vencer este plazo.
+                            Las fotos capturadas en cada registro se eliminan automáticamente al vencer este plazo.
                         </p>
                     </div>
                 </div>

@@ -164,26 +164,56 @@ const openRecords = (day) => {
 
 // --- Punch editing ---
 
+const PUNCH_TYPE_LABELS = {
+    check_in: 'Entrada',
+    lunch_start: 'Inicio de comida',
+    lunch_end: 'Fin de comida',
+    break_start: 'Permiso / salida',
+    break_end: 'Regreso de permiso',
+    check_out: 'Salida',
+};
+
 const punchDialog = ref(false);
 const editingPunch = ref(null);
 const punchForm = useForm({ punched_at: null, type: null, edit_reason: '' });
 
+// Date and time travel in separate inputs and are combined on save.
+const punchDate = ref(null);
+const punchTime = ref(null);
+
+// Recommended next punch of a day: entry → lunch start → lunch end → exit.
+// The suggestion comes from the backend with the day detail.
+const suggestedTypeFor = (date) => days.value.find((day) => day.date === date)?.suggested_next || 'check_in';
+
+const suggestedLabelFor = (date) => (date ? PUNCH_TYPE_LABELS[suggestedTypeFor(date)] : null);
+
+const editSuggestedLabel = computed(() => suggestedLabelFor(punchDate.value));
+const addSuggestedLabel = computed(() => suggestedLabelFor(newPunchDate.value));
+
 const openPunchDialog = (punch) => {
     editingPunch.value = punch;
     punchForm.clearErrors();
-    punchForm.punched_at = punch.punched_at;
+    punchDate.value = String(punch.punched_at).substring(0, 10);
+    punchTime.value = punch.time;
     punchForm.type = punch.type;
-    punchForm.edit_reason = '';
+    // The stored reason is kept on screen so saving without touching it does not lose it.
+    punchForm.edit_reason = punch.edit_reason || '';
     punchDialog.value = true;
 };
 
 const savePunch = () => {
-    punchForm.put(route('payroll.attendance-logs.update', editingPunch.value.id), {
-        onSuccess: () => {
-            punchDialog.value = false;
-            refreshAll();
-        },
-    });
+    punchForm
+        .transform(() => ({
+            punched_at: `${punchDate.value ?? ''} ${punchTime.value ?? ''}:00`,
+            type: punchForm.type,
+            edit_reason: punchForm.edit_reason,
+        }))
+        .put(route('payroll.attendance-logs.update', editingPunch.value.id), {
+            onSuccess: () => {
+                punchDialog.value = false;
+                refreshAll();
+            },
+        });
 };
 
 const deletePunch = (punch) => {
@@ -201,22 +231,43 @@ const deletePunch = (punch) => {
 const addPunchDialog = ref(false);
 const addPunchForm = useForm({ user_id: null, type: 'check_in', punched_at: null, edit_reason: '' });
 
-const openAddPunchDialog = () => {
+const newPunchDate = ref(null);
+const newPunchTime = ref(null);
+
+const todayIso = () => {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+
+    return `${now.getFullYear()}-${month}-${day}`;
+};
+
+// Opened from the toolbar (today) or from a day's records dialog (that day).
+const openAddPunchDialog = (day = null) => {
     addPunchForm.clearErrors();
     addPunchForm.user_id = props.row.user_id;
-    addPunchForm.type = 'check_in';
-    addPunchForm.punched_at = null;
+    newPunchDate.value = day?.date || todayIso();
+    // Pre-selects the recommended punch of that day (entry, lunch start, lunch end, exit).
+    addPunchForm.type = day?.suggested_next || suggestedTypeFor(newPunchDate.value);
+    newPunchTime.value = null;
     addPunchForm.edit_reason = '';
     addPunchDialog.value = true;
 };
 
 const saveNewPunch = () => {
-    addPunchForm.post(route('payroll.attendance-logs.store'), {
-        onSuccess: () => {
-            addPunchDialog.value = false;
-            refreshAll();
-        },
-    });
+    addPunchForm
+        .transform(() => ({
+            user_id: addPunchForm.user_id,
+            type: addPunchForm.type,
+            punched_at: `${newPunchDate.value ?? ''} ${newPunchTime.value ?? ''}:00`,
+            edit_reason: addPunchForm.edit_reason,
+        }))
+        .post(route('payroll.attendance-logs.store'), {
+            onSuccess: () => {
+                addPunchDialog.value = false;
+                refreshAll();
+            },
+        });
 };
 
 // --- Day overrides ---
@@ -400,7 +451,7 @@ const destroyNote = (note) => {
                     Ajustes<template v-if="userAdjustments.length > 0"> ({{ userAdjustments.length }})</template>
                 </el-button>
                 <el-button v-if="canEdit" size="small" :icon="Plus" @click="openAddPunchDialog">Agregar registro</el-button>
-                <el-button v-if="canManageIncidents && isOpen" size="small" :icon="Plus" plain @click="openIncidentDialog()">
+                <el-button v-if="canManageIncidents" size="small" :icon="Plus" plain @click="openIncidentDialog()">
                     Agregar incidencia
                 </el-button>
             </div>
@@ -460,7 +511,7 @@ const destroyNote = (note) => {
                                     Comida {{ scope.row.lunch_start || '—' }} – {{ scope.row.lunch_end || '—' }}
                                 </p>
                             </template>
-                            <span v-else class="text-gray-400">Sin checadas</span>
+                            <span v-else class="text-gray-400">Sin registros</span>
                         </template>
                     </el-table-column>
 
@@ -697,21 +748,44 @@ const destroyNote = (note) => {
         <!-- Punch edit dialog -->
         <el-dialog v-model="punchDialog" :title="`Editar registro de ${row?.name}`" width="460px" top="12vh">
             <el-form :model="punchForm" label-position="top" size="default">
-                <el-form-item label="Fecha y hora" required :error="punchForm.errors.punched_at">
-                    <el-date-picker v-model="punchForm.punched_at" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" format="DD/MM/YYYY HH:mm" class="w-full" />
+                <div class="grid grid-cols-2 gap-4">
+                    <el-form-item label="Fecha" required :error="punchForm.errors.punched_at">
+                        <el-date-picker
+                            v-model="punchDate"
+                            type="date"
+                            value-format="YYYY-MM-DD"
+                            format="DD/MM/YYYY"
+                            placeholder="Seleccionar fecha"
+                            class="w-full"
+                        />
+                    </el-form-item>
+                    <el-form-item label="Hora" required :error="punchForm.errors.punched_at">
+                        <el-time-picker
+                            v-model="punchTime"
+                            value-format="HH:mm"
+                            format="HH:mm"
+                            placeholder="Seleccionar hora"
+                            class="w-full"
+                        />
+                    </el-form-item>
+                </div>
+                <el-form-item label="Tipo de registro" :error="punchForm.errors.type">
+                    <div class="w-full">
+                        <el-select v-model="punchForm.type" class="w-full">
+                            <el-option label="Entrada" value="check_in" />
+                            <el-option label="Inicio de comida" value="lunch_start" />
+                            <el-option label="Fin de comida" value="lunch_end" />
+                            <el-option label="Permiso / salida" value="break_start" />
+                            <el-option label="Regreso de permiso" value="break_end" />
+                            <el-option label="Salida" value="check_out" />
+                        </el-select>
+                        <p v-if="editSuggestedLabel" class="text-xs text-gray-400 mt-1">
+                            Recomendado para este día: <span class="font-medium text-gray-600 dark:text-gray-300">{{ editSuggestedLabel }}</span>
+                        </p>
+                    </div>
                 </el-form-item>
-                <el-form-item label="Tipo de marcaje" :error="punchForm.errors.type">
-                    <el-select v-model="punchForm.type" class="w-full">
-                        <el-option label="Entrada" value="check_in" />
-                        <el-option label="Inicio de comida" value="lunch_start" />
-                        <el-option label="Fin de comida" value="lunch_end" />
-                        <el-option label="Permiso / salida" value="break_start" />
-                        <el-option label="Regreso de permiso" value="break_end" />
-                        <el-option label="Salida" value="check_out" />
-                    </el-select>
-                </el-form-item>
-                <el-form-item label="Motivo del cambio" required :error="punchForm.errors.edit_reason">
-                    <el-input v-model="punchForm.edit_reason" maxlength="255" placeholder="Quedará registrado en la auditoría" />
+                <el-form-item label="Motivo del cambio (opcional)" :error="punchForm.errors.edit_reason">
+                    <el-input v-model="punchForm.edit_reason" maxlength="255" placeholder="Opcional: quedará en la auditoría" />
                 </el-form-item>
             </el-form>
             <template #footer>
@@ -725,21 +799,44 @@ const destroyNote = (note) => {
         <!-- Add punch dialog -->
         <el-dialog v-model="addPunchDialog" :title="`Agregar registro manual a ${row?.name}`" width="460px" top="12vh">
             <el-form :model="addPunchForm" label-position="top" size="default">
-                <el-form-item label="Tipo de marcaje" required :error="addPunchForm.errors.type">
-                    <el-select v-model="addPunchForm.type" class="w-full">
-                        <el-option label="Entrada" value="check_in" />
-                        <el-option label="Inicio de comida" value="lunch_start" />
-                        <el-option label="Fin de comida" value="lunch_end" />
-                        <el-option label="Permiso / salida" value="break_start" />
-                        <el-option label="Regreso de permiso" value="break_end" />
-                        <el-option label="Salida" value="check_out" />
-                    </el-select>
+                <div class="grid grid-cols-2 gap-4">
+                    <el-form-item label="Fecha" required :error="addPunchForm.errors.punched_at">
+                        <el-date-picker
+                            v-model="newPunchDate"
+                            type="date"
+                            value-format="YYYY-MM-DD"
+                            format="DD/MM/YYYY"
+                            placeholder="Seleccionar fecha"
+                            class="w-full"
+                        />
+                    </el-form-item>
+                    <el-form-item label="Hora" required :error="addPunchForm.errors.punched_at">
+                        <el-time-picker
+                            v-model="newPunchTime"
+                            value-format="HH:mm"
+                            format="HH:mm"
+                            placeholder="Seleccionar hora"
+                            class="w-full"
+                        />
+                    </el-form-item>
+                </div>
+                <el-form-item label="Tipo de registro" required :error="addPunchForm.errors.type">
+                    <div class="w-full">
+                        <el-select v-model="addPunchForm.type" class="w-full">
+                            <el-option label="Entrada" value="check_in" />
+                            <el-option label="Inicio de comida" value="lunch_start" />
+                            <el-option label="Fin de comida" value="lunch_end" />
+                            <el-option label="Permiso / salida" value="break_start" />
+                            <el-option label="Regreso de permiso" value="break_end" />
+                            <el-option label="Salida" value="check_out" />
+                        </el-select>
+                        <p v-if="addSuggestedLabel" class="text-xs text-gray-400 mt-1">
+                            Recomendado para este día: <span class="font-medium text-gray-600 dark:text-gray-300">{{ addSuggestedLabel }}</span>
+                        </p>
+                    </div>
                 </el-form-item>
-                <el-form-item label="Fecha y hora" required :error="addPunchForm.errors.punched_at">
-                    <el-date-picker v-model="addPunchForm.punched_at" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" format="DD/MM/YYYY HH:mm" class="w-full" />
-                </el-form-item>
-                <el-form-item label="Motivo" required :error="addPunchForm.errors.edit_reason">
-                    <el-input v-model="addPunchForm.edit_reason" maxlength="255" placeholder="Quedará registrado en la auditoría" />
+                <el-form-item label="Motivo (opcional)" :error="addPunchForm.errors.edit_reason">
+                    <el-input v-model="addPunchForm.edit_reason" maxlength="255" placeholder="Opcional: quedará en la auditoría" />
                 </el-form-item>
             </el-form>
             <template #footer>
@@ -886,7 +983,7 @@ const destroyNote = (note) => {
             <template #footer>
                 <div class="flex justify-end gap-2">
                     <el-button @click="recordsDialog = false">Cerrar</el-button>
-                    <el-button v-if="canEdit" type="primary" color="#f26c17" :icon="Plus" @click="openAddPunchDialog">
+                    <el-button v-if="canEdit" type="primary" color="#f26c17" :icon="Plus" @click="openAddPunchDialog(recordsDay)">
                         Agregar registro
                     </el-button>
                 </div>
@@ -895,7 +992,7 @@ const destroyNote = (note) => {
 
         <!-- Capture dialog -->
         <el-dialog v-model="captureDialog" title="Evidencia del registro" width="520px" top="8vh">
-            <img v-if="captureUrl" :src="captureUrl" alt="Captura del marcaje" class="w-full rounded-lg" />
+            <img v-if="captureUrl" :src="captureUrl" alt="Captura del registro" class="w-full rounded-lg" />
         </el-dialog>
     </div>
 </template>

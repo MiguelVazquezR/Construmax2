@@ -11,6 +11,14 @@ const props = defineProps({
     availableSpecialties: {
         type: Array,
         default: () => []
+    },
+    shifts: {
+        type: Array,
+        default: () => []
+    },
+    currentShiftId: {
+        type: Number,
+        default: null
     }
 });
 
@@ -64,7 +72,7 @@ const form = useForm({
     // Nómina y asistencia (opcional, según permisos)
     is_attendance_subject: Boolean(props.technician.payroll_profile?.is_attendance_subject),
     can_remote_attendance: Boolean(props.technician.payroll_profile?.can_remote_attendance),
-    kiosk_pin: '',
+    shift_id: props.currentShiftId ?? null,
 
     // Archivos 
     tax_file: null,
@@ -153,6 +161,7 @@ const submit = () => {
                     :is-edit="true"
                     :technician="technician"
                     :available-specialties="availableSpecialties"
+                    :shifts="shifts"
                     @photo-change="handlePhotoChange"
                     @tax-file-change="handleTaxFileChange"
                     @tax-file-remove="handleTaxFileRemove"

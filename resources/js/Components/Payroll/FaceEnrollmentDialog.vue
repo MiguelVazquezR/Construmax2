@@ -244,7 +244,7 @@ const removeFaces = () => {
 
         <p class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
             <el-icon><WarningFilled /></el-icon>
-            Las fotos se envían a AWS Rekognition y se usan solo para identificar el marcaje de asistencia.
+            Las fotos se envían a AWS Rekognition y se usan solo para identificar el registro de asistencia.
         </p>
 
         <template #footer>

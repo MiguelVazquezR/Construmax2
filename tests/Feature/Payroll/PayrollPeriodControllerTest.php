@@ -87,6 +87,21 @@ class PayrollPeriodControllerTest extends TestCase
         ]);
     }
 
+    private function makePayrollSubject(string $name): User
+    {
+        $user = User::factory()->create(['is_active' => true, 'name' => $name]);
+
+        PayrollProfile::create([
+            'user_id' => $user->id,
+            'hire_date' => '2024-01-01',
+            'daily_salary' => 400,
+            'daily_hours' => 8,
+            'is_payroll_subject' => true,
+        ]);
+
+        return $user;
+    }
+
     public function test_index_renders_for_managers(): void
     {
         $this->openPeriod();
@@ -151,6 +166,34 @@ class PayrollPeriodControllerTest extends TestCase
             );
     }
 
+    public function test_show_exposes_the_adjacent_periods(): void
+    {
+        $period = $this->openPeriod();
+
+        $previous = PayrollPeriod::create([
+            'type' => PayrollPeriod::TYPE_WEEKLY,
+            'start_date' => '2026-08-31',
+            'end_date' => '2026-09-06',
+            'status' => PayrollPeriod::STATUS_CLOSED,
+        ]);
+
+        $next = PayrollPeriod::create([
+            'type' => PayrollPeriod::TYPE_WEEKLY,
+            'start_date' => '2026-09-14',
+            'end_date' => '2026-09-20',
+            'status' => PayrollPeriod::STATUS_CLOSED,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.show', $period))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('previousPeriod.id', $previous->id)
+                ->where('previousPeriod.label', '31/08/2026 — 06/09/2026')
+                ->where('nextPeriod.id', $next->id)
+            );
+    }
+
     public function test_show_exposes_the_incidents_of_the_period(): void
     {
         $period = $this->openPeriod();
@@ -200,6 +243,86 @@ class PayrollPeriodControllerTest extends TestCase
                 ->has('rows.0.days', 7)
                 ->where('rows.0.days.0.date', '2026-09-07')
                 ->where('stats.employees', 1)
+            );
+    }
+
+    public function test_pre_payroll_can_be_filtered_by_the_selected_collaborators(): void
+    {
+        $period = $this->openPeriod();
+
+        $other = $this->makePayrollSubject('Aaron Zapata');
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.pre-payroll', [
+                'period' => $period->id,
+                'users' => [$other->id],
+            ]))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Payroll/Periods/PrePayroll')
+                ->has('rows', 1)
+                ->where('rows.0.user_name', 'Aaron Zapata')
+                ->where('stats.employees', 1)
+            );
+
+        // The comma-separated form used by direct links works too.
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.pre-payroll', [
+                'period' => $period->id,
+                'users' => (string) $this->employee->id,
+            ]))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('rows', 1)
+                ->where('rows.0.user_name', 'Empleado Prueba')
+            );
+    }
+
+    public function test_collaborators_are_listed_in_alphabetical_order(): void
+    {
+        $period = $this->openPeriod();
+
+        $this->makePayrollSubject('Aaron Zapata');
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.show', $period))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('rows', 2)
+                ->where('rows.0.name', 'Aaron Zapata')
+                ->where('rows.1.name', 'Empleado Prueba')
+            );
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.pre-payroll', $period))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('rows', 2)
+                ->where('rows.0.user_name', 'Aaron Zapata')
+                ->where('rows.1.user_name', 'Empleado Prueba')
+            );
+
+        // Closed periods keep the frozen rows in the same order.
+        $this->actingAs($this->admin)
+            ->post(route('payroll.periods.close', $period))
+            ->assertRedirect();
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.show', $period))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('rows', 2)
+                ->where('rows.0.name', 'Aaron Zapata')
+                ->where('rows.1.name', 'Empleado Prueba')
+            );
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.pre-payroll', $period))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('rows', 2)
+                ->where('rows.0.user_name', 'Aaron Zapata')
+                ->where('rows.1.user_name', 'Empleado Prueba')
             );
     }
 
@@ -540,6 +663,72 @@ class PayrollPeriodControllerTest extends TestCase
                 'edit_reason' => 'Intento sin permiso',
             ])
             ->assertForbidden();
+    }
+
+    public function test_attendance_log_reason_is_optional_and_preserved_when_omitted(): void
+    {
+        // A manual record can be created without a reason.
+        $this->actingAs($this->admin)
+            ->post(route('payroll.attendance-logs.store'), [
+                'user_id' => $this->employee->id,
+                'type' => AttendanceLog::TYPE_CHECK_IN,
+                'punched_at' => '2026-09-07 08:00:00',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $log = AttendanceLog::first();
+
+        $this->assertNull($log->edit_reason);
+
+        // An edit with a reason stores it...
+        $this->actingAs($this->admin)
+            ->put(route('payroll.attendance-logs.update', $log), [
+                'punched_at' => '2026-09-07 08:05:00',
+                'edit_reason' => 'Corrección de horario',
+            ])
+            ->assertRedirect();
+
+        // ...and a later edit without one keeps the previous reason.
+        $this->actingAs($this->admin)
+            ->put(route('payroll.attendance-logs.update', $log), [
+                'punched_at' => '2026-09-07 08:10:00',
+            ])
+            ->assertRedirect();
+
+        $log->refresh();
+
+        $this->assertSame('08:10:00', $log->punched_at->format('H:i:s'));
+        $this->assertSame('Corrección de horario', $log->edit_reason);
+    }
+
+    public function test_days_endpoint_exposes_the_suggested_next_punch(): void
+    {
+        $period = $this->openPeriod();
+
+        $days = collect($this->actingAs($this->admin)
+            ->get(route('payroll.periods.days', ['period' => $period->id, 'user' => $this->employee->id]))
+            ->assertOk()
+            ->json('days'));
+
+        // Without punches of the day, the suggestion is the entry.
+        $this->assertSame(AttendanceLog::TYPE_CHECK_IN, $days->firstWhere('date', '2026-09-07')['suggested_next']);
+
+        AttendanceLog::create([
+            'user_id' => $this->employee->id,
+            'type' => AttendanceLog::TYPE_CHECK_IN,
+            'punched_at' => '2026-09-07 08:00:00',
+            'source' => AttendanceLog::SOURCE_KIOSK,
+            'identifier_method' => AttendanceLog::IDENTIFIER_PIN,
+        ]);
+
+        $days = collect($this->actingAs($this->admin)
+            ->get(route('payroll.periods.days', ['period' => $period->id, 'user' => $this->employee->id]))
+            ->assertOk()
+            ->json('days'));
+
+        // After the entry, the recommendation is the lunch start.
+        $this->assertSame(AttendanceLog::TYPE_LUNCH_START, $days->firstWhere('date', '2026-09-07')['suggested_next']);
     }
 
     public function test_adjustments_can_be_added_and_removed_on_an_open_period(): void

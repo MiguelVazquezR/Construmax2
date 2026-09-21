@@ -38,7 +38,7 @@ final class ResolvedSchedule
 
     public function expectedDailyMinutes(): int
     {
-        return $this->shift->expectedDailyMinutes();
+        return $this->shift->expectedDailyMinutes($this->date);
     }
 
     public function mealIsPaid(): bool

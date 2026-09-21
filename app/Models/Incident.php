@@ -43,11 +43,11 @@ class Incident extends Model implements HasMedia
 
     /**
      * Types paid at full salary when they have no explicit override.
+     * Justified absences are documented but unpaid, so they are not listed.
      *
      * @var array<int, string>
      */
     public const PAID_TYPES = [
-        self::TYPE_ABSENCE_JUSTIFIED,
         self::TYPE_PERMISSION_PAID,
         self::TYPE_VACATION,
     ];

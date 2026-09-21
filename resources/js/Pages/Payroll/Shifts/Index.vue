@@ -33,10 +33,30 @@ const assignmentTypeOptions = computed(() =>
 
 const formatTime = (value) => (value ? String(value).substring(0, 5) : null);
 
+// "Lunes" → "Lun" for the compact day chips.
+const dayShort = (day) => String(props.weekDays?.[day] || '').slice(0, 3);
+
+const formatDuration = (minutes) => {
+    const hours = Math.floor(Number(minutes || 0) / 60);
+    const rest = Math.round(Number(minutes || 0) % 60);
+
+    return rest > 0 ? `${hours} h ${rest} min` : `${hours} h`;
+};
+
 // --- Shifts ---
+
+const DAY_DEFAULTS = { start_time: '09:00:00', end_time: '18:00:00', meal_minutes: 60 };
+
+const emptyDayRows = () =>
+    Object.keys(props.weekDays || {}).map((day) => ({
+        day: Number(day),
+        enabled: false,
+        ...DAY_DEFAULTS,
+    }));
 
 const shiftDialog = ref(false);
 const editingShift = ref(null);
+const dayRows = ref(emptyDayRows());
 
 const shiftForm = useForm({
     name: '',
@@ -46,6 +66,7 @@ const shiftForm = useForm({
     meal_minutes: 60,
     is_meal_paid: false,
     days: [1, 2, 3, 4, 5],
+    day_schedules: {},
     required_daily_hours: 8,
     late_tolerance_minutes: null,
     is_active: true,
@@ -55,6 +76,8 @@ const shiftForm = useForm({
 const openShiftDialog = (shift = null) => {
     editingShift.value = shift;
     shiftForm.clearErrors();
+    shiftForm.day_schedules = {};
+    dayRows.value = emptyDayRows();
 
     if (shift) {
         shiftForm.name = shift.name;
@@ -68,6 +91,25 @@ const openShiftDialog = (shift = null) => {
         shiftForm.late_tolerance_minutes = shift.late_tolerance_minutes;
         shiftForm.is_active = Boolean(shift.is_active);
         shiftForm.description = shift.description || '';
+
+        // Per-day shifts load their schedule into the day editor.
+        if (shift.type === 'per_day') {
+            const schedules = shift.day_schedules || {};
+
+            dayRows.value = dayRows.value.map((row) => {
+                const schedule = schedules[row.day] ?? schedules[String(row.day)] ?? null;
+
+                return schedule
+                    ? {
+                        ...row,
+                        enabled: true,
+                        start_time: schedule.start_time,
+                        end_time: schedule.end_time,
+                        meal_minutes: Number(schedule.meal_minutes ?? 0),
+                    }
+                    : row;
+            });
+        }
     } else {
         shiftForm.reset();
         shiftForm.days = [1, 2, 3, 4, 5];
@@ -76,12 +118,81 @@ const openShiftDialog = (shift = null) => {
     shiftDialog.value = true;
 };
 
+// Switching to "Por día" pre-fills monday to friday with the default schedule.
+const onTypeChange = (type) => {
+    if (type === 'per_day' && ! dayRows.value.some((row) => row.enabled)) {
+        dayRows.value = dayRows.value.map((row) => (row.day <= 5 ? { ...row, enabled: true } : row));
+    }
+};
+
+const dayMinutes = (row) => {
+    const [startHour, startMinute] = String(row.start_time || '0:0').split(':').map(Number);
+    const [endHour, endMinute] = String(row.end_time || '0:0').split(':').map(Number);
+
+    let minutes = (endHour * 60 + endMinute) - (startHour * 60 + startMinute);
+
+    if (minutes <= 0) {
+        minutes += 24 * 60;
+    }
+
+    return Math.max(0, minutes - (shiftForm.is_meal_paid ? 0 : Number(row.meal_minutes || 0)));
+};
+
+const weeklyMinutes = computed(() =>
+    shiftForm.type === 'per_day'
+        ? dayRows.value.filter((row) => row.enabled).reduce((total, row) => total + dayMinutes(row), 0)
+        : 0
+);
+
+// Day-by-day schedule of a per-day shift, ready for the table.
+const shiftDayEntries = (shift) => {
+    if (shift.type !== 'per_day') {
+        return [];
+    }
+
+    const schedules = shift.day_schedules || {};
+
+    return (shift.days || []).map((day) => {
+        const schedule = schedules[day] ?? schedules[String(day)] ?? null;
+
+        return {
+            day,
+            label: dayShort(day),
+            start: formatTime(schedule?.start_time),
+            end: formatTime(schedule?.end_time),
+        };
+    });
+};
+
 const saveShift = () => {
     const options = {
         onSuccess: () => {
             shiftDialog.value = false;
         },
     };
+
+    shiftForm
+        .transform((data) => {
+            if (data.type !== 'per_day') {
+                return data;
+            }
+
+            const schedules = {};
+
+            dayRows.value.filter((row) => row.enabled).forEach((row) => {
+                schedules[row.day] = {
+                    start_time: row.start_time,
+                    end_time: row.end_time,
+                    meal_minutes: Number(row.meal_minutes ?? 0),
+                };
+            });
+
+            return {
+                ...data,
+                day_schedules: schedules,
+                days: Object.keys(schedules).map(Number),
+            };
+        });
 
     if (editingShift.value) {
         shiftForm.put(route('payroll.shifts.update', editingShift.value.id), options);
@@ -156,7 +267,7 @@ const destroyAssignment = (assignment) => {
                 <div>
                     <h2 class="font-semibold text-gray-800 dark:text-white leading-tight">Turnos y horarios</h2>
                     <p class="text-sm text-gray-500 mt-1">
-                        Configura turnos fijos o flexibles y asígnalos a colaboradores o departamentos.
+                        Configura turnos fijos, flexibles o con horario propio por día y asígnalos a colaboradores o departamentos.
                     </p>
                 </div>
                 <div class="flex items-center gap-2">
@@ -180,72 +291,81 @@ const destroyAssignment = (assignment) => {
                         </template>
 
                         <el-table :data="shifts" style="width: 100%" stripe>
-                            <el-table-column label="Turno" min-width="180">
+                            <el-table-column label="Turno" min-width="230">
                                 <template #default="scope">
-                                    <span class="font-semibold text-gray-800 dark:text-gray-200">{{ scope.row.name }}</span>
-                                    <div class="text-xs text-gray-500">{{ scope.row.description || '—' }}</div>
-                                </template>
-                            </el-table-column>
-
-                            <el-table-column label="Tipo" width="110" align="center">
-                                <template #default="scope">
-                                    <el-tag :type="scope.row.type === 'fixed' ? 'primary' : 'warning'" size="small" effect="plain">
-                                        {{ shiftTypes[scope.row.type] }}
-                                    </el-tag>
-                                </template>
-                            </el-table-column>
-
-                            <el-table-column label="Horario" min-width="150">
-                                <template #default="scope">
-                                    <template v-if="scope.row.type === 'fixed'">
-                                        {{ formatTime(scope.row.start_time) }} – {{ formatTime(scope.row.end_time) }}
-                                    </template>
-                                    <template v-else>
-                                        {{ Number(scope.row.required_daily_hours) }} h por día
-                                    </template>
-                                </template>
-                            </el-table-column>
-
-                            <el-table-column label="Días" min-width="200">
-                                <template #default="scope">
-                                    <div class="flex flex-wrap gap-1">
-                                        <el-tag v-for="day in scope.row.days || []" :key="day" size="small" type="info" effect="plain">
-                                            {{ weekDays[day] }}
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <span class="font-semibold text-gray-800 dark:text-gray-200">{{ scope.row.name }}</span>
+                                        <el-tag size="small" effect="plain" :type="scope.row.type === 'per_day' ? 'success' : (scope.row.type === 'fixed' ? 'primary' : 'warning')">
+                                            {{ shiftTypes[scope.row.type] }}
                                         </el-tag>
+                                        <el-tag v-if="! scope.row.is_active" type="danger" size="small" effect="plain">Inactivo</el-tag>
+                                    </div>
+                                    <div v-if="scope.row.description" class="text-xs text-gray-500 mt-0.5">{{ scope.row.description }}</div>
+                                </template>
+                            </el-table-column>
+
+                            <el-table-column label="Horario" min-width="280">
+                                <template #default="scope">
+                                    <template v-if="scope.row.type === 'per_day'">
+                                        <div class="space-y-1">
+                                            <div v-for="entry in shiftDayEntries(scope.row)" :key="entry.day" class="flex items-center gap-2">
+                                                <span class="inline-flex w-10 justify-center rounded bg-gray-100 dark:bg-[#2b2b2e] px-1 py-0.5 text-[11px] font-semibold text-gray-600 dark:text-gray-300">
+                                                    {{ entry.label }}
+                                                </span>
+                                                <span class="text-sm text-gray-700 dark:text-gray-200">{{ entry.start }} – {{ entry.end }}</span>
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <template v-else-if="scope.row.type === 'fixed'">
+                                        <p class="text-sm font-medium text-gray-800 dark:text-gray-200">
+                                            {{ formatTime(scope.row.start_time) }} – {{ formatTime(scope.row.end_time) }}
+                                        </p>
+                                        <div class="flex flex-wrap gap-1 mt-1">
+                                            <span
+                                                v-for="day in scope.row.days || []"
+                                                :key="day"
+                                                class="inline-flex rounded bg-gray-100 dark:bg-[#2b2b2e] px-1.5 py-0.5 text-[11px] font-medium text-gray-600 dark:text-gray-300"
+                                            >
+                                                {{ dayShort(day) }}
+                                            </span>
+                                        </div>
+                                    </template>
+
+                                    <template v-else>
+                                        <p class="text-sm font-medium text-gray-800 dark:text-gray-200">
+                                            {{ Number(scope.row.required_daily_hours) }} h flexibles
+                                        </p>
+                                        <div class="flex flex-wrap gap-1 mt-1">
+                                            <span
+                                                v-for="day in scope.row.days || []"
+                                                :key="day"
+                                                class="inline-flex rounded bg-gray-100 dark:bg-[#2b2b2e] px-1.5 py-0.5 text-[11px] font-medium text-gray-600 dark:text-gray-300"
+                                            >
+                                                {{ dayShort(day) }}
+                                            </span>
+                                        </div>
+                                    </template>
+                                </template>
+                            </el-table-column>
+
+                            <el-table-column label="Comida" width="120" align="center">
+                                <template #default="scope">
+                                    <span class="text-sm">{{ scope.row.type === 'per_day' ? 'Según el día' : `${scope.row.meal_minutes} min` }}</span>
+                                    <div v-if="scope.row.is_meal_paid" class="text-[11px] text-emerald-600 mt-0.5">Pagada</div>
+                                    <div v-else-if="scope.row.late_tolerance_minutes !== null" class="text-[11px] text-gray-400 mt-0.5">
+                                        Tolerancia {{ scope.row.late_tolerance_minutes }} min
                                     </div>
                                 </template>
                             </el-table-column>
 
-                            <el-table-column label="Comida" width="130" align="center">
-                                <template #default="scope">
-                                    <span class="text-sm">{{ scope.row.meal_minutes }} min</span>
-                                    <el-tag v-if="scope.row.is_meal_paid" size="small" type="success" effect="plain" class="ml-1">Pagada</el-tag>
-                                </template>
-                            </el-table-column>
-
-                            <el-table-column label="Tolerancia" width="110" align="center">
-                                <template #default="scope">
-                                    <span class="text-sm">
-                                        {{ scope.row.late_tolerance_minutes !== null ? `${scope.row.late_tolerance_minutes} min` : 'Global' }}
-                                    </span>
-                                </template>
-                            </el-table-column>
-
-                            <el-table-column label="Asignaciones" width="120" align="center">
+                            <el-table-column label="Asignaciones" width="115" align="center">
                                 <template #default="scope">
                                     <el-tag size="small" type="info" effect="plain">{{ scope.row.assignments_count }}</el-tag>
                                 </template>
                             </el-table-column>
 
-                            <el-table-column label="Estatus" width="110" align="center">
-                                <template #default="scope">
-                                    <el-tag :type="scope.row.is_active ? 'success' : 'danger'" size="small" effect="plain">
-                                        {{ scope.row.is_active ? 'Activo' : 'Inactivo' }}
-                                    </el-tag>
-                                </template>
-                            </el-table-column>
-
-                            <el-table-column label="" width="110" align="right">
+                            <el-table-column label="" width="100" align="right">
                                 <template #default="scope">
                                     <el-button :icon="Edit" circle plain size="small" @click="openShiftDialog(scope.row)" />
                                     <el-button :icon="Delete" circle plain size="small" type="danger" class="!ml-2" @click="destroyShift(scope.row)" />
@@ -352,7 +472,7 @@ const destroyAssignment = (assignment) => {
         <el-dialog
             v-model="shiftDialog"
             :title="editingShift ? `Editar turno: ${editingShift.name}` : 'Nuevo turno'"
-            width="640px"
+            width="680px"
             top="8vh"
         >
             <el-form :model="shiftForm" label-position="top" size="default">
@@ -362,7 +482,7 @@ const destroyAssignment = (assignment) => {
                     </el-form-item>
 
                     <el-form-item label="Tipo de turno" required :error="shiftForm.errors.type">
-                        <el-select v-model="shiftForm.type" class="w-full">
+                        <el-select v-model="shiftForm.type" class="w-full" @change="onTypeChange">
                             <el-option v-for="option in shiftTypeOptions" :key="option.value" :label="option.label" :value="option.value" />
                         </el-select>
                     </el-form-item>
@@ -380,14 +500,75 @@ const destroyAssignment = (assignment) => {
                     </div>
                 </template>
 
-                <template v-else>
+                <template v-else-if="shiftForm.type === 'flexible'">
                     <el-form-item label="Horas diarias requeridas" required :error="shiftForm.errors.required_daily_hours">
                         <el-input-number v-model="shiftForm.required_daily_hours" :min="0.5" :max="24" :step="0.5" :precision="2" :controls="false" style="width: 100%" />
                     </el-form-item>
                 </template>
 
+                <!-- Personalizado: cada día tiene su propio horario -->
+                <template v-else>
+                    <el-form-item label="Horario por día" required :error="shiftForm.errors.day_schedules || shiftForm.errors.days">
+                        <div class="w-full space-y-2">
+                            <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[#fdf0e7] dark:bg-[#3a2a1d] px-3 py-2">
+                                <span class="text-xs text-gray-600 dark:text-gray-300">
+                                    Activa los días que se trabajan y ajusta su horario y tiempo de comida.
+                                </span>
+                                <span v-if="weeklyMinutes > 0" class="text-xs text-gray-600 dark:text-gray-300">
+                                    Total semanal: <strong class="text-gray-800 dark:text-gray-100">{{ formatDuration(weeklyMinutes) }}</strong>
+                                </span>
+                            </div>
+
+                            <div
+                                v-for="row in dayRows"
+                                :key="row.day"
+                                class="flex flex-wrap items-center gap-3 rounded-lg border border-gray-100 dark:border-[#2b2b2e] px-3 py-2"
+                                :class="row.enabled ? 'bg-white dark:bg-[#1e1e20]' : 'bg-gray-50/60 dark:bg-[#252529]'"
+                            >
+                                <el-switch v-model="row.enabled" style="--el-switch-on-color: #f26c17;" />
+                                <span
+                                    class="w-24 text-sm font-medium"
+                                    :class="row.enabled ? 'text-gray-800 dark:text-gray-100' : 'text-gray-400'"
+                                >
+                                    {{ weekDays[row.day] }}
+                                </span>
+
+                                <template v-if="row.enabled">
+                                    <el-time-picker
+                                        v-model="row.start_time"
+                                        value-format="HH:mm:ss"
+                                        format="HH:mm"
+                                        placeholder="Entrada"
+                                        style="width: 108px"
+                                    />
+                                    <span class="text-gray-400">–</span>
+                                    <el-time-picker
+                                        v-model="row.end_time"
+                                        value-format="HH:mm:ss"
+                                        format="HH:mm"
+                                        placeholder="Salida"
+                                        style="width: 108px"
+                                    />
+                                    <div class="flex items-center gap-2 ml-auto">
+                                        <span class="text-xs text-gray-500">Comida</span>
+                                        <el-input-number
+                                            v-model="row.meal_minutes"
+                                            :min="0"
+                                            :max="480"
+                                            :controls="false"
+                                            style="width: 64px"
+                                        />
+                                        <span class="text-xs text-gray-500">min</span>
+                                    </div>
+                                </template>
+                                <span v-else class="text-xs text-gray-400">Día de descanso</span>
+                            </div>
+                        </div>
+                    </el-form-item>
+                </template>
+
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <el-form-item label="Minutos de comida" :error="shiftForm.errors.meal_minutes">
+                    <el-form-item v-if="shiftForm.type !== 'per_day'" label="Minutos de comida" :error="shiftForm.errors.meal_minutes">
                         <el-input-number v-model="shiftForm.meal_minutes" :min="0" :max="480" :controls="false" style="width: 100%" />
                     </el-form-item>
 
@@ -396,7 +577,7 @@ const destroyAssignment = (assignment) => {
                     </el-form-item>
                 </div>
 
-                <el-form-item label="Días de la semana" required :error="shiftForm.errors.days">
+                <el-form-item v-if="shiftForm.type !== 'per_day'" label="Días de la semana" required :error="shiftForm.errors.days">
                     <el-checkbox-group v-model="shiftForm.days">
                         <el-checkbox v-for="day in weekDayOptions" :key="day.value" :value="day.value">
                             {{ day.label }}

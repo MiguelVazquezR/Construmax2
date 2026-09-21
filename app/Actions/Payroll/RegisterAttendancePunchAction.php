@@ -47,7 +47,7 @@ class RegisterAttendancePunchAction
 
         if (! array_key_exists($type, AttendanceLog::TYPES)) {
             throw ValidationException::withMessages([
-                'type' => 'El tipo de marcaje no es válido.',
+                'type' => 'El tipo de registro no es válido.',
             ]);
         }
 
@@ -62,7 +62,7 @@ class RegisterAttendancePunchAction
 
         if ($this->alreadyRegistered($user->id, $type, $punchedAt)) {
             throw ValidationException::withMessages([
-                'type' => 'Este marcaje ya se registró hace unos momentos.',
+                'type' => 'Este registro ya se guardó hace unos momentos.',
             ]);
         }
 
@@ -125,7 +125,7 @@ class RegisterAttendancePunchAction
                 ->toMediaCollection('capture');
         } catch (\Throwable $exception) {
             // The punch is valid even if the evidence cannot be stored.
-            Log::warning('No se pudo guardar la captura del marcaje.', [
+            Log::warning('No se pudo guardar la captura del registro.', [
                 'attendance_log_id' => $log->id,
                 'error' => $exception->getMessage(),
             ]);

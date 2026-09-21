@@ -34,6 +34,10 @@ const props = defineProps({
     availableSpecialties: {
         type: Array,
         default: () => []
+    },
+    shifts: {
+        type: Array,
+        default: () => []
     }
 });
 
@@ -354,7 +358,7 @@ const mexicoStates = [
 
             <!-- 5. Nómina y asistencia -->
             <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6 pb-2">
-                <PayrollProfileFields :form="form" :show-payroll-fields="false" />
+                <PayrollProfileFields :form="form" :show-payroll-fields="false" :shifts="shifts" />
             </div>
 
             <!-- 6. Notas Internas y Submit -->

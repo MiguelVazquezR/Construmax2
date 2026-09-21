@@ -6,6 +6,7 @@ use App\Models\Shift;
 use App\Models\ShiftAssignment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
@@ -204,5 +205,57 @@ class ShiftControllerTest extends TestCase
             ->assertSessionHas('success');
 
         $this->assertDatabaseMissing('shift_assignments', ['id' => $assignment->id]);
+    }
+
+    public function test_store_creates_a_per_day_shift_from_its_day_schedules(): void
+    {
+        $this->actingAs($this->admin)
+            ->post(route('payroll.shifts.store'), $this->shiftPayload([
+                'type' => Shift::TYPE_PER_DAY,
+                'start_time' => null,
+                'end_time' => null,
+                'days' => null,
+                'day_schedules' => [
+                    1 => ['start_time' => '09:00', 'end_time' => '18:00', 'meal_minutes' => 60],
+                    2 => ['start_time' => '09:00', 'end_time' => '18:00', 'meal_minutes' => 60],
+                    6 => ['start_time' => '09:00', 'end_time' => '13:00', 'meal_minutes' => 0],
+                ],
+            ]))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $shift = Shift::first();
+
+        $this->assertNotNull($shift);
+        $this->assertSame(Shift::TYPE_PER_DAY, $shift->type);
+        $this->assertSame([1, 2, 6], $shift->days);
+
+        // Monday and Saturday (half day) are workdays; the other days are rest.
+        $monday = Carbon::parse('2026-09-21');
+        $wednesday = Carbon::parse('2026-09-23');
+        $saturday = Carbon::parse('2026-09-26');
+
+        $this->assertTrue($shift->isWorkday($monday));
+        $this->assertFalse($shift->isWorkday($wednesday));
+        $this->assertSame(480, $shift->expectedDailyMinutes($monday));
+        $this->assertSame(240, $shift->expectedDailyMinutes($saturday));
+        $this->assertSame(0, $shift->expectedDailyMinutes($wednesday));
+        $this->assertSame('09:00', $shift->expectedStartFor($monday)->format('H:i'));
+        $this->assertNull($shift->expectedStartFor($wednesday));
+    }
+
+    public function test_store_requires_at_least_one_configured_day_for_a_per_day_shift(): void
+    {
+        $this->actingAs($this->admin)
+            ->post(route('payroll.shifts.store'), $this->shiftPayload([
+                'type' => Shift::TYPE_PER_DAY,
+                'start_time' => null,
+                'end_time' => null,
+                'days' => null,
+                'day_schedules' => [],
+            ]))
+            ->assertSessionHasErrors('day_schedules');
+
+        $this->assertDatabaseCount('shifts', 0);
     }
 }

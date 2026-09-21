@@ -19,7 +19,7 @@ const showSupportModal = ref(false);
 const route = window.route; // Acceso directo al helper route de Ziggy
 const page = usePage();
 
-// Portal de asistencia del colaborador (marcaje remoto, vacaciones y recibos)
+// Portal de asistencia del colaborador (asistencia remota, vacaciones y recibos)
 const attendancePortal = computed(() => page.props.attendance_portal === true);
 
 // Lógica para determinar qué menú está activo (incluyendo sub-rutas)

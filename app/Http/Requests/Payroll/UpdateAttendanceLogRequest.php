@@ -18,16 +18,16 @@ class UpdateAttendanceLogRequest extends FormRequest
         return [
             'punched_at' => ['required', 'date'],
             'type' => ['sometimes', Rule::in(array_keys(AttendanceLog::TYPES))],
-            // Every manual correction must be justified (audited).
-            'edit_reason' => ['required', 'string', 'max:255'],
+            // Optional: when provided it stays in the audit trail of the record.
+            'edit_reason' => ['nullable', 'string', 'max:255'],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'punched_at.required' => 'Indica la hora correcta del marcaje.',
-            'edit_reason.required' => 'Describe el motivo del cambio (quedará en la auditoría).',
+            'punched_at.required' => 'Indica la hora correcta del registro.',
+            'edit_reason.max' => 'El motivo no puede exceder los 255 caracteres.',
         ];
     }
 }

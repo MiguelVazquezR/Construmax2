@@ -125,13 +125,13 @@ class KioskController extends Controller
             Log::warning('Facial kiosk search failed.', ['error' => $exception->getMessage()]);
 
             throw ValidationException::withMessages([
-                'face' => 'No se pudo procesar el rostro. Intenta de nuevo o usa tu PIN.',
+                'face' => 'No se pudo procesar el rostro. Intenta de nuevo.',
             ]);
         }
 
         if (! $match || $match['external_image_id'] === '') {
             throw ValidationException::withMessages([
-                'face' => 'No se pudo reconocer el rostro. Intenta de nuevo o usa tu PIN.',
+                'face' => 'No se pudo reconocer el rostro. Intenta de nuevo.',
             ]);
         }
 

@@ -140,7 +140,7 @@ const submitPunch = async () => {
     errorMessage.value = '';
 
     if (!selectedType.value) {
-        errorMessage.value = 'Selecciona el tipo de marcaje.';
+        errorMessage.value = 'Selecciona el tipo de registro.';
         return;
     }
 
@@ -191,7 +191,7 @@ const submitPunch = async () => {
         const errors = error.response?.data?.errors;
         errorMessage.value = errors
             ? Object.values(errors).flat()[0]
-            : 'No se pudo registrar el marcaje. Intenta de nuevo.';
+            : 'No se pudo guardar el registro. Intenta de nuevo.';
     } finally {
         submitting.value = false;
     }
@@ -332,7 +332,7 @@ onBeforeUnmount(() => {
                                 </el-descriptions>
 
                                 <div v-if="suggestedNextLabel" class="mt-4 text-sm text-center text-gray-500 dark:text-gray-400">
-                                    Siguiente marcaje sugerido:
+                                    Siguiente registro sugerido:
                                     <span class="font-semibold text-gray-700 dark:text-gray-200">{{ suggestedNextLabel }}</span>
                                 </div>
                             </div>
@@ -340,7 +340,7 @@ onBeforeUnmount(() => {
                             <!-- Punch -->
                             <div class="lg:col-span-2 bg-gray-50 dark:bg-[#252529]/60 rounded-xl border border-gray-100 dark:border-gray-800 p-6">
                                 <div class="flex items-center justify-between mb-4">
-                                    <h3 class="font-semibold text-gray-800 dark:text-gray-200">Registrar marcaje remoto</h3>
+                                    <h3 class="font-semibold text-gray-800 dark:text-gray-200">Registrar asistencia remota</h3>
                                     <el-tag v-if="faceVerificationActive" type="success" effect="plain" size="small">
                                         Verificación facial activa
                                     </el-tag>
@@ -363,7 +363,7 @@ onBeforeUnmount(() => {
                                     show-icon
                                     class="mb-4"
                                     title="Tu asistencia remota no está habilitada"
-                                    description="Solicita al administrador que habilite la asistencia remota en tu perfil para marcar desde este dispositivo."
+                                    description="Solicita al administrador que habilite la asistencia remota en tu perfil para registrar desde este dispositivo."
                                 />
 
                                 <template v-else>
@@ -400,10 +400,10 @@ onBeforeUnmount(() => {
                                             </div>
                                             <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
                                                 <template v-if="faceVerificationActive">
-                                                    La foto de tu rostro se verificará antes de registrar el marcaje.
+                                                    La foto de tu rostro se verificará antes de guardar el registro.
                                                 </template>
                                                 <template v-else>
-                                                    La cámara no es obligatoria, pero mejora la evidencia del marcaje.
+                                                    La cámara no es obligatoria, pero mejora la evidencia del registro.
                                                 </template>
                                             </p>
                                         </div>
@@ -411,7 +411,7 @@ onBeforeUnmount(() => {
                                         <div class="flex-1 w-full">
                                             <p v-if="remoteGeolocationRequired" class="text-xs text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-1">
                                                 <el-icon><Location /></el-icon>
-                                                Se registrará tu ubicación como evidencia del marcaje.
+                                                Se registrará tu ubicación como evidencia del registro.
                                             </p>
 
                                             <p v-if="errorMessage" class="text-sm text-red-600 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-400/30 rounded-lg px-4 py-3 mb-3">
@@ -426,7 +426,7 @@ onBeforeUnmount(() => {
                                                 :loading="submitting"
                                                 @click="submitPunch"
                                             >
-                                                Registrar marcaje
+                                                Registrar asistencia
                                             </el-button>
                                         </div>
                                     </div>
@@ -469,10 +469,10 @@ onBeforeUnmount(() => {
                             </div>
 
                             <div>
-                                <h3 class="font-semibold text-gray-800 dark:text-gray-200 mb-3">Marcajes recientes</h3>
+                                <h3 class="font-semibold text-gray-800 dark:text-gray-200 mb-3">Registros recientes</h3>
                                 <el-table :data="punches" stripe>
                                     <el-table-column label="Fecha y hora" prop="punched_at" width="160" />
-                                    <el-table-column label="Marcaje" width="160">
+                                    <el-table-column label="Registro" width="160">
                                         <template #default="scope">
                                             <el-tag size="small" type="info" effect="plain">{{ scope.row.type_label }}</el-tag>
                                         </template>

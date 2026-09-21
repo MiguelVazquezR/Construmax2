@@ -10,6 +10,10 @@ const props = defineProps({
     availableSpecialties: {
         type: Array,
         default: () => []
+    },
+    shifts: {
+        type: Array,
+        default: () => []
     }
 });
 
@@ -54,7 +58,7 @@ const form = useForm({
     // Nómina y asistencia (opcional, según permisos)
     is_attendance_subject: false,
     can_remote_attendance: false,
-    kiosk_pin: '',
+    shift_id: null,
 
     // Archivos
     tax_file: null,
@@ -141,6 +145,7 @@ const submit = () => {
                     :photo-preview="photoPreview"
                     :is-edit="false"
                     :available-specialties="availableSpecialties"
+                    :shifts="shifts"
                     @photo-change="handlePhotoChange"
                     @tax-file-change="handleTaxFileChange"
                     @tax-file-remove="handleTaxFileRemove"
