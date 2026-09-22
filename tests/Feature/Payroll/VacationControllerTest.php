@@ -70,6 +70,64 @@ class VacationControllerTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_payroll_subjects_without_attendance_appear_in_the_vacation_list(): void
+    {
+        $payrollOnly = User::factory()->create(['is_active' => true, 'name' => 'Solo Nómina']);
+
+        PayrollProfile::create([
+            'user_id' => $payrollOnly->id,
+            'hire_date' => '2025-01-01',
+            'is_payroll_subject' => true,
+            'is_attendance_subject' => false,
+        ]);
+
+        Carbon::setTestNow('2026-07-01');
+
+        // A manager can register the request on their behalf...
+        $this->actingAs($this->admin)
+            ->post(route('payroll.vacations.requests.store'), [
+                'user_id' => $payrollOnly->id,
+                'start_date' => '2026-09-14',
+                'end_date' => '2026-09-18',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame($payrollOnly->id, VacationRequest::first()->user_id);
+
+        // ...and they are listed in the collaborator selector of the screen.
+        $this->actingAs($this->admin)
+            ->get(route('payroll.vacations.index'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('users', fn ($users) => collect($users)->pluck('name')->contains('Solo Nómina'))
+            );
+    }
+
+    public function test_a_payroll_subject_requests_their_own_vacation_without_attendance(): void
+    {
+        Carbon::setTestNow('2026-07-01');
+
+        $payrollOnly = User::factory()->create(['is_active' => true]);
+
+        PayrollProfile::create([
+            'user_id' => $payrollOnly->id,
+            'hire_date' => '2025-01-01',
+            'is_payroll_subject' => true,
+            'is_attendance_subject' => false,
+        ]);
+
+        $this->actingAs($payrollOnly)
+            ->post(route('payroll.vacations.requests.store'), [
+                'start_date' => '2026-09-14',
+                'end_date' => '2026-09-18',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame($payrollOnly->id, VacationRequest::first()->user_id);
+    }
+
     public function test_employee_requests_their_own_vacation(): void
     {
         Carbon::setTestNow('2026-07-01');

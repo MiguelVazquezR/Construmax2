@@ -144,7 +144,23 @@ const summary = ({ columns }) => columns.map((column, index) => {
 
 const print = () => window.print();
 
-const goBack = () => window.close();
+// The page usually lives in its own tab opened from the period screen: close
+// it when possible, otherwise walk back or return to the period detail.
+const goBack = () => {
+    if (window.opener && ! window.opener.closed) {
+        window.close();
+        return;
+    }
+
+    if (window.history.length > 1) {
+        window.history.back();
+        return;
+    }
+
+    if (props.period?.id) {
+        window.location.href = route('payroll.periods.show', props.period.id);
+    }
+};
 </script>
 
 <template>

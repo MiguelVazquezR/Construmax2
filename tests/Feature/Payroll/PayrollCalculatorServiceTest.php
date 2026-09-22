@@ -14,6 +14,7 @@ use App\Models\ShiftAssignment;
 use App\Models\User;
 use App\Services\Payroll\PayrollCalculatorService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 class PayrollCalculatorServiceTest extends TestCase
@@ -41,6 +42,13 @@ class PayrollCalculatorServiceTest extends TestCase
         ]);
 
         $this->user = $this->makeEmployee('2024-01-01', 400);
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
     }
 
     private function makeEmployee(string $hireDate, float $salary, bool $withSchedule = true): User
@@ -143,6 +151,30 @@ class PayrollCalculatorServiceTest extends TestCase
         $this->assertEqualsWithDelta(350.0, $totals['overtime_amount'], 0.01);
     }
 
+    public function test_a_worked_rest_day_counts_every_minute_as_overtime(): void
+    {
+        // Saturday (rest day of the monday-friday shift), worked 09:00 → 13:00.
+        $this->punch($this->user, AttendanceLog::TYPE_CHECK_IN, '2026-09-12 09:00:00');
+        $this->punch($this->user, AttendanceLog::TYPE_CHECK_OUT, '2026-09-12 13:00:00');
+
+        $result = $this->calculator->calculateFor($this->user, $this->period);
+        $totals = $result['totals'];
+
+        // 240 minutes below the weekly threshold → all at the double rate.
+        $this->assertSame(240, $totals['overtime_double_minutes']);
+        $this->assertSame(0, $totals['overtime_triple_minutes']);
+
+        $days = collect($result['days'])->keyBy('date');
+
+        // The day exposes its minutes as overtime, so the per-day detail adds
+        // up to the period total shown in the collaborator summary.
+        $this->assertSame(240, $days['2026-09-12']['overtime_minutes']);
+        $this->assertSame(
+            $totals['overtime_double_minutes'] + $totals['overtime_triple_minutes'],
+            (int) collect($result['days'])->sum('overtime_minutes')
+        );
+    }
+
     public function test_late_minutes_are_discounted_only_when_configured(): void
     {
         $this->punch($this->user, AttendanceLog::TYPE_CHECK_IN, '2026-09-07 08:30:00');
@@ -178,6 +210,35 @@ class PayrollCalculatorServiceTest extends TestCase
         $this->assertEqualsWithDelta(4.0, $totals['days_paid'], 0.01);
         $this->assertEqualsWithDelta(1.0, $totals['unpaid_days'], 0.01);
         $this->assertEqualsWithDelta(1600.0, $totals['base_amount'], 0.01);
+    }
+
+    public function test_a_workday_only_becomes_an_absence_once_the_day_has_passed(): void
+    {
+        // Thursday: the week is still running inside the period.
+        Carbon::setTestNow('2026-09-10 10:00:00');
+
+        $this->regularDay($this->user, '2026-09-07');
+        $this->regularDay($this->user, '2026-09-08');
+
+        // 09 is gone without a record → unjustified absence. 10 (today) and
+        // 11 (future) are still waiting for a record → pending days that
+        // count neither as paid nor as unpaid.
+        $result = $this->calculator->calculateFor($this->user, $this->period);
+        $totals = $result['totals'];
+
+        $this->assertEqualsWithDelta(2.0, $totals['days_paid'], 0.01);
+        $this->assertEqualsWithDelta(1.0, $totals['unpaid_days'], 0.01);
+        $this->assertEqualsWithDelta(800.0, $totals['base_amount'], 0.01);
+
+        $days = collect($result['days'])->keyBy('date');
+
+        $this->assertSame('absent', $days['2026-09-09']['status']);
+        $this->assertSame('Falta injustificada', $days['2026-09-09']['status_label']);
+        $this->assertSame('no_record', $days['2026-09-10']['status']);
+        $this->assertSame('Sin registro', $days['2026-09-10']['status_label']);
+        $this->assertSame('no_record', $days['2026-09-11']['status']);
+        $this->assertSame('rest_day', $days['2026-09-12']['status']);
+        $this->assertSame('rest_day', $days['2026-09-13']['status']);
     }
 
     public function test_vacations_and_medical_leaves_use_their_pay_fraction(): void

@@ -82,7 +82,10 @@ class PayrollCalculatorService
      *  - Scheduled workday with punches: 1 paid day; overtime beyond the
      *    expected minutes accumulates (first hours at the double multiplier,
      *    the excess at the triple one, LFT art. 66-68).
-     *  - Scheduled workday without punches and without incident: unpaid day.
+     *  - Scheduled workday without punches and without incident: unpaid day
+     *    once the day has passed (an unjustified absence); today and future
+     *    days remain pending (*sin registro*) and count as neither paid nor
+     *    unpaid.
      *  - Holiday: paid rest day; when worked, an extra day at the configured
      *    multiplier (LFT art. 75).
      *  - Incidents: paid fraction by type (vacations and paid permissions are
@@ -93,7 +96,9 @@ class PayrollCalculatorService
      *    for the day.
      *  - Late arrivals: only discounted when the settings say so, and only
      *    when the late was not manually ignored.
-     *  - Worked rest days count as overtime hours.
+     *  - Worked rest days: every worked minute is overtime, and the same
+     *    minutes travel in the day payload, so the period detail reconciles
+     *    with the weekly pool shown as the collaborator total.
      *
      * @return array{
      *     snapshot: array<string, mixed>,
@@ -205,13 +210,18 @@ class PayrollCalculatorService
 
                     $totals['late_minutes'] += $summary->lateMinutes;
                     $overtimePoolMinutes += $summary->overtimeMinutes;
-                } else {
+                } elseif ($summary->status === AttendanceDaySummary::STATUS_ABSENT) {
+                    // The day already passed without a record: unjustified
+                    // absence. Days that have not passed yet (today and
+                    // future) stay pending and count neither as paid nor as
+                    // unpaid.
                     $totals['unpaid_days'] += 1.0;
                 }
             } elseif ($worked > 0) {
-                // 4. Worked rest day (overtime) or day without an assigned schedule.
+                // 4. Worked rest day (every minute is overtime, the same value
+                // the day payload exposes) or day without an assigned schedule.
                 if ($summary->hasSchedule) {
-                    $overtimePoolMinutes += $worked;
+                    $overtimePoolMinutes += $summary->overtimeMinutes;
                 } else {
                     $fraction = min(1.0, $worked / ($dailyHours * 60));
                     $dayFraction += $fraction;

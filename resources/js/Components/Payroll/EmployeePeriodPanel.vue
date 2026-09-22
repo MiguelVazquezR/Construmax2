@@ -21,7 +21,8 @@ const emit = defineEmits(['changed']);
 
 const statusLabels = {
     present: 'Asistió',
-    absent: 'Falta',
+    absent: 'Falta injustificada',
+    no_record: 'Sin registro',
     rest_day: 'Día de descanso',
     no_schedule: 'Sin horario',
     holiday: 'Día festivo',
@@ -69,6 +70,7 @@ const dayTagType = (day) => {
     return {
         present: 'success',
         absent: 'danger',
+        no_record: 'info',
         rest_day: 'info',
         no_schedule: 'info',
         holiday: 'success',

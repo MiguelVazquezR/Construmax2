@@ -117,6 +117,39 @@ class VacationServiceTest extends TestCase
         $this->assertSame(15.0, $balance['taken_days']);
     }
 
+    public function test_seasons_expose_when_their_days_were_taken(): void
+    {
+        Carbon::setTestNow('2026-07-01');
+
+        $user = $this->employee('2024-01-01');
+
+        $request = VacationRequest::create([
+            'user_id' => $user->id,
+            'start_date' => '2026-07-10',
+            'end_date' => '2026-07-31',
+            'days' => 15,
+            'status' => VacationRequest::STATUS_APPROVED,
+        ]);
+
+        $balance = $this->service->balanceFor($user);
+
+        // A request taken in 2026 consumes the oldest seasons FIFO, and every
+        // season tells which request used its days and when they were taken.
+        $seasonOne = $balance['seasons'][0];
+        $seasonTwo = $balance['seasons'][1];
+
+        $this->assertSame($request->id, $seasonOne['consumptions'][0]['request_id']);
+        $this->assertSame('2026-07-10', $seasonOne['consumptions'][0]['start_date']);
+        $this->assertSame('2026-07-31', $seasonOne['consumptions'][0]['end_date']);
+        $this->assertSame(12.0, $seasonOne['consumptions'][0]['days']);
+
+        $this->assertSame($request->id, $seasonTwo['consumptions'][0]['request_id']);
+        $this->assertSame(3.0, $seasonTwo['consumptions'][0]['days']);
+
+        // Seasons without consumption keep an empty list.
+        $this->assertSame([], $balance['seasons'][2]['consumptions']);
+    }
+
     public function test_unused_days_expire_after_the_carryover_window(): void
     {
         Carbon::setTestNow('2026-07-01');

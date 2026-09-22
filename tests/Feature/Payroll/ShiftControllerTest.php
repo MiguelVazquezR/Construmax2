@@ -56,6 +56,7 @@ class ShiftControllerTest extends TestCase
                 ->has('assignments')
                 ->has('users')
                 ->has('weekDays')
+                ->has('shiftTypeDescriptions', 3)
             );
     }
 

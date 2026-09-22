@@ -41,6 +41,7 @@ class ShiftController extends Controller
             'assignments' => $assignments,
             'users' => $users,
             'shiftTypes' => Shift::TYPES,
+            'shiftTypeDescriptions' => Shift::TYPE_DESCRIPTIONS,
             'weekDays' => Shift::DAYS,
             'assignmentTypes' => ShiftAssignment::TYPES,
         ]);

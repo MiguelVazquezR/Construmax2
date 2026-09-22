@@ -26,6 +26,17 @@ class Shift extends Model
     ];
 
     /**
+     * When to use each shift type (shown on the shifts screen).
+     *
+     * @var array<string, string>
+     */
+    public const TYPE_DESCRIPTIONS = [
+        self::TYPE_FIXED => 'El colaborador debe cumplir una hora de entrada y de salida. Úsalo cuando la jornada siempre empieza y termina a la misma hora.',
+        self::TYPE_FLEXIBLE => 'El colaborador debe completar ciertas horas al día, pero puede elegir su hora de entrada y salida. Úsalo cuando no haya un horario estricto.',
+        self::TYPE_PER_DAY => 'Cada día de la semana tiene su propio horario y tiempo de comida. Úsalo cuando el horario cambia según el día, por ejemplo los sábados.',
+    ];
+
+    /**
      * ISO weekday labels (1 = monday ... 7 = sunday).
      *
      * @var array<int, string>

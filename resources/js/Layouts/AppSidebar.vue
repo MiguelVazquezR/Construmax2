@@ -195,7 +195,7 @@ const activeMenu = computed(() => {
                     </Link>
 
                     <Link v-if="can('payroll.shifts.manage')" :href="route('payroll.shifts.index')">
-                        <el-menu-item class="!bg-dark" index="payroll.shifts.index">Turnos y horarios</el-menu-item>
+                        <el-menu-item class="!bg-dark" index="payroll.shifts.index">Horarios del personal</el-menu-item>
                     </Link>
 
                     <Link v-if="can('payroll.holidays.manage')" :href="route('payroll.holidays.index')">

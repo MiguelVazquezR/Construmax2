@@ -3,7 +3,7 @@ import { computed, reactive, ref } from 'vue';
 import { Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessageBox } from 'element-plus';
-import { Plus, Edit, Delete } from '@element-plus/icons-vue';
+import { Clock, Delete, Edit, InfoFilled, OfficeBuilding, Plus, Search } from '@element-plus/icons-vue';
 import { useFlashMessages } from '@/Composables/useFlashMessages';
 
 const props = defineProps({
@@ -11,6 +11,7 @@ const props = defineProps({
     assignments: Array,
     users: Array,
     shiftTypes: Object,
+    shiftTypeDescriptions: Object,
     weekDays: Object,
     assignmentTypes: Object,
 });
@@ -144,6 +145,37 @@ const weeklyMinutes = computed(() =>
         : 0
 );
 
+// Jornada of a fixed shift (start → end, net of the unpaid meal time).
+const fixedSummary = computed(() => {
+    if (shiftForm.type !== 'fixed') {
+        return '';
+    }
+
+    const start = formatTime(shiftForm.start_time);
+    const end = formatTime(shiftForm.end_time);
+
+    if (! start || ! end) {
+        return '';
+    }
+
+    const minutes = dayMinutes({
+        start_time: shiftForm.start_time,
+        end_time: shiftForm.end_time,
+        meal_minutes: shiftForm.meal_minutes,
+    });
+
+    if (minutes <= 0) {
+        return `${start} a ${end}`;
+    }
+
+    const meal = Number(shiftForm.meal_minutes || 0);
+    const mealNote = shiftForm.is_meal_paid
+        ? 'comida pagada incluida'
+        : (meal > 0 ? `sin contar ${meal} min de comida` : 'sin comida');
+
+    return `${start} a ${end} · ${formatDuration(minutes)} al día (${mealNote})`;
+});
+
 // Day-by-day schedule of a per-day shift, ready for the table.
 const shiftDayEntries = (shift) => {
     if (shift.type !== 'per_day') {
@@ -216,6 +248,81 @@ const destroyShift = (shift) => {
 const assignmentDialog = ref(false);
 const targetType = ref('user');
 
+// Filters over the loaded assignment rows (search by name and by the type of
+// schedule of the assigned shift(s)).
+const assignmentSearch = ref('');
+const assignmentShiftType = ref(null);
+
+const normalizeText = (value) =>
+    String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+// Shift id → schedule type, to know the type of the shift(s) of an assignment.
+const shiftTypeById = computed(() =>
+    Object.fromEntries((props.shifts || []).map((shift) => [shift.id, shift.type]))
+);
+
+const shiftTypesOfAssignment = (assignment) => {
+    const ids = assignment.type === 'rotation'
+        ? (assignment.rotation || [])
+        : (assignment.shift_id ? [assignment.shift_id] : []);
+
+    return ids
+        .map((id) => shiftTypeById.value[id])
+        .filter((type) => Boolean(type));
+};
+
+const shiftById = computed(() =>
+    Object.fromEntries((props.shifts || []).map((shift) => [shift.id, shift]))
+);
+
+// Shift name + type chips of an assignment (fixed shift or rotation cycle).
+const shiftEntriesOfAssignment = (assignment) => {
+    if (assignment.type === 'rotation') {
+        return (assignment.rotation || [])
+            .map((id) => shiftById.value[id])
+            .filter(Boolean)
+            .map((shift) => ({ name: shift.name, type: shift.type }));
+    }
+
+    const shift = assignment.shift_id ? shiftById.value[assignment.shift_id] : null;
+
+    if (shift) {
+        return [{ name: shift.name, type: shift.type }];
+    }
+
+    return assignment.shift_name ? [{ name: assignment.shift_name, type: null }] : [];
+};
+
+const shiftTagType = (type) => (type === 'per_day' ? 'success' : (type === 'fixed' ? 'primary' : 'warning'));
+
+const initialsOf = (name) => {
+    const parts = String(name || '').trim().split(/\s+/).slice(0, 2);
+    return parts.map((part) => part.charAt(0).toUpperCase()).join('') || '?';
+};
+
+const formatDate = (value) => {
+    if (! value) {
+        return null;
+    }
+
+    const raw = String(value).substring(0, 10);
+    const [year, month, day] = raw.split('-').map(Number);
+
+    return new Date(year, month - 1, day).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+const filteredAssignments = computed(() => {
+    const term = normalizeText(assignmentSearch.value).trim();
+    const type = assignmentShiftType.value;
+
+    return (props.assignments || []).filter((assignment) => {
+        const matchesName = term === '' || normalizeText(assignment.target_label).includes(term);
+        const matchesType = ! type || shiftTypesOfAssignment(assignment).includes(type);
+
+        return matchesName && matchesType;
+    });
+});
+
 const assignmentForm = useForm({
     user_id: null,
     department: '',
@@ -261,13 +368,13 @@ const destroyAssignment = (assignment) => {
 </script>
 
 <template>
-    <AppLayout title="Turnos y horarios">
+    <AppLayout title="Horarios del personal">
         <template #header>
-            <div class="flex items-center justify-between gap-4">
+            <div class="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <h2 class="font-semibold text-gray-800 dark:text-white leading-tight">Turnos y horarios</h2>
+                    <h2 class="font-semibold text-gray-800 dark:text-white leading-tight">Horarios del personal</h2>
                     <p class="text-sm text-gray-500 mt-1">
-                        Configura turnos fijos, flexibles o con horario propio por día y asígnalos a colaboradores o departamentos.
+                        Configura horarios fijos, flexibles o por día y asígnalos a colaboradores o departamentos.
                     </p>
                 </div>
                 <div class="flex items-center gap-2">
@@ -295,9 +402,11 @@ const destroyAssignment = (assignment) => {
                                 <template #default="scope">
                                     <div class="flex flex-wrap items-center gap-2">
                                         <span class="font-semibold text-gray-800 dark:text-gray-200">{{ scope.row.name }}</span>
-                                        <el-tag size="small" effect="plain" :type="scope.row.type === 'per_day' ? 'success' : (scope.row.type === 'fixed' ? 'primary' : 'warning')">
-                                            {{ shiftTypes[scope.row.type] }}
-                                        </el-tag>
+                                        <el-tooltip :content="shiftTypeDescriptions?.[scope.row.type]" placement="top" :show-after="200">
+                                            <el-tag size="small" effect="plain" :type="shiftTagType(scope.row.type)">
+                                                {{ shiftTypes[scope.row.type] }}
+                                            </el-tag>
+                                        </el-tooltip>
                                         <el-tag v-if="! scope.row.is_active" type="danger" size="small" effect="plain">Inactivo</el-tag>
                                     </div>
                                     <div v-if="scope.row.description" class="text-xs text-gray-500 mt-0.5">{{ scope.row.description }}</div>
@@ -398,46 +507,76 @@ const destroyAssignment = (assignment) => {
                             />
                         </div>
 
-                        <el-table :data="assignments" style="width: 100%" stripe>
-                            <el-table-column label="Asignado a" min-width="180">
+                        <div class="flex flex-wrap items-center gap-3 px-4 pb-4">
+                            <el-input
+                                v-model="assignmentSearch"
+                                placeholder="Buscar por nombre"
+                                :prefix-icon="Search"
+                                clearable
+                                class="!w-64"
+                            />
+                            <el-select v-model="assignmentShiftType" placeholder="Tipo de horario" clearable class="!w-44">
+                                <el-option v-for="option in shiftTypeOptions" :key="option.value" :label="option.label" :value="option.value" />
+                            </el-select>
+                            <span class="text-xs text-gray-500 dark:text-gray-400">
+                                Mostrando {{ filteredAssignments.length }} de {{ assignments.length }} asignaciones.
+                            </span>
+                        </div>
+
+                        <el-table :data="filteredAssignments" style="width: 100%" empty-text="Sin asignaciones que coincidan con el filtro">
+                            <el-table-column label="Asignado a" min-width="240">
                                 <template #default="scope">
-                                    <span class="font-semibold text-gray-800 dark:text-gray-200">{{ scope.row.target_label }}</span>
-                                    <div class="text-xs text-gray-500">
-                                        {{ scope.row.user_id ? 'Colaborador' : 'Departamento' }}
+                                    <div class="flex items-center gap-3">
+                                        <div
+                                            class="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
+                                            :class="scope.row.user_id
+                                                ? 'bg-[#fdf0e7] dark:bg-[#3a2a1d] text-[#f26c17]'
+                                                : 'bg-blue-50 dark:bg-blue-500/10 text-blue-500'"
+                                        >
+                                            <template v-if="scope.row.user_id">{{ initialsOf(scope.row.target_label) }}</template>
+                                            <el-icon v-else :size="16"><OfficeBuilding /></el-icon>
+                                        </div>
+                                        <div>
+                                            <p class="font-semibold text-gray-800 dark:text-gray-100 leading-tight">{{ scope.row.target_label }}</p>
+                                            <p class="text-xs text-gray-400">{{ scope.row.user_id ? 'Colaborador' : 'Departamento' }}</p>
+                                        </div>
                                     </div>
                                 </template>
                             </el-table-column>
 
-                            <el-table-column label="Tipo" width="110" align="center">
+                            <el-table-column label="Tipo" width="120" align="center">
                                 <template #default="scope">
-                                    <el-tag :type="scope.row.type === 'fixed' ? 'primary' : 'warning'" size="small" effect="plain">
+                                    <el-tag :type="scope.row.type === 'fixed' ? 'primary' : 'warning'" size="small" effect="light">
                                         {{ assignmentTypes[scope.row.type] }}
                                     </el-tag>
                                 </template>
                             </el-table-column>
 
-                            <el-table-column label="Turno(s)" min-width="220">
+                            <el-table-column label="Horario(s) asignado(s)" min-width="260">
                                 <template #default="scope">
-                                    <template v-if="scope.row.type === 'fixed'">
-                                        {{ scope.row.shift_name || '—' }}
-                                    </template>
-                                    <template v-else>
-                                        <div class="flex flex-wrap items-center gap-1">
-                                            <template v-for="(name, index) in scope.row.rotation_labels" :key="index">
-                                                <span v-if="index > 0" class="text-gray-400">→</span>
-                                                <el-tag size="small" type="warning" effect="plain">{{ name }}</el-tag>
-                                            </template>
-                                        </div>
-                                    </template>
+                                    <div class="flex flex-wrap items-center gap-1.5">
+                                        <template v-for="(entry, index) in shiftEntriesOfAssignment(scope.row)" :key="index">
+                                            <span v-if="index > 0" class="text-gray-300 dark:text-gray-600 text-xs">›</span>
+                                            <span class="inline-flex items-center gap-1.5 rounded-full border border-gray-100 dark:border-[#2b2b2e] bg-gray-50 dark:bg-[#252529] pl-2.5 pr-2 py-1">
+                                                <span class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ entry.name }}</span>
+                                                <el-tag v-if="entry.type" :type="shiftTagType(entry.type)" size="small" effect="plain" class="!border-0">
+                                                    {{ shiftTypes[entry.type] }}
+                                                </el-tag>
+                                            </span>
+                                        </template>
+                                        <span v-if="shiftEntriesOfAssignment(scope.row).length === 0" class="text-sm text-gray-400">—</span>
+                                    </div>
                                 </template>
                             </el-table-column>
 
                             <el-table-column label="Vigencia" min-width="200">
                                 <template #default="scope">
-                                    <span class="text-sm text-gray-600 dark:text-gray-400">
-                                        {{ String(scope.row.start_date).substring(0, 10) }} —
-                                        {{ scope.row.end_date ? String(scope.row.end_date).substring(0, 10) : 'Indefinida' }}
-                                    </span>
+                                    <p class="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                        Desde {{ formatDate(scope.row.start_date) }}
+                                    </p>
+                                    <p class="text-xs text-gray-400">
+                                        {{ scope.row.end_date ? `Hasta ${formatDate(scope.row.end_date)}` : 'Sin fecha de término' }}
+                                    </p>
                                 </template>
                             </el-table-column>
 
@@ -488,6 +627,14 @@ const destroyAssignment = (assignment) => {
                     </el-form-item>
                 </div>
 
+                <!-- Cuándo usar el tipo de turno seleccionado -->
+                <div class="flex items-start gap-2 rounded-lg bg-[#fdf0e7] dark:bg-[#3a2a1d] px-3 py-2 mb-4">
+                    <el-icon class="mt-0.5 shrink-0 text-[#f26c17]"><InfoFilled /></el-icon>
+                    <p class="text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+                        {{ shiftTypeDescriptions?.[shiftForm.type] }}
+                    </p>
+                </div>
+
                 <template v-if="shiftForm.type === 'fixed'">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <el-form-item label="Hora de entrada" required :error="shiftForm.errors.start_time">
@@ -498,12 +645,26 @@ const destroyAssignment = (assignment) => {
                             <el-time-picker v-model="shiftForm.end_time" value-format="HH:mm:ss" format="HH:mm" placeholder="Salida" class="w-full" />
                         </el-form-item>
                     </div>
+
+                    <div v-if="fixedSummary" class="flex items-center gap-2 rounded-lg bg-gray-50 dark:bg-[#252529] px-3 py-2 mb-4 text-xs text-gray-500 dark:text-gray-400">
+                        <el-icon class="shrink-0"><Clock /></el-icon>
+                        <p>Jornada: <strong class="text-gray-700 dark:text-gray-200">{{ fixedSummary }}</strong></p>
+                    </div>
                 </template>
 
                 <template v-else-if="shiftForm.type === 'flexible'">
                     <el-form-item label="Horas diarias requeridas" required :error="shiftForm.errors.required_daily_hours">
                         <el-input-number v-model="shiftForm.required_daily_hours" :min="0.5" :max="24" :step="0.5" :precision="2" :controls="false" style="width: 100%" />
                     </el-form-item>
+
+                    <div class="flex items-center gap-2 rounded-lg bg-gray-50 dark:bg-[#252529] px-3 py-2 mb-4 text-xs text-gray-500 dark:text-gray-400">
+                        <el-icon class="shrink-0"><Clock /></el-icon>
+                        <p>
+                            El colaborador puede elegir su hora de entrada y salida, siempre que cubra
+                            <strong class="text-gray-700 dark:text-gray-200">{{ shiftForm.required_daily_hours }} h</strong>
+                            en los días marcados abajo. No se miden retardos.
+                        </p>
+                    </div>
                 </template>
 
                 <!-- Personalizado: cada día tiene su propio horario -->
@@ -579,9 +740,9 @@ const destroyAssignment = (assignment) => {
 
                 <el-form-item v-if="shiftForm.type !== 'per_day'" label="Días de la semana" required :error="shiftForm.errors.days">
                     <el-checkbox-group v-model="shiftForm.days">
-                        <el-checkbox v-for="day in weekDayOptions" :key="day.value" :value="day.value">
-                            {{ day.label }}
-                        </el-checkbox>
+                        <el-checkbox-button v-for="day in weekDayOptions" :key="day.value" :value="day.value" :title="day.label">
+                            {{ dayShort(day.value) }}
+                        </el-checkbox-button>
                     </el-checkbox-group>
                 </el-form-item>
 
@@ -678,3 +839,22 @@ const destroyAssignment = (assignment) => {
         </el-dialog>
     </AppLayout>
 </template>
+
+<style scoped>
+/* Softer tables that blend with the card background in both themes. */
+:deep(.el-table) {
+    --el-table-bg-color: transparent;
+    --el-table-tr-bg-color: transparent;
+    --el-table-row-hover-bg-color: rgba(242, 108, 23, 0.06);
+}
+
+:deep(.el-table th.el-table__cell) {
+    background-color: transparent;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+}
+
+:deep(.el-table .el-table__cell) {
+    padding: 12px 0;
+}
+</style>

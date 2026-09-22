@@ -16,6 +16,12 @@ final class AttendanceDaySummary
 
     public const STATUS_ABSENT = 'absent';
 
+    /**
+     * Scheduled workday without punches whose date has not passed yet: the
+     * collaborator can still register, so it is not an absence.
+     */
+    public const STATUS_NO_RECORD = 'no_record';
+
     public const STATUS_REST_DAY = 'rest_day';
 
     public const STATUS_NO_SCHEDULE = 'no_schedule';
@@ -26,7 +32,8 @@ final class AttendanceDaySummary
 
     public const STATUS_LABELS = [
         self::STATUS_PRESENT => 'Asistió',
-        self::STATUS_ABSENT => 'Falta',
+        self::STATUS_ABSENT => 'Falta injustificada',
+        self::STATUS_NO_RECORD => 'Sin registro',
         self::STATUS_REST_DAY => 'Día de descanso',
         self::STATUS_NO_SCHEDULE => 'Sin horario',
         self::STATUS_HOLIDAY => 'Día festivo',

@@ -57,16 +57,26 @@ class AttendanceDayService
             ? $this->calculateDeviations($schedule, $isWorkday, $firstIn, $lastOut)
             : [0, 0];
 
-        $overtimeMinutes = ($isWorkday && $expectedMinutes > 0)
-            ? max(0, $workedMinutes - $expectedMinutes)
-            : 0;
+        // Overtime: minutes beyond the expected day on scheduled workdays and
+        // every minute worked on a scheduled rest day (both feed the weekly
+        // pool). Worked holidays pay their own extra and days without a
+        // schedule pay the worked fraction, so neither is overtime.
+        $overtimeMinutes = 0;
+
+        if ($holiday === null && $workedMinutes > 0) {
+            if ($isWorkday && $expectedMinutes > 0) {
+                $overtimeMinutes = max(0, $workedMinutes - $expectedMinutes);
+            } elseif (! $isWorkday && $schedule !== null) {
+                $overtimeMinutes = $workedMinutes;
+            }
+        }
 
         return new AttendanceDaySummary(
             date: $day,
             hasSchedule: $schedule !== null,
             isWorkday: $isWorkday,
             shift: $schedule?->shift,
-            status: $this->resolveStatus($schedule, $isWorkday, $punches, $holiday, $incident),
+            status: $this->resolveStatus($day, $schedule, $isWorkday, $punches, $holiday, $incident),
             workedMinutes: $workedMinutes,
             pausedMinutes: $pausedMinutes,
             lateMinutes: $lateMinutes,
@@ -237,6 +247,7 @@ class AttendanceDayService
      * @param  Collection<int, AttendanceLog>  $punches
      */
     private function resolveStatus(
+        CarbonImmutable $day,
         ?ResolvedSchedule $schedule,
         bool $isWorkday,
         Collection $punches,
@@ -256,7 +267,16 @@ class AttendanceDayService
         }
 
         if ($punches->isEmpty()) {
-            return $isWorkday ? AttendanceDaySummary::STATUS_ABSENT : AttendanceDaySummary::STATUS_REST_DAY;
+            if (! $isWorkday) {
+                return AttendanceDaySummary::STATUS_REST_DAY;
+            }
+
+            // A scheduled workday without punches is only an unjustified
+            // absence once the day has passed; today and future days are
+            // still waiting for a record.
+            return $day->lessThan(CarbonImmutable::today())
+                ? AttendanceDaySummary::STATUS_ABSENT
+                : AttendanceDaySummary::STATUS_NO_RECORD;
         }
 
         if (! $isWorkday) {

@@ -14,6 +14,7 @@ use App\Models\VacationAdjustment;
 use App\Models\VacationRequest;
 use App\Services\Media\ImageOptimizerService;
 use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
+use App\Services\Payroll\ScheduleResolverService;
 use App\Services\Payroll\VacationService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request; // Importar modelo Role
@@ -34,6 +35,7 @@ class UserController extends Controller
         private readonly ImageOptimizerService $imageOptimizer,
         private readonly VacationService $vacationService,
         private readonly AssignUserShiftAction $assignUserShiftAction,
+        private readonly ScheduleResolverService $scheduleResolver,
     ) {}
 
     public function index(Request $request)
@@ -129,6 +131,8 @@ class UserController extends Controller
                 'configured' => $this->faceRecognition->isConfigured(),
             ],
             'vacation' => $this->vacationPayload($request, $user),
+            // Effective shift today (individual, department or rotation).
+            'currentShift' => $this->scheduleResolver->resolveFor($user, CarbonImmutable::today())?->shift,
         ]);
     }
 
@@ -254,6 +258,7 @@ class UserController extends Controller
 
         $requests = VacationRequest::query()
             ->forUser($user->id)
+            ->with(['reviewer:id,name', 'requestedBy:id,name'])
             ->orderByDesc('start_date')
             ->orderByDesc('id')
             ->limit(10)
@@ -265,6 +270,11 @@ class UserController extends Controller
                 'days' => (float) $vacationRequest->days,
                 'status' => $vacationRequest->status,
                 'status_label' => $vacationRequest->statusLabel(),
+                'reason' => $vacationRequest->reason,
+                'review_notes' => $vacationRequest->review_notes,
+                'reviewer_name' => $vacationRequest->reviewer?->name,
+                'requested_by_name' => $vacationRequest->requestedBy?->name,
+                'requested_at' => $vacationRequest->created_at?->toDateString(),
             ])
             ->values()
             ->all();

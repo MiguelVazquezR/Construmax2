@@ -3,12 +3,13 @@ import { computed, ref } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import FaceEnrollmentDialog from '@/Components/Payroll/FaceEnrollmentDialog.vue';
+import ShiftSummaryPopover from '@/Components/Payroll/ShiftSummaryPopover.vue';
 import VacationAdjustmentDialog from '@/Components/Payroll/VacationAdjustmentDialog.vue';
 import UserStatusDialog from '@/Components/Users/UserStatusDialog.vue';
 import { ElMessageBox } from 'element-plus';
 import { useFlashMessages } from '@/Composables/useFlashMessages';
 import { usePermissions } from '@/Composables/usePermissions';
-import { Back, Edit, User, Ticket, Suitcase, Camera, SwitchButton, Sunny, Delete } from '@element-plus/icons-vue';
+import { Back, Calendar, Camera, Delete, Edit, Suitcase, Sunny, SwitchButton, Ticket, User } from '@element-plus/icons-vue';
 
 const { can } = usePermissions();
 
@@ -18,6 +19,7 @@ const props = defineProps({
     user: Object,
     faceEnrollment: Object,
     vacation: Object,
+    currentShift: Object,
 });
 
 const activeTab = ref('general');
@@ -80,6 +82,19 @@ const getPriorityColor = (priority) => {
 const navigateToTicket = (row) => {
     router.visit(route('tickets.show', row.id));
 };
+
+// --- Nómina y asistencia (sección de Información general) ---
+
+const SHIFT_TYPE_LABELS = {
+    fixed: 'Fijo',
+    flexible: 'Flexible',
+    per_day: 'Por día',
+};
+
+const shiftTagType = (type) => (type === 'per_day' ? 'success' : (type === 'fixed' ? 'primary' : 'warning'));
+
+const money = (value) =>
+    `$${Number(value || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // --- Vacaciones (pestaña Información general) ---
 
@@ -239,49 +254,194 @@ const removeAdjustment = (adjustment) => {
                                 <el-icon><User /></el-icon> Información general
                             </span>
                         </template>
-                        <div class="p-6">
-                            <el-descriptions border :column="2" size="large" class="custom-descriptions">
-                                <el-descriptions-item label="Nombre">
-                                    <span class="font-medium">{{ user.name }}</span>
-                                </el-descriptions-item>
-                                <el-descriptions-item label="Email">
-                                    <span class="font-mono">{{ user.email }}</span>
-                                </el-descriptions-item>
-                                <el-descriptions-item label="Departamento">
-                                    {{ user.employee?.department || 'No asignado' }}
-                                </el-descriptions-item>
-                                <el-descriptions-item label="Puesto">
-                                    {{ user.employee?.position || 'No asignado' }}
-                                </el-descriptions-item>
-                                <el-descriptions-item label="Teléfono">
-                                    {{ user.employee?.phone || 'No asignado' }}
-                                </el-descriptions-item>
-                                <el-descriptions-item label="Rol asignado">
-                                    <div class="flex flex-wrap gap-1">
-                                        <el-tag
-                                            v-for="role in user.roles"
-                                            :key="role.id"
-                                            size="small"
-                                            type="info"
-                                            effect="plain"
-                                        >
-                                            {{ role.name }}
-                                        </el-tag>
-                                        <span v-if="!user.roles || user.roles.length === 0" class="text-xs text-gray-400 italic">Sin rol</span>
+                        <div class="p-6 space-y-6">
+                            <!-- DATOS GENERALES -->
+                            <div>
+                                <p class="flex items-center gap-2 text-xs uppercase tracking-wider text-gray-400 font-bold mb-3">
+                                    <el-icon><User /></el-icon> Datos generales
+                                </p>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                                    <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                        <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Nombre</p>
+                                        <p class="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100 truncate" :title="user.name">{{ user.name }}</p>
                                     </div>
-                                </el-descriptions-item>
-                                <el-descriptions-item label="Fecha de registro">
-                                    {{ formatDate(user.created_at) }}
-                                </el-descriptions-item>
-                                <el-descriptions-item label="ID de usuario">
-                                    <span class="font-mono">{{ user.id }}</span>
-                                </el-descriptions-item>
-                            </el-descriptions>
+
+                                    <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                        <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Email</p>
+                                        <p class="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200 truncate" :title="user.email">{{ user.email }}</p>
+                                    </div>
+
+                                    <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                        <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Departamento</p>
+                                        <p class="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200 truncate">{{ user.employee?.department || 'No asignado' }}</p>
+                                    </div>
+
+                                    <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                        <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Puesto</p>
+                                        <p class="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200 truncate">{{ user.employee?.position || 'No asignado' }}</p>
+                                    </div>
+
+                                    <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                        <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Teléfono</p>
+                                        <p class="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200">{{ user.employee?.phone || 'No asignado' }}</p>
+                                    </div>
+
+                                    <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                        <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Fecha de registro</p>
+                                        <p class="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200">{{ formatDate(user.created_at) }}</p>
+                                    </div>
+
+                                    <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                        <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">ID de usuario</p>
+                                        <p class="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200 font-mono">{{ user.id }}</p>
+                                    </div>
+
+                                    <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                        <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Roles</p>
+                                        <div class="mt-1 flex flex-wrap gap-1">
+                                            <el-tag v-for="role in user.roles" :key="role.id" size="small" type="info" effect="plain">
+                                                {{ role.name }}
+                                            </el-tag>
+                                            <span v-if="!user.roles || user.roles.length === 0" class="text-xs text-gray-400 italic">Sin rol</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- NÓMINA Y ASISTENCIA -->
+                            <div v-if="can('payroll.profiles.manage') || user.payroll_profile">
+                                <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                                    <p class="flex items-center gap-2 text-xs uppercase tracking-wider text-gray-400 font-bold">
+                                        <el-icon><Suitcase /></el-icon> Nómina y asistencia
+                                    </p>
+                                    <el-tag v-if="user.payroll_profile?.termination_date" type="danger" size="small" effect="light">
+                                        Baja {{ formatDate(user.payroll_profile.termination_date) }}
+                                    </el-tag>
+                                </div>
+
+                                <template v-if="user.payroll_profile">
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Número de empleado</p>
+                                            <p class="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100 font-mono">{{ user.payroll_profile.employee_number || 'Sin asignar' }}</p>
+                                        </div>
+
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Fecha de ingreso</p>
+                                            <p class="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{{ formatDate(user.payroll_profile.hire_date) }}</p>
+                                        </div>
+
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Horario</p>
+                                                <ShiftSummaryPopover v-if="currentShift" :shift="currentShift" />
+                                            </div>
+                                            <div v-if="currentShift" class="mt-1 flex flex-wrap items-center gap-2">
+                                                <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{{ currentShift.name }}</p>
+                                                <el-tag size="small" effect="plain" :type="shiftTagType(currentShift.type)">
+                                                    {{ SHIFT_TYPE_LABELS[currentShift.type] || currentShift.type }}
+                                                </el-tag>
+                                            </div>
+                                            <p v-else class="mt-1 text-sm text-gray-400">Sin horario asignado</p>
+                                        </div>
+
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Sueldo diario</p>
+                                            <p class="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{{ user.payroll_profile.daily_salary ? money(user.payroll_profile.daily_salary) : 'No asignado' }}</p>
+                                        </div>
+
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Horas por día</p>
+                                            <p class="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{{ user.payroll_profile.daily_hours ? `${Number(user.payroll_profile.daily_hours)} h` : 'No asignado' }}</p>
+                                        </div>
+
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Fecha de baja</p>
+                                            <p class="mt-1 text-sm font-semibold" :class="user.payroll_profile.termination_date ? 'text-red-500' : 'text-gray-800 dark:text-gray-100'">
+                                                {{ user.payroll_profile.termination_date ? formatDate(user.payroll_profile.termination_date) : 'Sigue activo' }}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                                        <div class="flex items-center justify-between gap-3 rounded-xl border border-gray-100 dark:border-[#2b2b2e] px-4 py-3">
+                                            <div>
+                                                <p class="text-sm font-medium text-gray-700 dark:text-gray-200">Sujeto a nómina</p>
+                                                <p class="text-xs text-gray-400">Aparece en los periodos de nómina.</p>
+                                            </div>
+                                            <el-tag :type="user.payroll_profile.is_payroll_subject ? 'success' : 'info'" size="small" effect="light">
+                                                {{ user.payroll_profile.is_payroll_subject ? 'Sí' : 'No' }}
+                                            </el-tag>
+                                        </div>
+
+                                        <div class="flex items-center justify-between gap-3 rounded-xl border border-gray-100 dark:border-[#2b2b2e] px-4 py-3">
+                                            <div>
+                                                <p class="text-sm font-medium text-gray-700 dark:text-gray-200">Registra asistencia</p>
+                                                <p class="text-xs text-gray-400">Usa el kiosco y su portal de asistencia.</p>
+                                            </div>
+                                            <el-tag :type="user.payroll_profile.is_attendance_subject ? 'success' : 'info'" size="small" effect="light">
+                                                {{ user.payroll_profile.is_attendance_subject ? 'Sí' : 'No' }}
+                                            </el-tag>
+                                        </div>
+
+                                        <div class="flex items-center justify-between gap-3 rounded-xl border border-gray-100 dark:border-[#2b2b2e] px-4 py-3">
+                                            <div>
+                                                <p class="text-sm font-medium text-gray-700 dark:text-gray-200">Asistencia remota</p>
+                                                <p class="text-xs text-gray-400">Puede registrar desde su celular.</p>
+                                            </div>
+                                            <el-tag :type="user.payroll_profile.can_remote_attendance ? 'success' : 'info'" size="small" effect="light">
+                                                {{ user.payroll_profile.can_remote_attendance ? 'Habilitada' : 'Deshabilitada' }}
+                                            </el-tag>
+                                        </div>
+                                    </div>
+
+                                    <!-- Reconocimiento facial -->
+                                    <div
+                                        v-if="faceEnrollment"
+                                        class="mt-3 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3"
+                                    >
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-9 h-9 rounded-full bg-[#fdf0e7] dark:bg-[#3a2a1d] text-[#f26c17] flex items-center justify-center shrink-0">
+                                                <el-icon :size="17"><Camera /></el-icon>
+                                            </div>
+                                            <div>
+                                                <p class="font-semibold text-gray-800 dark:text-gray-100 text-sm">Reconocimiento facial</p>
+                                                <p class="text-xs text-gray-500 dark:text-gray-400">
+                                                    <template v-if="faceEnrollment.activeCount > 0">
+                                                        {{ faceEnrollment.activeCount }} {{ faceEnrollment.activeCount === 1 ? 'rostro registrado' : 'rostros registrados' }} para el kiosco y la asistencia.
+                                                    </template>
+                                                    <template v-else>
+                                                        Sin registro facial. El colaborador puede usar su rostro en el kiosco al registrarlo.
+                                                    </template>
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <el-button
+                                            v-if="can('payroll.faces.manage') && user.payroll_profile.is_attendance_subject"
+                                            type="primary"
+                                            plain
+                                            :icon="Camera"
+                                            @click="faceDialogVisible = true"
+                                        >
+                                            {{ faceEnrollment.activeCount > 0 ? 'Actualizar registro facial' : 'Registrar rostro' }}
+                                        </el-button>
+                                    </div>
+                                </template>
+
+                                <div v-else class="text-center py-10 bg-gray-50 dark:bg-[#252529]/50 rounded-xl border border-dashed border-gray-200 dark:border-[#2b2b2e]">
+                                    <el-empty description="Sin perfil de nómina" :image-size="90">
+                                        <template #default>
+                                            <p class="text-sm text-gray-500">Edita el usuario para capturar sus datos de nómina y asistencia.</p>
+                                        </template>
+                                    </el-empty>
+                                </div>
+                            </div>
 
                             <!-- VACACIONES DEL COLABORADOR -->
                             <div
                                 v-if="showVacationCard && vacationBalance"
-                                class="mt-6 rounded-xl border border-gray-100 dark:border-[#2b2b2e] overflow-hidden"
+                                class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] overflow-hidden"
                             >
                                 <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4 bg-gray-50 dark:bg-[#252529]/50 border-b border-gray-100 dark:border-[#2b2b2e]">
                                     <div class="flex items-center gap-3">
@@ -357,7 +517,7 @@ const removeAdjustment = (adjustment) => {
                                         :closable="false"
                                         show-icon
                                         title="Sin fecha de ingreso"
-                                        description="Captura la fecha de ingreso en la pestaña Nómina y asistencia para calcular el saldo por antigüedad. Mientras tanto solo cuentan los movimientos manuales."
+                                        description="Captura la fecha de ingreso en la sección Nómina y asistencia (Información general) para calcular el saldo por antigüedad. Mientras tanto solo cuentan los movimientos manuales."
                                     />
 
                                     <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
@@ -373,35 +533,48 @@ const removeAdjustment = (adjustment) => {
                                                 </Link>
                                             </div>
 
-                                            <el-table
-                                                v-if="vacationRequests.length"
-                                                :data="vacationRequests"
-                                                size="small"
-                                                stripe
-                                                style="width: 100%"
-                                            >
-                                                <el-table-column label="Periodo" min-width="170">
-                                                    <template #default="scope">
-                                                        <span class="text-sm">
-                                                            {{ formatDate(scope.row.start_date) }} — {{ formatDate(scope.row.end_date) }}
-                                                        </span>
-                                                    </template>
-                                                </el-table-column>
-
-                                                <el-table-column label="Días" width="70" align="center">
-                                                    <template #default="scope">
-                                                        <span class="font-medium">{{ formatDays(scope.row.days) }}</span>
-                                                    </template>
-                                                </el-table-column>
-
-                                                <el-table-column label="Estatus" width="120" align="center">
-                                                    <template #default="scope">
-                                                        <el-tag :type="requestStatusTagType(scope.row.status)" size="small" effect="plain">
-                                                            {{ scope.row.status_label }}
-                                                        </el-tag>
-                                                    </template>
-                                                </el-table-column>
-                                            </el-table>
+                                            <div v-if="vacationRequests.length" class="space-y-2">
+                                                <div
+                                                    v-for="request in vacationRequests"
+                                                    :key="request.id"
+                                                    class="flex items-start justify-between gap-3 rounded-xl border border-gray-100 dark:border-[#2b2b2e] px-3.5 py-3"
+                                                >
+                                                    <div class="flex items-start gap-3">
+                                                        <div
+                                                            class="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                                                            :class="{
+                                                                'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600': request.status === 'approved',
+                                                                'bg-amber-50 dark:bg-amber-500/10 text-amber-500': request.status === 'pending',
+                                                                'bg-red-50 dark:bg-red-500/10 text-red-500': request.status === 'rejected',
+                                                                'bg-gray-100 dark:bg-[#252529] text-gray-400': ! ['approved', 'pending', 'rejected'].includes(request.status),
+                                                            }"
+                                                        >
+                                                            <el-icon :size="15"><Calendar /></el-icon>
+                                                        </div>
+                                                        <div>
+                                                            <p class="text-sm font-medium text-gray-800 dark:text-gray-100">
+                                                                {{ formatDate(request.start_date) }} — {{ formatDate(request.end_date) }}
+                                                            </p>
+                                                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                                                {{ formatDays(request.days) }} día(s)
+                                                                <template v-if="request.reason"> · {{ request.reason }}</template>
+                                                            </p>
+                                                            <p v-if="request.reviewer_name" class="text-[11px] text-gray-400 mt-0.5">
+                                                                Revisó {{ request.reviewer_name }}<template v-if="request.review_notes"> · {{ request.review_notes }}</template>
+                                                            </p>
+                                                            <p
+                                                                v-else-if="request.requested_by_name && request.requested_by_name !== user.name"
+                                                                class="text-[11px] text-gray-400 mt-0.5"
+                                                            >
+                                                                Registró {{ request.requested_by_name }}<template v-if="request.requested_at"> el {{ formatDate(request.requested_at) }}</template>
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <el-tag :type="requestStatusTagType(request.status)" size="small" effect="light" class="shrink-0">
+                                                        {{ request.status_label }}
+                                                    </el-tag>
+                                                </div>
+                                            </div>
 
                                             <p v-else class="text-xs text-gray-400 dark:text-gray-500 italic py-4">
                                                 Sin solicitudes de vacaciones registradas.
@@ -488,52 +661,69 @@ const removeAdjustment = (adjustment) => {
                                                 </span>
                                             </template>
 
-                                            <el-table :data="vacationBalance.seasons" size="small" stripe style="width: 100%">
-                                                <el-table-column label="Temporada" width="110" align="center">
-                                                    <template #default="scope">Año {{ scope.row.season }}</template>
-                                                </el-table-column>
+                                            <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                                                Los días se descuentan de la temporada más antigua con saldo, aunque las vacaciones
+                                                se tomen en un año posterior; abajo de cada temporada se indica de dónde salió cada solicitud.
+                                            </p>
 
-                                                <el-table-column label="Periodo" min-width="190">
-                                                    <template #default="scope">
-                                                        <span class="text-sm">
-                                                            {{ formatDate(scope.row.start) }} — {{ formatDate(scope.row.end) }}
-                                                            <el-tag v-if="scope.row.is_current" size="small" type="primary" effect="plain" class="ml-1">
-                                                                En curso
-                                                            </el-tag>
-                                                        </span>
-                                                    </template>
-                                                </el-table-column>
+                                            <div class="space-y-3">
+                                                <div
+                                                    v-for="season in vacationBalance.seasons"
+                                                    :key="season.season"
+                                                    class="rounded-xl border p-4"
+                                                    :class="season.is_current
+                                                        ? 'border-[#f26c17]/25 bg-[#fffaf5] dark:bg-[#262019]/60 dark:border-[#f26c17]/20'
+                                                        : 'border-gray-100 dark:border-[#2b2b2e]'"
+                                                >
+                                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                                        <div class="flex items-center gap-2">
+                                                            <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Año {{ season.season }}</p>
+                                                            <el-tag v-if="season.is_current" size="small" type="primary" effect="plain">En curso</el-tag>
+                                                        </div>
+                                                        <p class="text-xs text-gray-400">
+                                                            {{ formatDate(season.start) }} — {{ formatDate(season.end) }} · vence el {{ formatDate(season.expiry_date) }}
+                                                        </p>
+                                                    </div>
 
-                                                <el-table-column label="Por derecho" width="100" align="center">
-                                                    <template #default="scope">{{ scope.row.entitled }}</template>
-                                                </el-table-column>
+                                                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+                                                        <div>
+                                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Por derecho</p>
+                                                            <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ formatDays(season.entitled) }}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Obtenidos</p>
+                                                            <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ formatDays(season.accrued) }}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Tomados</p>
+                                                            <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ formatDays(season.taken) }}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Disponibles</p>
+                                                            <p class="text-sm font-semibold text-emerald-600">{{ formatDays(season.available) }}</p>
+                                                        </div>
+                                                    </div>
 
-                                                <el-table-column label="Obtenidos" width="100" align="center">
-                                                    <template #default="scope">{{ scope.row.accrued }}</template>
-                                                </el-table-column>
+                                                    <div v-if="(season.consumptions || []).length" class="mt-3 pt-3 border-t border-dashed border-gray-100 dark:border-[#2b2b2e]">
+                                                        <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold mb-1.5">Días tomados de esta temporada</p>
+                                                        <div class="flex flex-wrap gap-1.5">
+                                                            <span
+                                                                v-for="(consumption, index) in season.consumptions"
+                                                                :key="index"
+                                                                class="inline-flex items-center gap-1.5 rounded-full border border-gray-100 dark:border-[#2b2b2e] bg-gray-50 dark:bg-[#252529] px-2.5 py-1 text-xs text-gray-600 dark:text-gray-300"
+                                                            >
+                                                                <strong class="text-gray-800 dark:text-gray-100">{{ formatDays(consumption.days) }}</strong>
+                                                                <span>{{ formatDate(consumption.start_date) }} — {{ formatDate(consumption.end_date) }}</span>
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <p v-else class="mt-3 text-xs text-gray-400 italic">Sin días tomados de esta temporada.</p>
 
-                                                <el-table-column label="Tomados" width="90" align="center">
-                                                    <template #default="scope">{{ scope.row.taken }}</template>
-                                                </el-table-column>
-
-                                                <el-table-column label="Vencidos" width="90" align="center">
-                                                    <template #default="scope">
-                                                        <span :class="{ 'text-red-500': scope.row.expired > 0 }">{{ scope.row.expired }}</span>
-                                                    </template>
-                                                </el-table-column>
-
-                                                <el-table-column label="Disponibles" width="100" align="center">
-                                                    <template #default="scope">
-                                                        <span class="font-semibold text-emerald-600">{{ scope.row.available }}</span>
-                                                    </template>
-                                                </el-table-column>
-
-                                                <el-table-column label="Vence el" width="120" align="center">
-                                                    <template #default="scope">
-                                                        <span class="text-xs text-gray-500">{{ formatDate(scope.row.expiry_date) }}</span>
-                                                    </template>
-                                                </el-table-column>
-                                            </el-table>
+                                                    <p v-if="Number(season.expired) > 0" class="text-xs text-red-500 mt-2">
+                                                        {{ formatDays(season.expired) }} día(s) vencidos por no usarse antes de la fecha límite.
+                                                    </p>
+                                                </div>
+                                            </div>
                                         </el-collapse-item>
                                     </el-collapse>
                                 </div>
@@ -628,90 +818,6 @@ const removeAdjustment = (adjustment) => {
                         </div>
                     </el-tab-pane>
 
-                    <!-- PESTAÑA 3: NÓMINA Y ASISTENCIA -->
-                    <el-tab-pane v-if="can('payroll.profiles.manage') || user.payroll_profile" name="payroll">
-                        <template #label>
-                            <span class="flex items-center gap-2 px-2">
-                                <el-icon><Suitcase /></el-icon> Nómina y asistencia
-                            </span>
-                        </template>
-                        <div class="p-6">
-                            <el-descriptions v-if="user.payroll_profile" border :column="2" size="large">
-                                <el-descriptions-item label="Número de empleado">
-                                    <span class="font-mono">{{ user.payroll_profile.employee_number || 'Sin asignar' }}</span>
-                                </el-descriptions-item>
-                                <el-descriptions-item label="Fecha de ingreso">
-                                    {{ formatDate(user.payroll_profile.hire_date) }}
-                                </el-descriptions-item>
-                                <el-descriptions-item label="Fecha de baja">
-                                    <template v-if="user.payroll_profile.termination_date">
-                                        <el-tag type="warning" size="small" effect="plain">
-                                            {{ formatDate(user.payroll_profile.termination_date) }}
-                                        </el-tag>
-                                    </template>
-                                    <template v-else>Activo</template>
-                                </el-descriptions-item>
-                                <el-descriptions-item label="Sueldo diario">
-                                    {{ user.payroll_profile.daily_salary ? `$${Number(user.payroll_profile.daily_salary).toFixed(2)}` : 'No asignado' }}
-                                </el-descriptions-item>
-                                <el-descriptions-item label="Horas por día">
-                                    {{ user.payroll_profile.daily_hours ? Number(user.payroll_profile.daily_hours) : 'No asignado' }}
-                                </el-descriptions-item>
-                                <el-descriptions-item label="Sujeto a nómina">
-                                    <el-tag :type="user.payroll_profile.is_payroll_subject ? 'success' : 'info'" size="small" effect="plain">
-                                        {{ user.payroll_profile.is_payroll_subject ? 'Sí' : 'No' }}
-                                    </el-tag>
-                                </el-descriptions-item>
-                                <el-descriptions-item label="Registra asistencia">
-                                    <el-tag :type="user.payroll_profile.is_attendance_subject ? 'success' : 'info'" size="small" effect="plain">
-                                        {{ user.payroll_profile.is_attendance_subject ? 'Sí' : 'No' }}
-                                    </el-tag>
-                                </el-descriptions-item>
-                                <el-descriptions-item label="Asistencia remota">
-                                    <el-tag :type="user.payroll_profile.can_remote_attendance ? 'success' : 'info'" size="small" effect="plain">
-                                        {{ user.payroll_profile.can_remote_attendance ? 'Habilitada' : 'Deshabilitada' }}
-                                    </el-tag>
-                                </el-descriptions-item>
-                            </el-descriptions>
-
-                            <div
-                                v-if="user.payroll_profile && faceEnrollment"
-                                class="mt-6 flex flex-wrap items-center justify-between gap-4 bg-gray-50 dark:bg-[#252529]/50 rounded-lg border border-gray-200 dark:border-gray-800 px-5 py-4"
-                            >
-                                <div class="flex items-center gap-3">
-                                    <el-icon :size="22" class="text-gray-400"><Camera /></el-icon>
-                                    <div>
-                                        <p class="font-semibold text-gray-800 dark:text-gray-200 text-sm">Reconocimiento facial</p>
-                                        <p class="text-xs text-gray-500 dark:text-gray-400">
-                                            <template v-if="faceEnrollment.activeCount > 0">
-                                                {{ faceEnrollment.activeCount }} {{ faceEnrollment.activeCount === 1 ? 'rostro registrado' : 'rostros registrados' }} para el kiosco y la asistencia.
-                                            </template>
-                                            <template v-else>
-                                                Sin registro facial. El colaborador puede usar su rostro en el kiosco al registrarlo.
-                                            </template>
-                                        </p>
-                                    </div>
-                                </div>
-                                <el-button
-                                    v-if="can('payroll.faces.manage') && user.payroll_profile.is_attendance_subject"
-                                    type="primary"
-                                    plain
-                                    :icon="Camera"
-                                    @click="faceDialogVisible = true"
-                                >
-                                    {{ faceEnrollment.activeCount > 0 ? 'Actualizar registro facial' : 'Registrar rostro' }}
-                                </el-button>
-                            </div>
-
-                            <div v-else class="text-center py-12 bg-gray-50 dark:bg-[#252529]/50 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">
-                                <el-empty description="Sin perfil de nómina" :image-size="100">
-                                    <template #default>
-                                        <p class="text-sm text-gray-500">Edita el usuario para capturar sus datos de nómina y asistencia.</p>
-                                    </template>
-                                </el-empty>
-                            </div>
-                        </div>
-                    </el-tab-pane>
                 </el-tabs>
             </div>
 
@@ -751,16 +857,27 @@ const removeAdjustment = (adjustment) => {
     background-color: #3f3f46;
 }
 
-:global(.dark) :deep(.el-descriptions__body),
-:global(.dark) :deep(.el-descriptions__label),
-:global(.dark) :deep(.el-descriptions__content) {
-    background-color: #1e1e20;
-    color: #e5e7eb;
-    border-color: #3f3f46;
+/* Season detail: blends with the card background instead of EP's darker panel. */
+:deep(.el-collapse) {
+    --el-collapse-header-bg-color: transparent;
+    --el-collapse-content-bg-color: transparent;
+    border-top: 1px solid var(--el-border-color-lighter);
+    border-bottom: none;
 }
 
-:global(.dark) :deep(.el-descriptions__label) {
-    background-color: #27272a;
-    color: #9ca3af;
+:deep(.el-collapse-item__header) {
+    background-color: transparent;
+    border-bottom: none;
+    height: auto;
+    padding: 12px 0;
+}
+
+:deep(.el-collapse-item__wrap) {
+    background-color: transparent;
+    border-bottom: none;
+}
+
+:deep(.el-collapse-item__content) {
+    padding: 0 0 4px;
 }
 </style>

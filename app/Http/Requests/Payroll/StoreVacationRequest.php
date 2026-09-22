@@ -9,9 +9,10 @@ class StoreVacationRequest extends FormRequest
     public function authorize(): bool
     {
         $user = $this->user();
+        $profile = $user->payrollProfile;
 
         return $user->can('payroll.vacations.manage')
-            || (bool) $user->payrollProfile?->is_attendance_subject;
+            || (bool) ($profile?->is_attendance_subject || $profile?->is_payroll_subject);
     }
 
     public function rules(): array

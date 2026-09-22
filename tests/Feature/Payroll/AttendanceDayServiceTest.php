@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\Payroll\AttendanceDayService;
 use App\Services\Payroll\AttendanceDaySummary;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 class AttendanceDayServiceTest extends TestCase
@@ -48,6 +49,13 @@ class AttendanceDayServiceTest extends TestCase
             'start_date' => '2026-09-01',
             'is_active' => true,
         ]);
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
     }
 
     private function punch(string $type, string $datetime): AttendanceLog
@@ -135,10 +143,34 @@ class AttendanceDayServiceTest extends TestCase
 
     public function test_absence_is_detected_on_a_workday_without_punches(): void
     {
+        // The clock is one day after the Monday under test.
+        Carbon::setTestNow('2026-09-15 10:00:00');
+
         $summary = $this->service->summaryFor($this->user, $this->monday());
 
         $this->assertSame(AttendanceDaySummary::STATUS_ABSENT, $summary->status);
+        $this->assertSame('Falta injustificada', $summary->statusLabel());
         $this->assertFalse($summary->hasPunches());
+    }
+
+    public function test_a_workday_without_punches_today_is_not_yet_an_absence(): void
+    {
+        // The clock sits on the same Monday under test.
+        Carbon::setTestNow('2026-09-14 10:00:00');
+
+        $summary = $this->service->summaryFor($this->user, $this->monday());
+
+        $this->assertSame(AttendanceDaySummary::STATUS_NO_RECORD, $summary->status);
+        $this->assertSame('Sin registro', $summary->statusLabel());
+    }
+
+    public function test_a_future_workday_without_punches_is_not_yet_an_absence(): void
+    {
+        Carbon::setTestNow('2026-09-10 10:00:00');
+
+        $summary = $this->service->summaryFor($this->user, $this->monday());
+
+        $this->assertSame(AttendanceDaySummary::STATUS_NO_RECORD, $summary->status);
     }
 
     public function test_rest_day_keeps_the_shift_for_reference(): void
@@ -154,7 +186,8 @@ class AttendanceDayServiceTest extends TestCase
         $this->assertSame(AttendanceDaySummary::STATUS_REST_DAY, $summary->status);
         $this->assertFalse($summary->isWorkday);
         $this->assertSame(240, $summary->workedMinutes);
-        $this->assertSame(0, $summary->overtimeMinutes);
+        // A worked rest day counts every minute as overtime.
+        $this->assertSame(240, $summary->overtimeMinutes);
     }
 
     public function test_paid_meal_counts_as_worked_time(): void

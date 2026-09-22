@@ -258,11 +258,7 @@ const openPrePayroll = () => {
         <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 space-y-6">
 
             <!-- Stats -->
-            <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4">
-                <div class="bg-white dark:bg-[#1e1e20] rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
-                    <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Colaboradores</p>
-                    <p class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{ stats.employees }}</p>
-                </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4">
                 <div class="bg-white dark:bg-[#1e1e20] rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
                     <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Días pagados</p>
                     <p class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ stats.days_paid }}</p>
@@ -293,46 +289,55 @@ const openPrePayroll = () => {
                 </div>
             </div>
 
-            <!-- Date filter: applies to the days and punches of every collaborator -->
-            <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-xl border border-gray-100 dark:border-[#2b2b2e] px-4 py-3 flex flex-wrap items-center gap-3">
-                <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">Filtrar por fecha</span>
-                <el-date-picker
-                    v-model="dateRange"
-                    type="daterange"
-                    unlink-panels
-                    value-format="YYYY-MM-DD"
-                    format="DD/MM/YYYY"
-                    range-separator="a"
-                    start-placeholder="Desde"
-                    end-placeholder="Hasta"
-                    :clearable="false"
-                    :disabled-date="disableOutsidePeriod"
-                />
-                <el-button v-if="isFiltered" size="small" @click="resetRange">Ver todo el periodo</el-button>
-                <el-divider direction="vertical" />
-                <div class="flex items-center gap-3">
-                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap">Colaborador</span>
-                    <el-select
-                        v-model="collaboratorFilter"
-                        multiple
-                        collapse-tags
-                        collapse-tags-tooltip
-                        filterable
-                        clearable
-                        placeholder="Todos los colaboradores"
-                        class="w-64"
-                    >
-                        <el-option
-                            v-for="row in rows"
-                            :key="row.user_id"
-                            :label="collaboratorLabel(row)"
-                            :value="row.user_id"
-                        />
-                    </el-select>
+            <!-- Filters: date range and collaborators (applies to the days and records of every collaborator) -->
+            <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
+                <div class="flex flex-wrap items-end gap-x-6 gap-y-4">
+                    <div class="shrink-0">
+                        <p class="mb-1.5 text-xs font-bold uppercase tracking-wider text-gray-400">Rango de fechas</p>
+                        <div class="flex items-center gap-2">
+                            <el-date-picker
+                                v-model="dateRange"
+                                type="daterange"
+                                unlink-panels
+                                value-format="YYYY-MM-DD"
+                                format="DD/MM/YYYY"
+                                range-separator="a"
+                                start-placeholder="Desde"
+                                end-placeholder="Hasta"
+                                :clearable="false"
+                                :disabled-date="disableOutsidePeriod"
+                            />
+                            <el-button v-if="isFiltered" @click="resetRange">Ver todo el periodo</el-button>
+                        </div>
+                    </div>
+
+                    <div class="hidden w-px self-stretch bg-gray-100 dark:bg-[#2b2b2e] lg:block"></div>
+
+                    <div class="shrink-0">
+                        <p class="mb-1.5 text-xs font-bold uppercase tracking-wider text-gray-400">Colaboradores</p>
+                        <el-select
+                            v-model="collaboratorFilter"
+                            multiple
+                            collapse-tags
+                            collapse-tags-tooltip
+                            filterable
+                            clearable
+                            placeholder="Todos"
+                            class="!w-80 shrink-0"
+                        >
+                            <el-option
+                                v-for="row in rows"
+                                :key="row.user_id"
+                                :label="collaboratorLabel(row)"
+                                :value="row.user_id"
+                            />
+                        </el-select>
+                    </div>
                 </div>
-                <span class="text-xs text-gray-500">
+
+                <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
                     Mostrando <strong>{{ rangeLabel }}</strong> en los días y registros.
-                </span>
+                </p>
             </div>
 
             <!-- Collaborators: the detail of every one of them, collapsible -->

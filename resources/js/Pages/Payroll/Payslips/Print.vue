@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeUnmount, onMounted } from 'vue';
+import { onBeforeUnmount } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { Printer, Back } from '@element-plus/icons-vue';
 
@@ -41,11 +41,23 @@ const deductionsTotal = (payslip) => sumOf(deductionsOf(payslip));
 
 const print = () => window.print();
 
-const goBack = () => window.history.back();
+// The page usually lives in its own tab opened from the period screen: close
+// it when possible, otherwise walk back or return to the period detail.
+const goBack = () => {
+    if (window.opener && ! window.opener.closed) {
+        window.close();
+        return;
+    }
 
-onMounted(() => {
-    setTimeout(() => window.print(), 600);
-});
+    if (window.history.length > 1) {
+        window.history.back();
+        return;
+    }
+
+    if (props.period?.id) {
+        window.location.href = route('payroll.periods.show', props.period.id);
+    }
+};
 </script>
 
 <template>
@@ -152,7 +164,7 @@ onMounted(() => {
                             <span class="day-value">{{ days(payslip.days_paid) }}</span>
                         </div>
                         <div class="day-item">
-                            <span class="day-label">Días no pagados</span>
+                            <span class="day-label">Faltas</span>
                             <span class="day-value" :class="{ danger: payslip.unpaid_days > 0 }">{{ days(payslip.unpaid_days) }}</span>
                         </div>
                         <div class="day-item">

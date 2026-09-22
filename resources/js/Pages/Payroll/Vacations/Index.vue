@@ -181,6 +181,11 @@ const formatSignedDays = (value) => {
     return '0';
 };
 
+const initialsOf = (name) => {
+    const parts = String(name || '').trim().split(/\s+/).slice(0, 2);
+    return parts.map((part) => part.charAt(0).toUpperCase()).join('') || '?';
+};
+
 const seasonStatusLabel = (season) => {
     if (season.is_current) return 'En curso';
     return 'Concluida';
@@ -212,7 +217,7 @@ const seasonStatusLabel = (season) => {
                             <span class="px-2">Solicitudes</span>
                         </template>
 
-                        <div class="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="p-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
                             <el-select v-model="filters.user_id" filterable clearable placeholder="Colaborador" @change="applyFilters">
                                 <el-option v-for="user in users" :key="user.id" :label="user.name" :value="user.id" />
                             </el-select>
@@ -220,72 +225,77 @@ const seasonStatusLabel = (season) => {
                             <el-select v-model="filters.status" clearable placeholder="Estatus" @change="applyFilters">
                                 <el-option v-for="option in statusOptions" :key="option.value" :label="option.label" :value="option.value" />
                             </el-select>
+
+                            <p class="text-xs text-gray-500 dark:text-gray-400">
+                                Las solicitudes pendientes aparecen primero para aprobarlas o rechazarlas.
+                            </p>
                         </div>
 
-                        <el-table :data="requests.data" style="width: 100%" stripe>
-                            <el-table-column label="Colaborador" min-width="160">
+                        <el-table
+                            :data="requests.data"
+                            style="width: 100%"
+                            :row-class-name="({ row }) => (row.status === 'pending' ? 'vacation-pending-row' : '')"
+                        >
+                            <el-table-column label="Colaborador" min-width="220">
                                 <template #default="scope">
-                                    <span class="font-semibold text-gray-800 dark:text-gray-200">{{ scope.row.user?.name }}</span>
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-9 h-9 rounded-full bg-[#fdf0e7] dark:bg-[#3a2a1d] text-[#f26c17] flex items-center justify-center shrink-0 text-xs font-bold">
+                                            {{ initialsOf(scope.row.user?.name) }}
+                                        </div>
+                                        <div>
+                                            <p class="font-semibold text-gray-800 dark:text-gray-100 leading-tight">{{ scope.row.user?.name }}</p>
+                                            <p class="text-xs text-gray-400">
+                                                {{ scope.row.requested_by && scope.row.requested_by.id !== scope.row.user?.id
+                                                    ? `Registró ${scope.row.requested_by.name}`
+                                                    : 'Solicitud del colaborador' }}
+                                            </p>
+                                        </div>
+                                    </div>
                                 </template>
                             </el-table-column>
 
-                            <el-table-column label="Periodo" min-width="200">
+                            <el-table-column label="Periodo solicitado" min-width="220">
                                 <template #default="scope">
-                                    <span class="text-sm">{{ formatDate(scope.row.start_date) }} — {{ formatDate(scope.row.end_date) }}</span>
+                                    <p class="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                        {{ formatDate(scope.row.start_date) }} — {{ formatDate(scope.row.end_date) }}
+                                    </p>
+                                    <p class="text-xs text-gray-400">{{ Number(scope.row.days) }} día(s) hábil(es)</p>
                                 </template>
                             </el-table-column>
 
-                            <el-table-column label="Días" width="80" align="center">
+                            <el-table-column label="Días" width="90" align="center">
                                 <template #default="scope">
-                                    <span class="font-medium">{{ Number(scope.row.days) }}</span>
+                                    <span class="inline-flex min-w-[44px] items-center justify-center rounded-full bg-[#fdf0e7] dark:bg-[#3a2a1d] px-2.5 py-1 text-sm font-bold text-[#f26c17]">
+                                        {{ Number(scope.row.days) }}
+                                    </span>
                                 </template>
                             </el-table-column>
 
-                            <el-table-column label="Estatus" width="120" align="center">
+                            <el-table-column label="Estatus" width="130" align="center">
                                 <template #default="scope">
-                                    <el-tag :type="statusTagType(scope.row.status)" size="small" effect="plain">
+                                    <el-tag :type="statusTagType(scope.row.status)" size="small" effect="light">
                                         {{ statuses[scope.row.status] }}
                                     </el-tag>
                                 </template>
                             </el-table-column>
 
-                            <el-table-column label="Motivo" min-width="150">
+                            <el-table-column label="Detalles" min-width="220">
                                 <template #default="scope">
-                                    <span class="text-xs text-gray-500">{{ scope.row.reason || '—' }}</span>
+                                    <p v-if="scope.row.reason" class="text-xs text-gray-500 dark:text-gray-400">{{ scope.row.reason }}</p>
+                                    <p v-if="scope.row.reviewer?.name" class="text-xs text-gray-400 mt-0.5">
+                                        Revisó {{ scope.row.reviewer.name }}<template v-if="scope.row.review_notes"> · {{ scope.row.review_notes }}</template>
+                                    </p>
+                                    <p v-if="! scope.row.reason && ! scope.row.reviewer?.name" class="text-xs text-gray-400 italic">Sin detalles</p>
                                 </template>
                             </el-table-column>
 
-                            <el-table-column label="Revisó" min-width="140">
+                            <el-table-column label="" width="230" align="right">
                                 <template #default="scope">
-                                    <span class="text-xs text-gray-500">
-                                        {{ scope.row.reviewer?.name || '—' }}
-                                        <template v-if="scope.row.review_notes"> · {{ scope.row.review_notes }}</template>
-                                    </span>
-                                </template>
-                            </el-table-column>
-
-                            <el-table-column label="" width="200" align="right">
-                                <template #default="scope">
-                                    <template v-if="scope.row.status === 'pending'">
-                                        <el-button
-                                            v-if="canApprove"
-                                            :icon="CircleCheck"
-                                            size="small"
-                                            type="success"
-                                            plain
-                                            @click="approve(scope.row)"
-                                        >
+                                    <template v-if="scope.row.status === 'pending' && canApprove">
+                                        <el-button :icon="CircleCheck" size="small" type="success" @click="approve(scope.row)">
                                             Aprobar
                                         </el-button>
-                                        <el-button
-                                            v-if="canApprove"
-                                            :icon="Close"
-                                            size="small"
-                                            type="danger"
-                                            plain
-                                            class="!ml-2"
-                                            @click="reject(scope.row)"
-                                        >
+                                        <el-button :icon="Close" size="small" type="danger" plain class="!ml-2" @click="reject(scope.row)">
                                             Rechazar
                                         </el-button>
                                     </template>
@@ -337,7 +347,7 @@ const seasonStatusLabel = (season) => {
                                     :closable="false"
                                     show-icon
                                     title="Sin fecha de ingreso"
-                                    description="Captura la fecha de ingreso del colaborador en Usuarios → Nómina y asistencia para calcular el saldo por antigüedad. Mientras tanto solo cuentan los movimientos manuales."
+                                    description="Captura la fecha de ingreso del colaborador en Usuarios → Información general (sección Nómina y asistencia) para calcular el saldo por antigüedad. Mientras tanto solo cuentan los movimientos manuales."
                                 />
 
                                 <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
@@ -492,7 +502,7 @@ const seasonStatusLabel = (season) => {
                             >
                                 <template #default>
                                     <p class="text-xs text-gray-500 flex items-center justify-center gap-1">
-                                        <el-icon><Calendar /></el-icon> La fecha de ingreso se captura en Usuarios → Nómina y asistencia.
+                                        <el-icon><Calendar /></el-icon> La fecha de ingreso se captura en Usuarios → Información general (sección Nómina y asistencia).
                                     </p>
                                 </template>
                             </el-empty>
@@ -548,3 +558,23 @@ const seasonStatusLabel = (season) => {
         />
     </AppLayout>
 </template>
+
+<style scoped>
+/* Pending requests stand out so they are easy to spot for approval. */
+:deep(.vacation-pending-row > td.el-table__cell) {
+    background-color: rgba(242, 108, 23, 0.06);
+}
+
+/* Softer tables that blend with the card background in both themes. */
+:deep(.el-table) {
+    --el-table-bg-color: transparent;
+    --el-table-tr-bg-color: transparent;
+    --el-table-row-hover-bg-color: rgba(242, 108, 23, 0.06);
+}
+
+:deep(.el-table th.el-table__cell) {
+    background-color: transparent;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+}
+</style>

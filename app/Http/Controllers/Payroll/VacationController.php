@@ -46,7 +46,7 @@ class VacationController extends Controller
 
         return Inertia::render('Payroll/Vacations/Index', [
             'requests' => $requests,
-            'users' => $this->attendanceUsers(),
+            'users' => $this->vacationUsers(),
             'statuses' => VacationRequest::STATUSES,
             'balance' => $selectedUser ? $this->vacationService->balanceFor($selectedUser) : null,
             'adjustments' => $this->adjustmentsFor($selectedUser),
@@ -67,9 +67,9 @@ class VacationController extends Controller
 
         if ($this->canManage($request) && $request->filled('user_id')) {
             $target = User::findOrFail($request->integer('user_id'));
-        } elseif (! $actor->payrollProfile?->is_attendance_subject) {
+        } elseif (! ($actor->payrollProfile?->is_attendance_subject || $actor->payrollProfile?->is_payroll_subject)) {
             throw ValidationException::withMessages([
-                'user_id' => 'El colaborador no tiene la asistencia habilitada.',
+                'user_id' => 'El colaborador no está sujeto a nómina ni tiene la asistencia habilitada.',
             ]);
         }
 
@@ -169,10 +169,17 @@ class VacationController extends Controller
             ->all();
     }
 
-    private function attendanceUsers()
+    /**
+     * Collaborators that can take vacations: anyone subject to payroll or with
+     * attendance enabled. Vacations belong to the payroll flow, so a
+     * collaborator without the attendance kiosk must appear here too.
+     */
+    private function vacationUsers()
     {
         return User::query()
-            ->whereHas('payrollProfile', fn ($query) => $query->where('is_attendance_subject', true))
+            ->whereHas('payrollProfile', fn ($query) => $query->where(fn ($profile) => $profile
+                ->where('is_attendance_subject', true)
+                ->orWhere('is_payroll_subject', true)))
             ->orderBy('name')
             ->get(['id', 'name']);
     }

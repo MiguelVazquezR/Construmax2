@@ -520,6 +520,47 @@ class PayrollPeriodControllerTest extends TestCase
             ->assertJsonPath('range.to', '2026-09-10');
     }
 
+    public function test_days_endpoint_keeps_the_days_that_have_not_passed_as_pending(): void
+    {
+        $period = $this->openPeriod();
+
+        // Wednesday inside the period: Monday and Tuesday already passed.
+        Carbon::setTestNow('2026-09-09 10:00:00');
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.days', [
+                'period' => $period->id,
+                'user' => $this->employee->id,
+            ]))
+            ->assertOk()
+            // Past workdays without a record are unjustified absences.
+            ->assertJsonPath('days.0.status', 'absent')
+            ->assertJsonPath('days.0.status_label', 'Falta injustificada')
+            ->assertJsonPath('days.1.status', 'absent')
+            // Today and the future workdays are still waiting for a record.
+            ->assertJsonPath('days.2.status', 'no_record')
+            ->assertJsonPath('days.2.status_label', 'Sin registro')
+            ->assertJsonPath('days.3.status', 'no_record')
+            ->assertJsonPath('days.4.status', 'no_record')
+            // The weekend keeps its rest days.
+            ->assertJsonPath('days.5.status', 'rest_day')
+            ->assertJsonPath('days.6.status', 'rest_day');
+    }
+
+    public function test_pending_days_are_not_counted_as_unpaid_days(): void
+    {
+        $period = $this->openPeriod();
+
+        Carbon::setTestNow('2026-09-09 10:00:00');
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.show', $period))
+            ->assertOk()
+            // Only Monday and Tuesday count as unpaid: today (Wednesday) and
+            // the rest of the period are still pending.
+            ->assertInertia(fn ($page) => $page->where('rows.0.unpaid_days', 2));
+    }
+
     public function test_days_endpoint_clamps_the_range_and_only_returns_the_punches_inside_it(): void
     {
         $period = $this->openPeriod();

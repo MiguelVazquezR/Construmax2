@@ -59,6 +59,7 @@ class VacationService
      *     adjustment_available_days: float,
      *     available_days: float,
      *     seasons: array<int, array<string, mixed>>,
+     *     pool_consumptions: array<int, array<string, mixed>>,
      * }
      */
     public function balanceFor(User $user, ?CarbonInterface $now = null): array
@@ -109,6 +110,9 @@ class VacationService
                 'expired' => 0.0,
                 'available' => 0.0,
                 'expiry_date' => $end->addMonthsNoOverflow((int) $settings->vacation_carryover_months)->toDateString(),
+                // Which requests consumed the days of this season and when
+                // they were taken (for the per-season detail of the UI).
+                'consumptions' => [],
             ];
         }
 
@@ -129,6 +133,8 @@ class VacationService
             ->orderBy('start_date')
             ->get();
 
+        $poolConsumptions = [];
+
         foreach ($approved as $request) {
             $remaining = (float) $request->days;
 
@@ -146,10 +152,15 @@ class VacationService
                 $used = min($space, $remaining);
                 $seasons[$key]['taken'] = round($seasons[$key]['taken'] + $used, 2);
                 $remaining -= $used;
+
+                $seasons[$key]['consumptions'][] = $this->consumptionPayload($request, $used);
             }
 
             if ($remaining > 0 && $pool > 0) {
-                $pool = round($pool - min($pool, $remaining), 2);
+                $consumedFromPool = min($pool, $remaining);
+                $pool = round($pool - $consumedFromPool, 2);
+
+                $poolConsumptions[] = $this->consumptionPayload($request, $consumedFromPool);
             }
         }
 
@@ -183,6 +194,23 @@ class VacationService
             'adjustment_available_days' => round($pool, 2),
             'available_days' => round(max(0.0, $totalAvailable + $pool), 2),
             'seasons' => array_values($seasons),
+            'pool_consumptions' => $poolConsumptions,
+        ];
+    }
+
+    /**
+     * Consumption record of an approved request (inside a season or the manual
+     * pool), used by the UI to show when the days of each season were taken.
+     *
+     * @return array<string, mixed>
+     */
+    private function consumptionPayload(VacationRequest $request, float $days): array
+    {
+        return [
+            'request_id' => $request->id,
+            'start_date' => $request->start_date?->toDateString(),
+            'end_date' => $request->end_date?->toDateString(),
+            'days' => round($days, 2),
         ];
     }
 
@@ -300,7 +328,7 @@ class VacationService
     }
 
     /**
-     * @return array{hire_date: ?string, current_season: int, entitled_days: float, accrued_days: float, taken_days: float, pending_days: float, adjustment_days: float, adjustment_available_days: float, available_days: float, seasons: array<int, array<string, mixed>>}
+     * @return array{hire_date: ?string, current_season: int, entitled_days: float, accrued_days: float, taken_days: float, pending_days: float, adjustment_days: float, adjustment_available_days: float, available_days: float, seasons: array<int, array<string, mixed>>, pool_consumptions: array<int, array<string, mixed>>}
      */
     private function emptyBalance(
         ?string $hireDate = null,
@@ -319,6 +347,7 @@ class VacationService
             'adjustment_available_days' => round($adjustmentAvailable, 2),
             'available_days' => round(max(0.0, $adjustmentAvailable), 2),
             'seasons' => [],
+            'pool_consumptions' => [],
         ];
     }
 }

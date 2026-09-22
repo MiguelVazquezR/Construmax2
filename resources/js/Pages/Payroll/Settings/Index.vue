@@ -2,7 +2,11 @@
 import { computed } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import SettingsSection from '@/Components/Payroll/SettingsSection.vue';
 import { ElMessage } from 'element-plus';
+import {
+    Calendar, Camera, Clock, Coin, FirstAidKit, InfoFilled, Picture, Suitcase, Sunny, Timer,
+} from '@element-plus/icons-vue';
 
 const props = defineProps({
     settings: Object,
@@ -94,8 +98,11 @@ const submit = () => {
                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
                     <!-- Periodo de nómina -->
-                    <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-6">
-                        <h3 class="font-bold text-gray-800 dark:text-gray-100 mb-4">Periodo de nómina</h3>
+                    <SettingsSection
+                        title="Periodo de nómina"
+                        description="Cada cuánto se calcula la nómina y desde qué fecha se cuentan los periodos."
+                    >
+                        <template #icon><el-icon :size="18"><Calendar /></el-icon></template>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <el-form-item label="Tipo de periodo" prop="period_type" :error="form.errors.period_type">
@@ -107,6 +114,7 @@ const submit = () => {
                                         :value="option.value"
                                     />
                                 </el-select>
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Define la duración de cada periodo y sus fechas de pago.</p>
                             </el-form-item>
 
                             <el-form-item label="Fecha de inicio del primer periodo" prop="period_anchor_date" :error="form.errors.period_anchor_date">
@@ -117,19 +125,26 @@ const submit = () => {
                                     placeholder="Seleccionar fecha"
                                     class="w-full"
                                 />
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Solo se usa para generar el primer periodo; después avanzan solos.</p>
                             </el-form-item>
                         </div>
 
-                        <p class="text-xs text-gray-400 dark:text-gray-500">
-                            El cierre del periodo y la creación del siguiente se ejecutan automáticamente a la 01:00
-                            del día de inicio del nuevo periodo (semanal: 7 días, catorcenal: 14 días,
-                            quincenal: día 1 al 15 y 16 al último día del mes).
-                        </p>
-                    </div>
+                        <div class="flex items-start gap-2 rounded-lg bg-gray-50 dark:bg-[#252529] px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">
+                            <el-icon class="mt-0.5 shrink-0"><InfoFilled /></el-icon>
+                            <p>
+                                El cierre y la creación del siguiente periodo se ejecutan automáticamente a la 01:00:
+                                semanal (7 días), catorcenal (14 días) y quincenal (día 1 al 15 y 16 al último del mes).
+                                El periodo abierto se recalcula en tiempo real con los registros del día.
+                            </p>
+                        </div>
+                    </SettingsSection>
 
                     <!-- Asistencia y retardos -->
-                    <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-6">
-                        <h3 class="font-bold text-gray-800 dark:text-gray-100 mb-4">Asistencia y retardos</h3>
+                    <SettingsSection
+                        title="Asistencia y retardos"
+                        description="Cómo se miden los retardos y desde dónde puede registrar el colaborador."
+                    >
+                        <template #icon><el-icon :size="18"><Clock /></el-icon></template>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <el-form-item label="Tolerancia de retardo (minutos)" prop="late_tolerance_minutes" :error="form.errors.late_tolerance_minutes">
@@ -140,6 +155,7 @@ const submit = () => {
                                     :controls="false"
                                     style="width: 100%"
                                 />
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Minutos de gracia antes de considerar un retardo. Cada horario puede tener su propio valor.</p>
                             </el-form-item>
 
                             <el-form-item label="Manejo de retardos en nómina" prop="late_discount_mode" :error="form.errors.late_discount_mode">
@@ -151,17 +167,22 @@ const submit = () => {
                                         :value="option.value"
                                     />
                                 </el-select>
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Elige si el retardo solo se registra o también se descuenta del pago.</p>
                             </el-form-item>
                         </div>
 
                         <el-form-item label="Ubicación obligatoria en asistencia remota" prop="remote_geolocation_required" :error="form.errors.remote_geolocation_required">
-                            <el-switch v-model="form.remote_geolocation_required" />
+                            <el-switch v-model="form.remote_geolocation_required" style="--el-switch-on-color: #f26c17;" />
+                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Si está activo, el colaborador no puede registrar desde su celular sin compartir su ubicación.</p>
                         </el-form-item>
-                    </div>
+                    </SettingsSection>
 
                     <!-- Tiempo extra -->
-                    <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-6">
-                        <h3 class="font-bold text-gray-800 dark:text-gray-100 mb-4">Tiempo extra</h3>
+                    <SettingsSection
+                        title="Tiempo extra"
+                        description="Cómo se pagan las horas trabajadas más allá de la jornada."
+                    >
+                        <template #icon><el-icon :size="18"><Timer /></el-icon></template>
 
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <el-form-item label="Multiplicador doble" prop="overtime_double_multiplier" :error="form.errors.overtime_double_multiplier">
@@ -174,6 +195,7 @@ const submit = () => {
                                     :controls="false"
                                     style="width: 100%"
                                 />
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Pago de las primeras horas extra de la semana.</p>
                             </el-form-item>
 
                             <el-form-item label="Multiplicador triple" prop="overtime_triple_multiplier" :error="form.errors.overtime_triple_multiplier">
@@ -186,6 +208,7 @@ const submit = () => {
                                     :controls="false"
                                     style="width: 100%"
                                 />
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Pago del excedente al superar el umbral.</p>
                             </el-form-item>
 
                             <el-form-item label="Umbral semanal (horas)" prop="overtime_weekly_threshold_hours" :error="form.errors.overtime_weekly_threshold_hours">
@@ -198,18 +221,25 @@ const submit = () => {
                                     :controls="false"
                                     style="width: 100%"
                                 />
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Horas extra por semana que se pagan al doble.</p>
                             </el-form-item>
                         </div>
 
-                        <p class="text-xs text-gray-400 dark:text-gray-500">
-                            Regla predeterminada LFT: las primeras horas extra de la semana se pagan al multiplicador
-                            doble; al superar el umbral semanal, el excedente se paga al triple.
-                        </p>
-                    </div>
+                        <div class="flex items-start gap-2 rounded-lg bg-gray-50 dark:bg-[#252529] px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">
+                            <el-icon class="mt-0.5 shrink-0"><InfoFilled /></el-icon>
+                            <p>
+                                Regla LFT: hasta el umbral semanal el tiempo extra se paga al doble; lo que lo supera
+                                se paga al triple. El tiempo trabajado en un día de descanso también cuenta como extra.
+                            </p>
+                        </div>
+                    </SettingsSection>
 
                     <!-- Días festivos -->
-                    <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-6">
-                        <h3 class="font-bold text-gray-800 dark:text-gray-100 mb-4">Días festivos</h3>
+                    <SettingsSection
+                        title="Días festivos"
+                        description="Pago adicional cuando un colaborador trabaja en un día festivo."
+                    >
+                        <template #icon><el-icon :size="18"><Sunny /></el-icon></template>
 
                         <el-form-item label="Pago extra por jornada festiva laborada (multiplicador)" prop="holiday_worked_extra_multiplier" :error="form.errors.holiday_worked_extra_multiplier">
                             <el-input-number
@@ -221,18 +251,24 @@ const submit = () => {
                                 :controls="false"
                                 style="width: 100%"
                             />
+                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Además del sueldo del día, cuánto se paga por laborar el festivo (LFT art. 75: 2 = un salario doble adicional).</p>
                         </el-form-item>
 
-                        <p class="text-xs text-gray-400 dark:text-gray-500">
-                            Art. 75 LFT: si el colaborador trabaja un día de descanso obligatorio, además del salario
-                            del día recibe un salario doble (multiplicador 2). El catálogo de días festivos se
-                            calcula automáticamente y puede ajustarse manualmente.
-                        </p>
-                    </div>
+                        <div class="flex items-start gap-2 rounded-lg bg-gray-50 dark:bg-[#252529] px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">
+                            <el-icon class="mt-0.5 shrink-0"><InfoFilled /></el-icon>
+                            <p>
+                                Los festivos oficiales se generan solos desde el catálogo LFT y también puedes agregar
+                                días de la empresa desde la pantalla <strong>Días festivos</strong>.
+                            </p>
+                        </div>
+                    </SettingsSection>
 
                     <!-- Vacaciones -->
-                    <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-6">
-                        <h3 class="font-bold text-gray-800 dark:text-gray-100 mb-4">Vacaciones</h3>
+                    <SettingsSection
+                        title="Vacaciones"
+                        description="Reglas con las que se solicitan y vencen los días de vacaciones."
+                    >
+                        <template #icon><el-icon :size="18"><Suitcase /></el-icon></template>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <el-form-item label="Días acumulados mínimos para solicitar" prop="vacation_min_days_to_request" :error="form.errors.vacation_min_days_to_request">
@@ -245,6 +281,7 @@ const submit = () => {
                                     :controls="false"
                                     style="width: 100%"
                                 />
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Saldo mínimo que debe tener el colaborador para poder solicitar.</p>
                             </el-form-item>
 
                             <el-form-item label="Vigencia del saldo arrastrado (meses)" prop="vacation_carryover_months" :error="form.errors.vacation_carryover_months">
@@ -255,22 +292,31 @@ const submit = () => {
                                     :controls="false"
                                     style="width: 100%"
                                 />
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Meses que sobrevive el saldo no usado de cada temporada antes de vencer.</p>
                             </el-form-item>
                         </div>
 
-                        <p class="text-xs text-gray-400 dark:text-gray-500">
-                            Los días por antigüedad se calculan según la LFT (12 días el primer año, +2 por año hasta 20,
-                            después +2 cada 5 años) y se acumulan de forma proporcional semanal.
-                        </p>
-                    </div>
+                        <div class="flex items-start gap-2 rounded-lg bg-gray-50 dark:bg-[#252529] px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">
+                            <el-icon class="mt-0.5 shrink-0"><InfoFilled /></el-icon>
+                            <p>
+                                Los días por antigüedad son los de la LFT: 12 el primer año, +2 por año hasta 20 y +2
+                                cada 5 años. Se acumulan por semana y se consumen de la temporada más antigua a la más
+                                reciente.
+                            </p>
+                        </div>
+                    </SettingsSection>
 
                     <!-- Incapacidades -->
-                    <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-6">
-                        <h3 class="font-bold text-gray-800 dark:text-gray-100 mb-4">Incapacidades</h3>
+                    <SettingsSection
+                        title="Incapacidades"
+                        description="Qué parte del día se paga cuando existe una incapacidad médica."
+                    >
+                        <template #icon><el-icon :size="18"><FirstAidKit /></el-icon></template>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <el-form-item label="Se paga la incapacidad" prop="incapacity_paid" :error="form.errors.incapacity_paid">
-                                <el-switch v-model="form.incapacity_paid" />
+                                <el-switch v-model="form.incapacity_paid" style="--el-switch-on-color: #f26c17;" />
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Si se desactiva, los días de incapacidad quedan sin goce de sueldo.</p>
                             </el-form-item>
 
                             <el-form-item label="Porcentaje del día que se paga" prop="incapacity_pay_percentage" :error="form.errors.incapacity_pay_percentage">
@@ -282,43 +328,53 @@ const submit = () => {
                                     :controls="false"
                                     style="width: 100%"
                                 />
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Porcentaje del sueldo diario que se paga por cada día de incapacidad.</p>
                             </el-form-item>
                         </div>
-
-                        <p class="text-xs text-gray-400 dark:text-gray-500">
-                            Si no se paga, los días de incapacidad se registran como incidencia sin goce de sueldo.
-                        </p>
-                    </div>
+                    </SettingsSection>
 
                     <!-- Reconocimiento facial -->
-                    <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-6">
-                        <h3 class="font-bold text-gray-800 dark:text-gray-100 mb-4">Reconocimiento facial (AWS Rekognition)</h3>
+                    <SettingsSection
+                        title="Reconocimiento facial (AWS Rekognition)"
+                        description="Identificación por rostro en el kiosco de asistencia."
+                    >
+                        <template #icon><el-icon :size="18"><Camera /></el-icon></template>
 
                         <el-form-item label="Reconocimiento facial activo" prop="face_recognition_enabled" :error="form.errors.face_recognition_enabled">
-                            <el-switch v-model="form.face_recognition_enabled" />
+                            <el-switch v-model="form.face_recognition_enabled" style="--el-switch-on-color: #f26c17;" />
+                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Habilita el botón «Registrar con rostro» en el kiosco.</p>
                         </el-form-item>
 
                         <el-form-item label="Umbral de coincidencia (similitud mínima)" prop="face_match_threshold" :error="form.errors.face_match_threshold">
                             <el-slider v-model="form.face_match_threshold" :min="50" :max="100" show-input :disabled="!form.face_recognition_enabled" />
+                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Similitud mínima para aceptar la identificación; más alto es más estricto.</p>
                         </el-form-item>
 
                         <el-form-item label="Respaldo con número de empleado y PIN en kiosco" prop="kiosk_pin_fallback_enabled" :error="form.errors.kiosk_pin_fallback_enabled">
-                            <el-switch v-model="form.kiosk_pin_fallback_enabled" />
+                            <el-switch v-model="form.kiosk_pin_fallback_enabled" style="--el-switch-on-color: #f26c17;" />
+                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Permite registrar con número de empleado y PIN si el rostro no se reconoce.</p>
                         </el-form-item>
 
                         <el-form-item label="Colección de rostros en Rekognition" prop="rekognition_collection_id" :error="form.errors.rekognition_collection_id">
                             <el-input v-model="form.rekognition_collection_id" placeholder="construmax-attendance" />
+                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Nombre de la colección en AWS; no lo cambies si ya hay colaboradores enrolados.</p>
                         </el-form-item>
 
-                        <p class="text-xs text-gray-400 dark:text-gray-500">
-                            Requiere credenciales de AWS configuradas en el servidor. Antes de activarlo puedes operar
-                            el kiosco con el respaldo de PIN.
-                        </p>
-                    </div>
+                        <div class="flex items-start gap-2 rounded-lg bg-gray-50 dark:bg-[#252529] px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">
+                            <el-icon class="mt-0.5 shrink-0"><InfoFilled /></el-icon>
+                            <p>
+                                Requiere credenciales de AWS configuradas en el servidor. Mientras no esté activo, el
+                                kiosco puede operar con el respaldo de PIN.
+                            </p>
+                        </div>
+                    </SettingsSection>
 
                     <!-- Valores predeterminados -->
-                    <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-6">
-                        <h3 class="font-bold text-gray-800 dark:text-gray-100 mb-4">Valores predeterminados</h3>
+                    <SettingsSection
+                        title="Valores predeterminados"
+                        description="Valores que se usan cuando el colaborador no tiene otro configurado."
+                    >
+                        <template #icon><el-icon :size="18"><Coin /></el-icon></template>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <el-form-item label="Jornada diaria por defecto (horas)" prop="default_daily_hours" :error="form.errors.default_daily_hours">
@@ -331,6 +387,7 @@ const submit = () => {
                                     :controls="false"
                                     style="width: 100%"
                                 />
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Horas de una jornada completa para quien no tiene horario asignado.</p>
                             </el-form-item>
 
                             <el-form-item label="Categoría del gasto por nómina" prop="payroll_expense_category_id" :error="form.errors.payroll_expense_category_id">
@@ -342,17 +399,17 @@ const submit = () => {
                                         :value="category.id"
                                     />
                                 </el-select>
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Categoría con la que se registra el gasto de la nómina en Control de gastos.</p>
                             </el-form-item>
                         </div>
-
-                        <p class="text-xs text-gray-400 dark:text-gray-500">
-                            Al cerrar cada periodo se registra un gasto con el total de la nómina en Control de gastos.
-                        </p>
-                    </div>
+                    </SettingsSection>
 
                     <!-- Evidencia de asistencia -->
-                    <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-6">
-                        <h3 class="font-bold text-gray-800 dark:text-gray-100 mb-4">Evidencia de asistencia</h3>
+                    <SettingsSection
+                        title="Evidencia de asistencia"
+                        description="Cuánto tiempo se guardan las fotos de los registros."
+                    >
+                        <template #icon><el-icon :size="18"><Picture /></el-icon></template>
 
                         <el-form-item label="Conservar fotos de registro (meses)" prop="attendance_capture_retention_months" :error="form.errors.attendance_capture_retention_months">
                             <el-input-number
@@ -362,18 +419,20 @@ const submit = () => {
                                 :controls="false"
                                 style="width: 100%"
                             />
+                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Las fotos de cada registro se eliminan automáticamente al cumplir este plazo.</p>
                         </el-form-item>
-
-                        <p class="text-xs text-gray-400 dark:text-gray-500">
-                            Las fotos capturadas en cada registro se eliminan automáticamente al vencer este plazo.
-                        </p>
-                    </div>
+                    </SettingsSection>
                 </div>
 
-                <div class="flex justify-end gap-3 pt-6">
-                    <el-button type="primary" native-type="submit" :loading="form.processing" color="#f26c17">
-                        Guardar configuración
-                    </el-button>
+                <div class="sticky bottom-4 z-10 pt-6">
+                    <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-white/95 dark:bg-[#1e1e20]/95 backdrop-blur px-4 py-3 shadow-sm">
+                        <p class="text-xs text-gray-500 dark:text-gray-400">
+                            Los cambios se aplican de inmediato a los cálculos de los periodos abiertos.
+                        </p>
+                        <el-button type="primary" native-type="submit" :loading="form.processing" color="#f26c17">
+                            Guardar configuración
+                        </el-button>
+                    </div>
                 </div>
             </el-form>
         </div>

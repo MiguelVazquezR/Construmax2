@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessageBox } from 'element-plus';
-import { Plus, Delete, MagicStick } from '@element-plus/icons-vue';
+import { Calendar, Delete, InfoFilled, MagicStick, Money, Plus } from '@element-plus/icons-vue';
 import { useFlashMessages } from '@/Composables/useFlashMessages';
 
 const props = defineProps({
@@ -81,6 +81,16 @@ const formatDate = (value) => {
     const date = parseDate(value);
     return date.toLocaleDateString('es-MX', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 };
+
+// Live summary of what will be saved, shown inside the dialog.
+const formSummary = computed(() => {
+    const name = form.name?.trim() || 'el nuevo día';
+    const date = form.date ? formatDate(form.date) : 'la fecha seleccionada';
+    const kind = form.is_mandatory ? 'descanso obligatorio' : 'día de la empresa';
+    const pay = form.apply_extra_pay ? 'con pago extra si se labora' : 'sin pago extra';
+
+    return `Se registrará «${name}» el ${date} como ${kind} y ${pay}.`;
+});
 </script>
 
 <template>
@@ -175,30 +185,80 @@ const formatDate = (value) => {
         </div>
 
         <!-- Add dialog -->
-        <el-dialog v-model="dialogVisible" title="Agregar día festivo" width="480px" top="10vh">
+        <el-dialog v-model="dialogVisible" title="Agregar día festivo" width="560px" top="8vh">
+            <div class="flex items-start gap-2 rounded-lg bg-[#fdf0e7] dark:bg-[#3a2a1d] px-3 py-2 mb-5">
+                <el-icon class="mt-0.5 shrink-0 text-[#f26c17]"><InfoFilled /></el-icon>
+                <p class="text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+                    Los días festivos son días de descanso pagados. Si el colaborador trabaja uno, además del
+                    sueldo del día recibe el pago extra configurado.
+                </p>
+            </div>
+
             <el-form :model="form" label-position="top" size="default">
-                <el-form-item label="Fecha" required :error="form.errors.date">
-                    <el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" placeholder="Seleccionar fecha" class="w-full" />
-                </el-form-item>
-
-                <el-form-item label="Nombre" required :error="form.errors.name">
-                    <el-input v-model="form.name" placeholder="Ej. Día de la empresa" maxlength="150" />
-                </el-form-item>
-
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <el-form-item label="Descanso obligatorio" :error="form.errors.is_mandatory">
-                        <el-switch v-model="form.is_mandatory" />
+                    <el-form-item label="Fecha" required :error="form.errors.date">
+                        <el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" placeholder="Seleccionar fecha" class="w-full" />
                     </el-form-item>
 
-                    <el-form-item label="Pago extra si se labora" :error="form.errors.apply_extra_pay">
-                        <el-switch v-model="form.apply_extra_pay" />
+                    <el-form-item label="Nombre" required :error="form.errors.name">
+                        <el-input v-model="form.name" placeholder="Ej. Día de la empresa" maxlength="150" />
                     </el-form-item>
                 </div>
 
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-1">
+                    <div
+                        class="flex items-start justify-between gap-3 rounded-xl border px-4 py-3 transition-colors"
+                        :class="form.is_mandatory
+                            ? 'border-[#f26c17]/40 bg-[#fdf0e7]/60 dark:bg-[#3a2a1d]/40'
+                            : 'border-gray-100 dark:border-[#2b2b2e]'"
+                    >
+                        <div class="flex items-start gap-3">
+                            <div class="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
+                                <el-icon :size="16"><Calendar /></el-icon>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-gray-800 dark:text-gray-100">Descanso obligatorio</p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Día de descanso oficial (LFT) o marcado por la empresa.</p>
+                            </div>
+                        </div>
+                        <el-switch v-model="form.is_mandatory" style="--el-switch-on-color: #f26c17;" />
+                    </div>
+
+                    <div
+                        class="flex items-start justify-between gap-3 rounded-xl border px-4 py-3 transition-colors"
+                        :class="form.apply_extra_pay
+                            ? 'border-[#f26c17]/40 bg-[#fdf0e7]/60 dark:bg-[#3a2a1d]/40'
+                            : 'border-gray-100 dark:border-[#2b2b2e]'"
+                    >
+                        <div class="flex items-start gap-3">
+                            <div class="w-8 h-8 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+                                <el-icon :size="16"><Money /></el-icon>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-gray-800 dark:text-gray-100">Pago extra si se labora</p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Paga el adicional configurado cuando alguien trabaja ese día.</p>
+                            </div>
+                        </div>
+                        <el-switch v-model="form.apply_extra_pay" style="--el-switch-on-color: #f26c17;" />
+                    </div>
+                </div>
+
+                <p v-if="form.errors.is_mandatory" class="text-xs text-red-500 mb-2">{{ form.errors.is_mandatory }}</p>
+                <p v-if="form.errors.apply_extra_pay" class="text-xs text-red-500 mb-2">{{ form.errors.apply_extra_pay }}</p>
+
                 <el-form-item label="Notas" :error="form.errors.notes">
-                    <el-input v-model="form.notes" maxlength="255" placeholder="Comentarios opcionales" />
+                    <el-input v-model="form.notes" maxlength="255" placeholder="Comentarios opcionales, por ejemplo el motivo del día" />
                 </el-form-item>
             </el-form>
+
+            <!-- Live summary of the new holiday -->
+            <div
+                v-if="form.date || form.name"
+                class="flex items-start gap-2 rounded-lg bg-gray-50 dark:bg-[#252529] px-3 py-2 text-xs text-gray-500 dark:text-gray-400"
+            >
+                <el-icon class="mt-0.5 shrink-0"><Calendar /></el-icon>
+                <p>{{ formSummary }}</p>
+            </div>
 
             <template #footer>
                 <div class="flex justify-end gap-2">
