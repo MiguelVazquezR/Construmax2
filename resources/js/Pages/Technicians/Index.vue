@@ -18,6 +18,7 @@ import {
     InfoFilled
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
+import TechnicianDismissDialog from '@/Components/Technicians/TechnicianDismissDialog.vue';
 
 const { can } = usePermissions();
 
@@ -35,10 +36,20 @@ const activeTab = ref(props.filters.trashed ? 'trashed' : 'active');
 const search = ref(props.filters.search || '');
 const filterState = ref(props.filters.state || '');
 
+// Filtro interno / externo ('' = todos)
+const filterInternal = ref(
+    props.filters.is_internal !== undefined && props.filters.is_internal !== null && props.filters.is_internal !== ''
+        ? String(props.filters.is_internal)
+        : ''
+);
+
 // Filtro Especialidad: Ahora es un array para soportar múltiples
 const filterSpecialty = ref(props.filters.specialty || []); 
 
 const perPage = ref(parseInt(props.filters.perPage) || 10);
+
+// Diálogo de baja con fecha (técnicos internos)
+const dismissDialog = ref(null);
 
 // Configuración de Colores Semáforo para Rating
 const ratingColors = ref({
@@ -52,6 +63,7 @@ const updateParams = () => {
     return {
         search: search.value,
         state: filterState.value,
+        is_internal: filterInternal.value === '' ? undefined : filterInternal.value,
         specialty: filterSpecialty.value,
         perPage: perPage.value,
         trashed: activeTab.value === 'trashed' ? true : undefined,
@@ -101,6 +113,13 @@ const handleRowClick = (row) => {
 
 // Acciones
 const deleteTechnician = (technician) => {
+    // Internal technicians are paid through payroll: their dismissal asks for the
+    // termination date (same behaviour as collaborators in Users).
+    if (technician.is_internal) {
+        dismissDialog.value?.open(technician);
+        return;
+    }
+
     ElMessageBox.confirm(
         `¿Dar de baja al técnico "${technician.user.name}"? Su usuario será desactivado y aparecerá en la pestaña "Eliminados". Todo su historial (tickets, tareas, pagos y presupuestos) se conservará intacto para mantener la trazabilidad del sistema. Podrá reactivarse en cualquier momento.`,
         'Dar de baja técnico',
@@ -122,7 +141,7 @@ const deleteTechnician = (technician) => {
 
 const restoreTechnician = (technician) => {
     ElMessageBox.confirm(
-        `¿Reactivar al técnico "${technician.user.name}"? Volverá a aparecer en el listado activo y podrá operar normalmente.`,
+        `¿Reactivar al técnico "${technician.user.name}"? Volverá a operar normalmente y, si tenía fecha de baja en nómina, se limpiará para que vuelva a aparecer en los periodos.`,
         'Reactivar técnico',
         {
             confirmButtonText: 'Reactivar',
@@ -195,7 +214,7 @@ watch(search, () => {
                             placeholder="Buscar por nombre, RFC..."
                             clearable
                             :prefix-icon="Search"
-                            class="w-full sm:w-1/3"
+                            class="w-full sm:w-1/4"
                         />
                         
                         <!-- Filtro Estado -->
@@ -203,11 +222,23 @@ watch(search, () => {
                             v-model="filterState" 
                             placeholder="Ubicación (Estado)" 
                             clearable 
-                            class="w-full sm:w-1/4"
+                            class="w-full sm:w-1/5"
                             @change="applyFilter"
                         >
                             <template #prefix><el-icon><Location /></el-icon></template>
                             <el-option v-for="st in states" :key="st" :label="st" :value="st" />
+                        </el-select>
+
+                        <!-- Filtro Interno / Externo -->
+                        <el-select
+                            v-model="filterInternal"
+                            placeholder="Tipo de técnico"
+                            clearable
+                            class="w-full sm:w-1/5"
+                            @change="applyFilter"
+                        >
+                            <el-option label="Internos" value="1" />
+                            <el-option label="Externos" value="0" />
                         </el-select>
 
                         <!-- Filtro Especialidad (MÚLTIPLE) -->
@@ -218,7 +249,7 @@ watch(search, () => {
                             multiple
                             collapse-tags
                             collapse-tags-tooltip
-                            class="w-full sm:w-1/3"
+                            class="w-full sm:w-1/4"
                             @change="applyFilter"
                         >
                             <template #prefix><el-icon><Filter /></el-icon></template>
@@ -357,12 +388,12 @@ watch(search, () => {
                                             <Link v-if="can('technicians.edit') && activeTab === 'active'" :href="route('technicians.edit', scope.row.id)">
                                                 <el-dropdown-item :icon="Edit">Editar</el-dropdown-item>
                                             </Link>
-                                            <!-- Reactivar (solo en pestaña eliminados) -->
-                                            <el-dropdown-item v-if="activeTab === 'trashed'" :icon="RefreshRight" class="text-green-500" @click="restoreTechnician(scope.row)">
+                                            <!-- Reactivar (en eliminados o cuando el usuario fue desactivado por baja) -->
+                                            <el-dropdown-item v-if="activeTab === 'trashed' || (activeTab === 'active' && !scope.row.user.is_active)" :icon="RefreshRight" class="text-green-500" @click="restoreTechnician(scope.row)">
                                                 Reactivar
                                             </el-dropdown-item>
-                                            <!-- Dar de baja (solo en pestaña activos) -->
-                                            <el-dropdown-item v-if="can('technicians.delete') && activeTab === 'active'" divided :icon="Delete" class="text-red-500" @click="deleteTechnician(scope.row)">
+                                            <!-- Dar de baja (solo en pestaña activos y con el usuario activo) -->
+                                            <el-dropdown-item v-if="can('technicians.delete') && activeTab === 'active' && scope.row.user.is_active" divided :icon="Delete" class="text-red-500" @click="deleteTechnician(scope.row)">
                                                 Dar de baja
                                             </el-dropdown-item>
                                         </template>
@@ -426,8 +457,8 @@ watch(search, () => {
                             <Link v-if="can('technicians.edit') && activeTab === 'active'" :href="route('technicians.edit', tech.id)">
                                 <el-button size="small" :icon="Edit" circle />
                             </Link>
-                            <el-button v-if="activeTab === 'trashed'" size="small" type="success" :icon="RefreshRight" circle @click="restoreTechnician(tech)" />
-                            <el-button v-if="can('technicians.delete') && activeTab === 'active'" size="small" type="danger" :icon="Delete" circle @click="deleteTechnician(tech)" />
+                            <el-button v-if="activeTab === 'trashed' || (activeTab === 'active' && !tech.user.is_active)" size="small" type="success" :icon="RefreshRight" circle @click="restoreTechnician(tech)" />
+                            <el-button v-if="can('technicians.delete') && activeTab === 'active' && tech.user.is_active" size="small" type="danger" :icon="Delete" circle @click="deleteTechnician(tech)" />
                         </div>
                     </div>
                 </div>
@@ -450,6 +481,9 @@ watch(search, () => {
                 </div>
             </div>
         </div>
+
+        <!-- Diálogo de baja con fecha (técnicos internos) -->
+        <TechnicianDismissDialog ref="dismissDialog" />
     </AppLayout>
 </template>
 

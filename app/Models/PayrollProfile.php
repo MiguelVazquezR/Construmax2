@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Hash;
 
 class PayrollProfile extends Model
 {
@@ -34,11 +35,11 @@ class PayrollProfile extends Model
         'is_payroll_subject' => 'boolean',
         'is_attendance_subject' => 'boolean',
         'can_remote_attendance' => 'boolean',
-        'kiosk_pin' => 'hashed',
     ];
 
     protected $hidden = [
         'kiosk_pin',
+        'kiosk_pin_lookup',
     ];
 
     protected $appends = [
@@ -51,6 +52,32 @@ class PayrollProfile extends Model
     public function getHasKioskPinAttribute(): bool
     {
         return ! empty($this->kiosk_pin);
+    }
+
+    /**
+     * The kiosk pin is stored as a bcrypt hash (never reversible); the extra
+     * HMAC lookup allows the kiosk to find the collaborator from the typed pin
+     * without scanning every bcrypt hash.
+     */
+    public function setKioskPinAttribute(?string $value): void
+    {
+        $pin = trim((string) $value);
+
+        // An empty value keeps the current pin.
+        if ($pin === '') {
+            return;
+        }
+
+        $this->attributes['kiosk_pin'] = Hash::make($pin);
+        $this->attributes['kiosk_pin_lookup'] = self::pinLookup($pin);
+    }
+
+    /**
+     * Deterministic lookup hash of a kiosk pin, keyed with the app key.
+     */
+    public static function pinLookup(string $pin): string
+    {
+        return hash_hmac('sha256', trim($pin), (string) config('app.key'));
     }
 
     protected static function booted(): void

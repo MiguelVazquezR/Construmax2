@@ -52,10 +52,10 @@ const form = useForm({
     hire_date: profile.hire_date ? String(profile.hire_date).substring(0, 10) : null,
     termination_date: profile.termination_date ? String(profile.termination_date).substring(0, 10) : null,
     daily_salary: toNumber(profile.daily_salary),
-    daily_hours: toNumber(profile.daily_hours),
     is_payroll_subject: Boolean(profile.is_payroll_subject),
     is_attendance_subject: Boolean(profile.is_attendance_subject),
     can_remote_attendance: Boolean(profile.can_remote_attendance),
+    kiosk_pin: '', // Empty keeps the current pin.
     shift_id: props.currentShiftId ?? null,
 });
 
@@ -82,6 +82,18 @@ const rules = reactive({
     ],
     phone: [
         { required: true, message: 'El teléfono es obligatorio', trigger: 'blur' },
+    ],
+    shift_id: [
+        {
+            validator: (rule, value, callback) => {
+                if (form.is_payroll_subject && ! value) {
+                    callback(new Error('Selecciona un horario para el colaborador sujeto a nómina.'));
+                } else {
+                    callback();
+                }
+            },
+            trigger: 'change',
+        },
     ],
 });
 
@@ -215,7 +227,7 @@ const submit = () => {
                         </div>
 
                         <!-- Sección: Nómina y asistencia -->
-                        <PayrollProfileFields :form="form" :shifts="shifts" />
+                        <PayrollProfileFields :form="form" :has-kiosk-pin="Boolean(profile.has_kiosk_pin)" :shifts="shifts" />
 
                         <!-- Botones -->
                         <div class="flex justify-end gap-3 pt-4 border-t border-gray-100 dark:border-gray-700">

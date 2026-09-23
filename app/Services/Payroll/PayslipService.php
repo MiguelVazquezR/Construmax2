@@ -77,7 +77,7 @@ class PayslipService
         }
 
         return $period->payslips()
-            ->with(['user:id,name', 'user.payrollProfile', 'lines', 'days'])
+            ->with(['user:id,name', 'user.payrollProfile', 'user.technician', 'lines', 'days'])
             ->when($userIds !== [], fn ($query) => $query->whereIn('user_id', $userIds))
             ->get()
             ->sortBy(fn (Payslip $payslip) => mb_strtolower((string) $payslip->user?->name))
@@ -96,7 +96,7 @@ class PayslipService
             'user_name' => $payslip->user?->name,
             'employee_number' => $payslip->employee_number,
             'department' => $payslip->department,
-            'position' => $payslip->position,
+            'position' => $payslip->user?->technician !== null ? 'Técnico' : $payslip->position,
             'termination_date' => $payslip->user?->payrollProfile?->termination_date?->toDateString(),
             'days_worked' => (float) $payslip->days_worked,
             'days_paid' => (float) $payslip->days_paid,
@@ -152,7 +152,7 @@ class PayslipService
             'user_name' => $user->name,
             'employee_number' => $snapshot['employee_number'],
             'department' => $snapshot['department'],
-            'position' => $snapshot['position'],
+            'position' => $user->technician !== null ? 'Técnico' : $snapshot['position'],
             'termination_date' => $snapshot['termination_date'] ?? null,
             'days_worked' => (float) $totals['days_worked'],
             'days_paid' => (float) $totals['days_paid'],
@@ -187,7 +187,7 @@ class PayslipService
             'user_id' => $user->id,
             'employee_number' => $snapshot['employee_number'],
             'department' => $snapshot['department'],
-            'position' => $snapshot['position'],
+            'position' => $user->technician !== null ? 'Técnico' : $snapshot['position'],
             'hire_date' => $snapshot['hire_date'],
             'daily_salary' => $snapshot['daily_salary'],
             'daily_hours' => $snapshot['daily_hours'],

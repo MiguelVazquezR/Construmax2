@@ -10,26 +10,39 @@ class ClosePayrollPeriod extends Command
 {
     protected $signature = 'payroll:close-period {--period= : Id of a specific open period to close}';
 
-    protected $description = 'Close due payroll periods: freeze payslips, register the payroll expense and open the next period';
+    protected $description = 'Weekly payroll rollover: close the Monday–Sunday period that ended and open the current week';
 
     public function handle(PayrollPeriodService $periodService): int
     {
         if ($this->option('period')) {
-            $period = PayrollPeriod::find((int) $this->option('period'));
-
-            if (! $period) {
-                $this->error('Payroll period not found.');
-
-                return self::FAILURE;
-            }
-        } else {
-            $period = $periodService->duePeriod();
+            return $this->closeSinglePeriod($periodService, (int) $this->option('period'));
         }
 
-        if (! $period) {
-            $this->info('No payroll period is due for closing.');
+        $result = $periodService->syncAutomatic();
 
-            return self::SUCCESS;
+        if ($result['closed']) {
+            $this->info("Period {$result['closed']->id} closed ({$result['closed']->label()}). Net total: {$result['closed']->total_net}.");
+        }
+
+        if ($result['opened']) {
+            $this->info("Current period opened: {$result['opened']->label()}.");
+        }
+
+        if (! $result['closed'] && ! $result['opened']) {
+            $this->info('Nothing to do: the current week is already covered.');
+        }
+
+        return self::SUCCESS;
+    }
+
+    private function closeSinglePeriod(PayrollPeriodService $periodService, int $id): int
+    {
+        $period = PayrollPeriod::find($id);
+
+        if (! $period) {
+            $this->error('Payroll period not found.');
+
+            return self::FAILURE;
         }
 
         if (! $period->isOpen()) {
@@ -41,10 +54,7 @@ class ClosePayrollPeriod extends Command
         $periodService->close($period);
         $period->refresh();
 
-        $next = $periodService->createNextPeriod($period);
-
         $this->info("Period {$period->id} closed ({$period->label()}). Net total: {$period->total_net}.");
-        $this->info("Next period opened: {$next->label()}.");
 
         return self::SUCCESS;
     }

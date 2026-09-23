@@ -63,11 +63,11 @@ POST   /users/bulk-delete          users.bulk-destroy
 | Hire date | Drives vacation seasons and accrual |
 | Termination date | Optional dismissal date (must be `after_or_equal` the hire date). The collaborator stays in the payroll up to and including that day and disappears from the periods that start after it |
 | Employee number | Auto `EMP-####` when left empty in create |
-| Daily salary / daily hours | Payroll basis |
+| Daily salary | Payroll basis. The daily hours are no longer typed: they follow the assigned schedule (see below) |
 | Subject to payroll / records attendance | `is_payroll_subject`, `is_attendance_subject` |
 | Remote attendance | `can_remote_attendance` — requires `payroll.remote-attendance.manage`; other fields require `payroll.profiles.manage` (enforced by `SyncPayrollProfileAction::sanitizeFor`) |
-| Assigned shift | `shift_id` — selector of the active shifts (with an info icon that opens a summary popover: worked days, schedules and meal time). Saved through `AssignUserShiftAction`: creates/updates the individual fixed assignment starting on the hire date. Only applied with `payroll.profiles.manage` |
-| Kiosk PIN | Backend only (the form no longer exposes it): hashed, an empty value keeps the stored one and `has_kiosk_pin` is exposed as a boolean flag |
+| Assigned schedule | `shift_id` — the schedule selector lives in the *Nómina* card (where «Horas por día» used to be), required while the collaborator is subject to payroll, with an info icon that opens a summary popover (worked days, schedules and meal time). Saved through `AssignUserShiftAction`: creates/updates the individual fixed assignment starting on the hire date and keeps `daily_hours` in sync with the schedule. Only applied with `payroll.profiles.manage` |
+| Kiosk PIN | Digits only (4 to 12) in the *Asistencia* card; requires «Registra asistencia». Stored hashed — an empty value keeps the current pin and `has_kiosk_pin` is exposed as a boolean flag |
 
 ### User show page
 - Hero card: avatar, name, email, roles, department

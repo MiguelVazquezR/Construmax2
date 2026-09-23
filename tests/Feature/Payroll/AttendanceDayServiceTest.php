@@ -250,6 +250,6 @@ class AttendanceDayServiceTest extends TestCase
         $summary = $this->service->summaryFor($this->user, $this->monday());
 
         $this->assertSame(AttendanceDaySummary::STATUS_INCIDENT, $summary->status);
-        $this->assertSame('Incapacidad médica', $summary->incidentType);
+        $this->assertSame('Incapacidad general', $summary->incidentType);
     }
 }

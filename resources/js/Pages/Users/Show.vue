@@ -357,6 +357,13 @@ const removeAdjustment = (adjustment) => {
                                         </div>
 
                                         <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">PIN de kiosco</p>
+                                            <el-tag class="mt-1" :type="user.payroll_profile.has_kiosk_pin ? 'success' : 'info'" size="small" effect="light">
+                                                {{ user.payroll_profile.has_kiosk_pin ? 'Configurado' : 'Sin configurar' }}
+                                            </el-tag>
+                                        </div>
+
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
                                             <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Fecha de baja</p>
                                             <p class="mt-1 text-sm font-semibold" :class="user.payroll_profile.termination_date ? 'text-red-500' : 'text-gray-800 dark:text-gray-100'">
                                                 {{ user.payroll_profile.termination_date ? formatDate(user.payroll_profile.termination_date) : 'Sigue activo' }}

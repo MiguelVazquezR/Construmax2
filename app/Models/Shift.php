@@ -169,10 +169,6 @@ class Shift extends Model
             return (int) round($hours * 60);
         }
 
-        $mealMinutes = (int) $this->meal_minutes;
-        $start = $this->start_time;
-        $end = $this->end_time;
-
         if ($this->isPerDay()) {
             $schedule = $this->dayScheduleFor($date ?? Carbon::today());
 
@@ -180,23 +176,60 @@ class Shift extends Model
                 return 0;
             }
 
-            $start = $schedule['start_time'];
-            $end = $schedule['end_time'];
-            $mealMinutes = $schedule['meal_minutes'];
+            return $this->netMinutesFor($schedule['start_time'], $schedule['end_time'], $schedule['meal_minutes']);
         }
 
-        if (! $start || ! $end) {
+        if (! $this->start_time || ! $this->end_time) {
             return 0;
         }
 
-        $start = Carbon::parse($start);
-        $end = Carbon::parse($end);
+        return $this->netMinutesFor($this->start_time, $this->end_time, (int) $this->meal_minutes);
+    }
 
-        if ($end->lessThanOrEqualTo($start)) {
-            $end->addDay();
+    /**
+     * A single daily-hours figure for the shift. It keeps the payroll
+     * profile's hours aligned with the assigned schedule (the manual
+     * "hours per day" field was removed from the forms): fixed shifts
+     * derive it from their schedule, flexible ones use their required
+     * hours and per-day shifts average their configured weekdays.
+     */
+    public function representativeDailyHours(): float
+    {
+        if ($this->isPerDay()) {
+            $minutes = [];
+
+            foreach ($this->day_schedules ?? [] as $schedule) {
+                if (! is_array($schedule) || empty($schedule['start_time']) || empty($schedule['end_time'])) {
+                    continue;
+                }
+
+                $minutes[] = $this->netMinutesFor(
+                    (string) $schedule['start_time'],
+                    (string) $schedule['end_time'],
+                    (int) ($schedule['meal_minutes'] ?? 0),
+                );
+            }
+
+            return $minutes === [] ? 0.0 : round(array_sum($minutes) / count($minutes) / 60, 2);
         }
 
-        $minutes = $start->diffInMinutes($end);
+        return round($this->expectedDailyMinutes() / 60, 2);
+    }
+
+    /**
+     * Net minutes between two times (unpaid meals excluded, overnight
+     * ranges supported).
+     */
+    private function netMinutesFor(string $start, string $end, int $mealMinutes): int
+    {
+        $startAt = Carbon::parse($start);
+        $endAt = Carbon::parse($end);
+
+        if ($endAt->lessThanOrEqualTo($startAt)) {
+            $endAt->addDay();
+        }
+
+        $minutes = $startAt->diffInMinutes($endAt);
 
         if (! $this->is_meal_paid) {
             $minutes -= $mealMinutes;

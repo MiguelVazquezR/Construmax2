@@ -37,10 +37,10 @@ const form = useForm({
     hire_date: null,
     termination_date: null,
     daily_salary: null,
-    daily_hours: null,
     is_payroll_subject: false,
     is_attendance_subject: false,
     can_remote_attendance: false,
+    kiosk_pin: '',
     shift_id: null,
 });
 
@@ -68,6 +68,18 @@ const rules = reactive({
     ],
     phone: [
         { required: true, message: 'El teléfono es obligatorio', trigger: 'blur' },
+    ],
+    shift_id: [
+        {
+            validator: (rule, value, callback) => {
+                if (form.is_payroll_subject && ! value) {
+                    callback(new Error('Selecciona un horario para el colaborador sujeto a nómina.'));
+                } else {
+                    callback();
+                }
+            },
+            trigger: 'change',
+        },
     ],
 });
 

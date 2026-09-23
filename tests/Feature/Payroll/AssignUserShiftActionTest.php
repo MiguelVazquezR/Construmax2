@@ -84,6 +84,41 @@ class AssignUserShiftActionTest extends TestCase
         $this->assertDatabaseCount('shift_assignments', 0);
     }
 
+    public function test_assigning_a_shift_keeps_the_profile_daily_hours_in_sync(): void
+    {
+        $user = User::factory()->create(['is_active' => true]);
+
+        $profile = PayrollProfile::create([
+            'user_id' => $user->id,
+            'hire_date' => '2026-09-01',
+            'is_attendance_subject' => true,
+        ]);
+
+        $fixed = $this->makeShift('Matutino'); // 09:00 – 18:00 with 60 min meal → 8 h
+
+        app(AssignUserShiftAction::class)->execute($user, $fixed->id);
+
+        $this->assertEquals(8.0, (float) $profile->fresh()->daily_hours);
+
+        $perDay = Shift::create([
+            'name' => 'Mixto',
+            'type' => Shift::TYPE_PER_DAY,
+            'meal_minutes' => 0,
+            'is_meal_paid' => false,
+            'days' => [],
+            'day_schedules' => [
+                1 => ['start_time' => '09:00', 'end_time' => '18:00', 'meal_minutes' => 60],
+                6 => ['start_time' => '09:00', 'end_time' => '13:00', 'meal_minutes' => 0],
+            ],
+            'is_active' => true,
+        ]);
+
+        app(AssignUserShiftAction::class)->execute($user, $perDay->id);
+
+        // Per-day shifts average their configured weekdays: (8 h + 4 h) / 2 = 6 h.
+        $this->assertEquals(6.0, (float) $profile->fresh()->daily_hours);
+    }
+
     public function test_the_form_submission_requires_the_payroll_permission(): void
     {
         Permission::create([

@@ -14,11 +14,14 @@ use App\Models\TechnicianSpecialty;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Services\Media\ImageOptimizerService;
+use App\Services\Payroll\ScheduleResolverService;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class TechnicianController extends Controller
@@ -28,6 +31,7 @@ class TechnicianController extends Controller
         private readonly SyncPayrollProfileAction $syncPayrollProfileAction,
         private readonly EnrollProfilePhotoAction $enrollProfilePhotoAction,
         private readonly AssignUserShiftAction $assignUserShiftAction,
+        private readonly ScheduleResolverService $scheduleResolver,
     ) {}
 
     public function index(Request $request)
@@ -48,7 +52,7 @@ class TechnicianController extends Controller
                 }
             })
             ->filter($request->only('search', 'specialty', 'state'))
-            ->when($request->has('is_internal'), fn ($q) => $q->where('is_internal', $request->boolean('is_internal')))
+            ->when($request->filled('is_internal'), fn ($q) => $q->where('is_internal', $request->boolean('is_internal')))
             ->orderBy('id', 'desc')
             ->paginate($perPage)
             ->withQueryString();
@@ -69,7 +73,7 @@ class TechnicianController extends Controller
 
         return Inertia::render('Technicians/Index', [
             'technicians' => $technicians,
-            'filters' => $request->only(['search', 'perPage', 'specialty', 'state', 'trashed']),
+            'filters' => $request->only(['search', 'perPage', 'specialty', 'state', 'trashed', 'is_internal']),
             'states' => $states,
             'specialties' => $specialties,
         ]);
@@ -111,8 +115,14 @@ class TechnicianController extends Controller
             'internal_notes' => 'nullable|string',
             'tax_file' => 'nullable|file|mimes:pdf,jpg,png|max:5120',
             'rating_avg' => 'nullable|numeric|min:0|max:5',
-            ...$this->payrollRules(),
-        ]);
+            ...$this->payrollRules($request),
+        ], $this->payrollMessages());
+
+        // Only internal technicians are paid through payroll: external collaborators
+        // can never be saved as payroll subjects.
+        if (array_key_exists('is_payroll_subject', $validated) && ! ($validated['is_internal'] ?? false)) {
+            $validated['is_payroll_subject'] = false;
+        }
 
         $payrollProfile = $this->syncPayrollProfileAction->sanitizeFor($request->user(), $validated);
 
@@ -222,6 +232,10 @@ class TechnicianController extends Controller
             'technician' => $technician,
             'tickets' => $tickets,
             'payments' => $payments,
+            // Effective shift today (individual, department or rotation).
+            'currentShift' => $technician->user
+                ? $this->scheduleResolver->resolveFor($technician->user, CarbonImmutable::today())?->shift
+                : null,
             'kpis' => [
                 'total_tickets' => $totalTickets,
                 'completion_rate' => $completionRate,
@@ -266,8 +280,13 @@ class TechnicianController extends Controller
             'internal_notes' => 'nullable|string',
             'rating_avg' => 'nullable|numeric|min:0|max:5',
             'tax_file' => 'nullable|file|mimes:pdf,jpg,png|max:5120', // CORRECCIÓN 1: Faltaba validar el archivo
-            ...$this->payrollRules(),
-        ]);
+            ...$this->payrollRules($request, $technician),
+        ], $this->payrollMessages());
+
+        // Turning the technician into an external one removes them from payroll.
+        if (array_key_exists('is_payroll_subject', $validated) && ! ($validated['is_internal'] ?? $technician->is_internal)) {
+            $validated['is_payroll_subject'] = false;
+        }
 
         $payrollProfile = $this->syncPayrollProfileAction->sanitizeFor($request->user(), $validated);
 
@@ -347,13 +366,46 @@ class TechnicianController extends Controller
      *
      * @return array<string, array<int, mixed>>
      */
-    private function payrollRules(): array
+    private function payrollRules(Request $request, ?Technician $technician = null): array
     {
+        // Only an internal technician marked as payroll subject needs a
+        // schedule: its daily hours feed the minute rate used by overtime and
+        // late discounts. (External ones are forced out of payroll.)
+        $isInternal = $request->has('is_internal')
+            ? $request->boolean('is_internal')
+            : (bool) $technician?->is_internal;
+
+        $shiftRequired = $request->user()?->can('payroll.profiles.manage')
+            && $isInternal
+            && $request->boolean('is_payroll_subject');
+
         return [
+            'employee_number' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'hire_date' => ['sometimes', 'nullable', 'date'],
+            'daily_salary' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:9999999'],
+            'daily_hours' => ['sometimes', 'nullable', 'numeric', 'min:1', 'max:24'],
+            // Only internal technicians can be payroll subjects (see the is_internal guards).
+            'is_payroll_subject' => ['sometimes', 'boolean'],
             'is_attendance_subject' => ['sometimes', 'boolean'],
             'can_remote_attendance' => ['sometimes', 'boolean'],
             'kiosk_pin' => ['nullable', 'string', 'min:4', 'max:12', 'regex:/^[0-9]+$/'],
-            'shift_id' => ['nullable', 'integer', 'exists:shifts,id'],
+            'shift_id' => [
+                $shiftRequired ? 'required' : 'nullable',
+                'integer',
+                'exists:shifts,id',
+            ],
+        ];
+    }
+
+    /**
+     * Custom messages of the optional payroll fields.
+     *
+     * @return array<string, string>
+     */
+    private function payrollMessages(): array
+    {
+        return [
+            'shift_id.required' => 'Selecciona un horario para el técnico sujeto a nómina.',
         ];
     }
 
@@ -517,8 +569,38 @@ class TechnicianController extends Controller
         return back()->with('success', 'Cuenta favorita actualizada.');
     }
 
-    public function destroy(Technician $technician)
+    public function destroy(Request $request, Technician $technician)
     {
+        // Internal technicians are paid through payroll, so their dismissal asks for
+        // a termination date: they keep their record and stop appearing in the payroll
+        // periods that start after it (same behaviour as collaborators in Users).
+        if ($technician->is_internal) {
+            $validated = $request->validate([
+                'termination_date' => ['nullable', 'date'],
+            ]);
+
+            $terminationDate = CarbonImmutable::parse($validated['termination_date'] ?? now()->toDateString())->toDateString();
+            $profile = $technician->user->payrollProfile;
+
+            if ($profile?->hire_date && $terminationDate < $profile->hire_date->toDateString()) {
+                throw ValidationException::withMessages([
+                    'termination_date' => 'La fecha de baja no puede ser anterior a la fecha de ingreso ('.$profile->hire_date->format('d/m/Y').').',
+                ]);
+            }
+
+            DB::transaction(function () use ($technician, $terminationDate) {
+                $profile = $technician->user->payrollProfile ?? $technician->user->payrollProfile()->make();
+                $profile->termination_date = $terminationDate;
+                $profile->save();
+
+                $technician->user->update(['is_active' => false]);
+                $technician->update(['status' => 'Inactivo']);
+            });
+
+            return redirect()->route('technicians.index')
+                ->with('success', 'Técnico dado de baja el '.CarbonImmutable::parse($terminationDate)->format('d/m/Y').'. Ya no aparecerá en los periodos de nómina posteriores y puede reactivarse desde el listado.');
+        }
+
         $technician->update(['status' => 'Eliminado']);
         $technician->user->delete(); // Soft delete gracias al trait SoftDeletes en User
 
@@ -531,6 +613,10 @@ class TechnicianController extends Controller
         $technician = Technician::where('id', $id)->firstOrFail();
         $user = User::withTrashed()->findOrFail($technician->user_id);
         $user->restore();
+        // Reactivation clears the payroll termination date so the collaborator
+        // returns to the payroll and can register attendance again.
+        $user->update(['is_active' => true]);
+        $user->payrollProfile?->update(['termination_date' => null]);
         $technician->update(['status' => 'Activo']);
 
         return redirect()->route('technicians.index')

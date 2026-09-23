@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Clock, Delete, Document, Edit, Location, Picture, Plus } from '@element-plus/icons-vue';
+import { Clock, Delete, Document, Edit, Location, MoreFilled, Picture, Plus } from '@element-plus/icons-vue';
 import axios from 'axios';
 
 const props = defineProps({
@@ -55,6 +55,7 @@ const incidentTagType = (type) => ({
     absence_unjustified: 'danger',
     absence_justified: 'primary',
     medical_leave: 'info',
+    work_incapacity: 'info',
     permission_paid: 'primary',
     permission_unpaid: 'warning',
     vacation: 'warning',
@@ -71,15 +72,56 @@ const dayTagType = (day) => {
         present: 'success',
         absent: 'danger',
         no_record: 'info',
-        rest_day: 'info',
+        rest_day: 'success',
         no_schedule: 'info',
         holiday: 'success',
     }[day.status] || 'info';
 };
 
+const dayStatusLabel = (day) => day.status_label || statusLabels[day.status] || day.status;
+
+// Days without a single punch (absences, vacations, holidays, rest days...)
+// collapse into one full-width status pill while keeping the date, the shift
+// and the per-day menu visible.
+const isPillRow = (day) => (day.punches || []).length === 0;
+
+const daySpanMethod = ({ row, columnIndex }) => {
+    if (! isPillRow(row)) {
+        return [1, 1];
+    }
+
+    // Columns: 0 día · 1..5 (entrada..extra) merged into the pill · 6 acciones.
+    if (columnIndex === 1) {
+        return [1, 5];
+    }
+
+    if (columnIndex >= 2 && columnIndex <= 5) {
+        return [0, 0];
+    }
+
+    return [1, 1];
+};
+
 const hours = (minutes) => `${Math.floor(Number(minutes || 0) / 60)}:${String(Math.round(Number(minutes || 0) % 60)).padStart(2, '0')}`;
 
 const recordLabel = (count) => `${count} registro${count === 1 ? '' : 's'}`;
+
+const timeToMinutes = (time) => {
+    const [hour, minute] = String(time).split(':').map(Number);
+
+    return hour * 60 + minute;
+};
+
+// Minutes of the meal break of a day; null when the pair is incomplete.
+const lunchMinutes = (day) => {
+    if (! day.lunch_start || ! day.lunch_end) {
+        return null;
+    }
+
+    const diff = timeToMinutes(day.lunch_end) - timeToMinutes(day.lunch_start);
+
+    return diff > 0 ? diff : null;
+};
 
 const sourceLabel = (source) => ({
     kiosk: 'Kiosco',
@@ -155,9 +197,13 @@ const recordsDate = ref(null);
 
 const recordsDay = computed(() => days.value.find((day) => day.date === recordsDate.value) || null);
 
-const recordsTitle = computed(() => (recordsDay.value
-    ? `Registros del ${weekdayOf(recordsDay.value.date).toLowerCase()} ${dayMonthOf(recordsDay.value.date)}`
-    : 'Registros del día'));
+const recordsTitle = computed(() => {
+    const date = recordsDay.value?.date || recordsDate.value;
+
+    return date
+        ? `Registros del ${weekdayOf(date).toLowerCase()} ${dayMonthOf(date)}`
+        : 'Registros del día';
+});
 
 const openRecords = (day) => {
     recordsDate.value = day.date;
@@ -299,26 +345,63 @@ const viewPunchCapture = (punch) => {
 
 // --- Incidents ---
 
+const INCIDENT_OPTIONS = [
+    { value: 'absence_justified', label: 'Falta justificada' },
+    { value: 'absence_unjustified', label: 'Falta injustificada' },
+    { value: 'medical_leave', label: 'Incapacidad general' },
+    { value: 'work_incapacity', label: 'Incapacidad de trabajo' },
+    { value: 'permission_paid', label: 'Permiso con goce de sueldo' },
+    { value: 'permission_unpaid', label: 'Permiso sin goce de sueldo' },
+    { value: 'vacation', label: 'Vacaciones' },
+    { value: 'other', label: 'Otro' },
+];
+
 const incidentDialog = ref(false);
+const editingIncident = ref(null);
 const incidentForm = useForm({ user_id: null, type: 'absence_justified', start_date: null, end_date: null, notes: '' });
 
-const openIncidentDialog = (day = null) => {
+const incidentDialogTitle = computed(() => (editingIncident.value
+    ? `Editar incidencia de ${props.row?.name}`
+    : `Agregar incidencia a ${props.row?.name}`));
+
+// Opened from the toolbar (no day), from a day menu (that day + type) or to
+// edit an incident already registered.
+const openIncidentDialog = (day = null, incident = null, type = null) => {
     incidentForm.clearErrors();
-    incidentForm.user_id = props.row.user_id;
-    incidentForm.type = 'absence_justified';
-    incidentForm.start_date = day?.date || null;
-    incidentForm.end_date = day?.date || null;
-    incidentForm.notes = '';
+    editingIncident.value = incident;
+
+    if (incident) {
+        incidentForm.user_id = incident.user_id;
+        incidentForm.type = incident.type;
+        incidentForm.start_date = String(incident.start_date).substring(0, 10);
+        incidentForm.end_date = incident.end_date ? String(incident.end_date).substring(0, 10) : null;
+        incidentForm.notes = incident.notes || '';
+    } else {
+        incidentForm.user_id = props.row.user_id;
+        incidentForm.type = type || 'absence_justified';
+        incidentForm.start_date = day?.date || null;
+        incidentForm.end_date = day?.date || null;
+        incidentForm.notes = '';
+    }
+
     incidentDialog.value = true;
 };
 
 const saveIncident = () => {
-    incidentForm.post(route('payroll.incidents.store'), {
+    const options = {
         onSuccess: () => {
             incidentDialog.value = false;
             refreshAll();
         },
-    });
+    };
+
+    if (editingIncident.value) {
+        incidentForm.put(route('payroll.incidents.update', editingIncident.value.id), options);
+
+        return;
+    }
+
+    incidentForm.post(route('payroll.incidents.store'), options);
 };
 
 const destroyIncident = (incident) => {
@@ -335,6 +418,37 @@ const destroyIncident = (incident) => {
 
 const openSupport = (url) => {
     if (url) window.open(url, '_blank');
+};
+
+// Approved incident (if any) covering the given day, for the day menu.
+const dayIncident = (day) => userIncidents.value.find((incident) => {
+    const start = String(incident.start_date).substring(0, 10);
+    const end = String(incident.end_date || incident.start_date).substring(0, 10);
+
+    return start <= day.date && end >= day.date;
+}) || null;
+
+// Day menu (⋮): records, late override and incidents without picking the day.
+const dayCommand = (command) => {
+    switch (command.action) {
+        case 'records':
+            openRecords(command.day);
+            break;
+        case 'ignore_late':
+        case 'restore_late':
+            command.day.late_ignored = command.action === 'ignore_late';
+            toggleLate(command.day);
+            break;
+        case 'add_incident':
+            openIncidentDialog(command.day, null, command.type);
+            break;
+        case 'edit_incident':
+            openIncidentDialog(null, command.incident);
+            break;
+        case 'remove_incident':
+            destroyIncident(command.incident);
+            break;
+    }
 };
 
 // --- Adjustments ---
@@ -483,85 +597,79 @@ const destroyNote = (note) => {
                     </div>
                 </div>
 
-                <el-table v-if="days.length > 0" :data="days" class="payroll-days-table" style="width: 100%">
-                    <el-table-column label="Día" min-width="120">
+                <el-table v-if="days.length > 0" :data="days" :span-method="daySpanMethod" class="payroll-days-table" style="width: 100%">
+                    <el-table-column label="Día" min-width="130">
                         <template #default="scope">
                             <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">{{ weekdayOf(scope.row.date) }}</p>
                             <p class="font-semibold text-gray-800 dark:text-gray-100">{{ dayMonthOf(scope.row.date) }}</p>
                             <p v-if="scope.row.shift" class="text-xs text-gray-400 mt-0.5">{{ scope.row.shift }}</p>
+                            <p v-if="scope.row.notes" class="text-xs text-gray-400 mt-0.5">{{ scope.row.notes }}</p>
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Estatus" min-width="160">
+                    <el-table-column label="Entrada" min-width="105" align="center">
                         <template #default="scope">
-                            <el-tag :type="dayTagType(scope.row)" size="small" effect="plain">
-                                {{ scope.row.status_label || statusLabels[scope.row.status] || scope.row.status }}
+                            <el-tag
+                                v-if="isPillRow(scope.row)"
+                                :type="dayTagType(scope.row)"
+                                effect="light"
+                                size="large"
+                                class="day-status-pill"
+                            >
+                                {{ dayStatusLabel(scope.row) }}
                             </el-tag>
-                            <p v-if="scope.row.notes" class="text-xs text-gray-400 mt-1">{{ scope.row.notes }}</p>
-                        </template>
-                    </el-table-column>
-
-                    <el-table-column label="Jornada" min-width="150">
-                        <template #default="scope">
-                            <template v-if="scope.row.first_in || scope.row.last_out">
-                                <p class="font-medium text-gray-700 dark:text-gray-200">
-                                    {{ scope.row.first_in || '—' }}
-                                    <span class="text-gray-300 dark:text-gray-600 mx-1">→</span>
-                                    {{ scope.row.last_out || '—' }}
-                                </p>
-                                <p v-if="scope.row.lunch_start || scope.row.lunch_end" class="text-xs text-gray-400 mt-0.5">
-                                    Comida {{ scope.row.lunch_start || '—' }} – {{ scope.row.lunch_end || '—' }}
+                            <template v-else-if="scope.row.first_in">
+                                <p class="font-medium text-gray-700 dark:text-gray-200">{{ scope.row.first_in }}</p>
+                                <p
+                                    v-if="scope.row.late_minutes > 0"
+                                    class="text-xs mt-0.5"
+                                    :class="scope.row.late_ignored ? 'text-gray-400 line-through' : 'text-red-500'"
+                                    :title="scope.row.late_ignored ? 'Retardo ignorado: no se descuenta del pago' : 'Minutos de retardo después de la tolerancia'"
+                                >
+                                    {{ scope.row.late_minutes }} min tarde
                                 </p>
                             </template>
-                            <span v-else class="text-gray-400">Sin registros</span>
+                            <span v-else class="text-gray-400">—</span>
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Registros" min-width="130" align="center">
+                    <el-table-column label="Salida" min-width="90" align="center">
                         <template #default="scope">
-                            <el-button
-                                v-if="(scope.row.punches || []).length > 0"
-                                type="primary"
-                                link
-                                :icon="Clock"
-                                class="!text-[#f26c17] !font-semibold"
-                                @click="openRecords(scope.row)"
-                            >
-                                {{ recordLabel((scope.row.punches || []).length) }}
-                            </el-button>
-                            <span v-else class="text-sm text-gray-400">Sin registros</span>
+                            <p v-if="scope.row.last_out" class="font-medium text-gray-700 dark:text-gray-200">{{ scope.row.last_out }}</p>
+                            <span v-else class="text-gray-400">—</span>
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Trabajado" min-width="95" align="center">
+                    <el-table-column label="Tiempo de comida" min-width="120" align="center">
+                        <template #default="scope">
+                            <el-tooltip
+                                v-if="lunchMinutes(scope.row) !== null"
+                                :content="`${scope.row.lunch_start} – ${scope.row.lunch_end}`"
+                                placement="top"
+                            >
+                                <p class="font-medium text-gray-700 dark:text-gray-200">{{ hours(lunchMinutes(scope.row)) }}</p>
+                            </el-tooltip>
+                            <span v-else class="text-gray-400">—</span>
+                        </template>
+                    </el-table-column>
+
+                    <el-table-column label="Tiempo trabajado" min-width="125" align="center">
                         <template #default="scope">
                             <p class="font-semibold text-gray-800 dark:text-gray-100">{{ hours(scope.row.worked_minutes) }}</p>
                             <p v-if="scope.row.expected_minutes > 0" class="text-xs text-gray-400 mt-0.5">
                                 de {{ hours(scope.row.expected_minutes) }}
                             </p>
-                        </template>
-                    </el-table-column>
-
-                    <el-table-column label="Retardo" min-width="120" align="center">
-                        <template #default="scope">
-                            <template v-if="scope.row.late_minutes > 0">
-                                <p class="font-semibold" :class="scope.row.late_ignored ? 'text-gray-400 line-through' : 'text-red-500'">
-                                    {{ scope.row.late_minutes }} min
-                                </p>
-                                <el-tag v-if="scope.row.late_ignored && !canEdit" size="small" type="success" effect="plain" class="mt-1">
-                                    Ignorado
-                                </el-tag>
-                                <el-checkbox
-                                    v-if="canEdit"
-                                    size="small"
-                                    class="mt-1"
-                                    :model-value="scope.row.late_ignored"
-                                    @change="(value) => { scope.row.late_ignored = value; toggleLate(scope.row); }"
-                                >
-                                    Ignorar
-                                </el-checkbox>
-                            </template>
-                            <span v-else class="text-gray-400">—</span>
+                            <el-button
+                                v-if="(scope.row.punches || []).length > 0"
+                                type="primary"
+                                link
+                                :icon="Clock"
+                                class="!text-[#f26c17] !font-semibold mt-1"
+                                @click="openRecords(scope.row)"
+                            >
+                                {{ recordLabel((scope.row.punches || []).length) }}
+                            </el-button>
+                            <p v-else class="text-xs text-gray-400 mt-0.5">Sin registros</p>
                         </template>
                     </el-table-column>
 
@@ -571,6 +679,60 @@ const destroyNote = (note) => {
                                 {{ hours(scope.row.overtime_minutes) }}
                             </p>
                             <span v-else class="text-gray-400">—</span>
+                        </template>
+                    </el-table-column>
+
+                    <el-table-column label="" width="64" align="right">
+                        <template #default="scope">
+                            <el-dropdown trigger="click" placement="bottom-end" @command="dayCommand">
+                                <el-button text :icon="MoreFilled" title="Acciones del día" />
+                                <template #dropdown>
+                                    <el-dropdown-menu>
+                                        <el-dropdown-item :command="{ action: 'records', day: scope.row }" :icon="Clock">
+                                            {{ canEdit ? 'Editar registros' : 'Ver registros' }}
+                                        </el-dropdown-item>
+
+                                        <el-dropdown-item
+                                            v-if="canEdit && scope.row.late_minutes > 0 && !scope.row.late_ignored"
+                                            :command="{ action: 'ignore_late', day: scope.row }"
+                                            divided
+                                        >
+                                            Quitar retardo
+                                        </el-dropdown-item>
+                                        <el-dropdown-item
+                                            v-if="canEdit && scope.row.late_ignored"
+                                            :command="{ action: 'restore_late', day: scope.row }"
+                                            divided
+                                        >
+                                            Restaurar retardo
+                                        </el-dropdown-item>
+
+                                        <template v-if="canManageIncidents">
+                                            <template v-if="dayIncident(scope.row)">
+                                                <el-dropdown-item disabled divided>
+                                                    Incidencia: {{ dayIncident(scope.row).type_label }}
+                                                </el-dropdown-item>
+                                                <el-dropdown-item :command="{ action: 'edit_incident', incident: dayIncident(scope.row) }" :icon="Edit">
+                                                    Modificar incidencia
+                                                </el-dropdown-item>
+                                                <el-dropdown-item :command="{ action: 'remove_incident', incident: dayIncident(scope.row) }" :icon="Delete">
+                                                    Quitar incidencia
+                                                </el-dropdown-item>
+                                            </template>
+                                            <template v-else>
+                                                <el-dropdown-item disabled divided>Registrar incidencia</el-dropdown-item>
+                                                <el-dropdown-item
+                                                    v-for="option in INCIDENT_OPTIONS"
+                                                    :key="option.value"
+                                                    :command="{ action: 'add_incident', day: scope.row, type: option.value }"
+                                                >
+                                                    {{ option.label }}
+                                                </el-dropdown-item>
+                                            </template>
+                                        </template>
+                                    </el-dropdown-menu>
+                                </template>
+                            </el-dropdown>
                         </template>
                     </el-table-column>
                 </el-table>
@@ -666,10 +828,13 @@ const destroyNote = (note) => {
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="" min-width="200" align="right">
+                    <el-table-column label="" min-width="260" align="right">
                         <template #default="scope">
                             <el-button v-if="scope.row.support_url" size="small" text :icon="Document" @click="openSupport(scope.row.support_url)">
                                 Comprobante
+                            </el-button>
+                            <el-button v-if="canManageIncidents" size="small" text :icon="Edit" @click="openIncidentDialog(null, scope.row)">
+                                Editar
                             </el-button>
                             <el-button v-if="canManageIncidents" size="small" text type="danger" :icon="Delete" @click="destroyIncident(scope.row)">
                                 Eliminar
@@ -849,18 +1014,17 @@ const destroyNote = (note) => {
             </template>
         </el-dialog>
 
-        <!-- Incident dialog -->
-        <el-dialog v-model="incidentDialog" :title="`Agregar incidencia a ${row?.name}`" width="520px" top="10vh">
+        <!-- Incident dialog (add or edit) -->
+        <el-dialog v-model="incidentDialog" :title="incidentDialogTitle" width="520px" top="10vh">
             <el-form :model="incidentForm" label-position="top" size="default">
                 <el-form-item label="Tipo de incidencia" required :error="incidentForm.errors.type">
                     <el-select v-model="incidentForm.type" class="w-full">
-                        <el-option label="Falta justificada" value="absence_justified" />
-                        <el-option label="Falta injustificada" value="absence_unjustified" />
-                        <el-option label="Incapacidad médica" value="medical_leave" />
-                        <el-option label="Permiso con goce de sueldo" value="permission_paid" />
-                        <el-option label="Permiso sin goce de sueldo" value="permission_unpaid" />
-                        <el-option label="Vacaciones" value="vacation" />
-                        <el-option label="Otro" value="other" />
+                        <el-option
+                            v-for="option in INCIDENT_OPTIONS"
+                            :key="option.value"
+                            :label="option.label"
+                            :value="option.value"
+                        />
                     </el-select>
                 </el-form-item>
                 <div class="grid grid-cols-2 gap-4">
@@ -1009,5 +1173,23 @@ const destroyNote = (note) => {
 .payroll-days-table :deep(.el-table__header) .el-table__cell {
     padding-top: 8px;
     padding-bottom: 8px;
+}
+
+/* Full-width status pill of days without punches. */
+.day-status-pill {
+    width: 100%;
+    height: 34px;
+    justify-content: center;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* The table has a fixed minimum width, so on narrow screens it overflows
+   horizontally and Element Plus paints its own scrollbar bars inside the
+   table — they read as stray dots at the right edge of the rows. The table
+   keeps its native scrolling, we only remove that decorative paint. */
+.payroll-days-table :deep(.el-scrollbar__bar) {
+    display: none;
 }
 </style>

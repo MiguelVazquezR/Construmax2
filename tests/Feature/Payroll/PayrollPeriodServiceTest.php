@@ -6,11 +6,11 @@ use App\Models\AttendanceLog;
 use App\Models\Expense;
 use App\Models\PayrollPeriod;
 use App\Models\PayrollProfile;
-use App\Models\PayrollSetting;
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
 use App\Models\User;
 use App\Services\Payroll\PayrollPeriodService;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
@@ -117,57 +117,94 @@ class PayrollPeriodServiceTest extends TestCase
         ]);
     }
 
-    public function test_create_first_weekly_period_from_the_anchor(): void
+    public function test_open_next_period_opens_the_current_week_when_empty(): void
     {
-        PayrollSetting::current()->update([
-            'period_type' => PayrollSetting::PERIOD_WEEKLY,
-            'period_anchor_date' => '2026-09-07',
-        ]);
+        $period = $this->service->openNextPeriod();
 
-        $period = $this->service->createFirstPeriod();
-
+        $this->assertSame(PayrollPeriod::TYPE_WEEKLY, $period->type);
+        $this->assertSame(PayrollPeriod::STATUS_OPEN, $period->status);
         $this->assertSame('2026-09-14', $period->start_date->toDateString());
         $this->assertSame('2026-09-20', $period->end_date->toDateString());
     }
 
-    public function test_create_first_semimonthly_period(): void
+    public function test_open_next_period_starts_after_the_last_week(): void
     {
-        PayrollSetting::current()->update(['period_type' => PayrollSetting::PERIOD_SEMIMONTHLY]);
+        $current = $this->openPeriod('2026-09-07', '2026-09-13');
 
-        $period = $this->service->createFirstPeriod();
-
-        $this->assertSame('2026-09-16', $period->start_date->toDateString());
-        $this->assertSame('2026-09-30', $period->end_date->toDateString());
-    }
-
-    public function test_create_next_weekly_period(): void
-    {
-        $period = $this->openPeriod('2026-09-07', '2026-09-13');
-
-        $next = $this->service->createNextPeriod($period);
+        $next = $this->service->openNextPeriod();
 
         $this->assertSame('2026-09-14', $next->start_date->toDateString());
         $this->assertSame('2026-09-20', $next->end_date->toDateString());
+        $this->assertSame(PayrollPeriod::STATUS_OPEN, $current->fresh()->status);
     }
 
-    public function test_create_next_semimonthly_periods(): void
+    public function test_open_next_period_skips_weeks_that_already_exist(): void
     {
-        $firstHalf = PayrollPeriod::create([
-            'type' => PayrollPeriod::TYPE_SEMIMONTHLY,
-            'start_date' => '2026-09-01',
-            'end_date' => '2026-09-15',
+        $this->openPeriod('2026-09-07', '2026-09-13');
+        $this->openPeriod('2026-09-14', '2026-09-20');
+
+        $next = $this->service->openNextPeriod();
+
+        $this->assertSame('2026-09-21', $next->start_date->toDateString());
+        $this->assertSame('2026-09-27', $next->end_date->toDateString());
+        $this->assertDatabaseCount('payroll_periods', 3);
+    }
+
+    public function test_ensure_current_week_does_not_duplicate_existing_dates(): void
+    {
+        PayrollPeriod::create([
+            'type' => PayrollPeriod::TYPE_WEEKLY,
+            'start_date' => '2026-09-14',
+            'end_date' => '2026-09-20',
             'status' => PayrollPeriod::STATUS_CLOSED,
         ]);
 
-        $secondHalf = $this->service->createNextPeriod($firstHalf);
+        $this->assertNull($this->service->ensureCurrentWeek());
+        $this->assertDatabaseCount('payroll_periods', 1);
+        $this->assertSame(PayrollPeriod::STATUS_CLOSED, PayrollPeriod::query()->first()->status);
+    }
 
-        $this->assertSame('2026-09-16', $secondHalf->start_date->toDateString());
-        $this->assertSame('2026-09-30', $secondHalf->end_date->toDateString());
+    public function test_ensure_current_week_is_idempotent(): void
+    {
+        $period = $this->service->ensureCurrentWeek();
 
-        $nextMonth = $this->service->createNextPeriod($secondHalf);
+        $this->assertNotNull($period);
+        $this->assertSame('2026-09-14', $period->start_date->toDateString());
+        $this->assertSame('2026-09-20', $period->end_date->toDateString());
 
-        $this->assertSame('2026-10-01', $nextMonth->start_date->toDateString());
-        $this->assertSame('2026-10-15', $nextMonth->end_date->toDateString());
+        $this->assertNull($this->service->ensureCurrentWeek());
+        $this->assertDatabaseCount('payroll_periods', 1);
+    }
+
+    public function test_sync_closes_the_week_that_ended_and_opens_the_next_monday(): void
+    {
+        $this->makeEmployee();
+        $week = $this->openPeriod('2026-09-07', '2026-09-13');
+
+        $sunday = $this->service->syncAutomatic(CarbonImmutable::parse('2026-09-13 23:59:10'));
+
+        $this->assertSame(PayrollPeriod::STATUS_CLOSED, $week->fresh()->status);
+        $this->assertSame($week->id, $sunday['closed']->id);
+        $this->assertNull($sunday['opened']);
+        $this->assertSame(1, $week->fresh()->payslips()->count());
+
+        $monday = $this->service->syncAutomatic(CarbonImmutable::parse('2026-09-14 00:05:00'));
+
+        $this->assertNull($monday['closed']);
+        $this->assertSame('2026-09-14', $monday['opened']->start_date->toDateString());
+        $this->assertSame('2026-09-20', $monday['opened']->end_date->toDateString());
+        $this->assertSame(PayrollPeriod::STATUS_OPEN, $monday['opened']->status);
+    }
+
+    public function test_sync_never_closes_a_reopened_period(): void
+    {
+        $week = $this->openPeriod('2026-09-07', '2026-09-13');
+        $week->update(['reopened_at' => now()]);
+
+        $result = $this->service->syncAutomatic(CarbonImmutable::parse('2026-09-13 23:59:30'));
+
+        $this->assertNull($result['closed']);
+        $this->assertSame(PayrollPeriod::STATUS_OPEN, $week->fresh()->status);
     }
 
     public function test_close_freezes_payslips_and_registers_the_expense(): void
@@ -211,6 +248,7 @@ class PayrollPeriodServiceTest extends TestCase
         $reopened = $this->service->reopen($closed, User::factory()->create());
 
         $this->assertSame(PayrollPeriod::STATUS_OPEN, $reopened->status);
+        $this->assertNotNull($reopened->reopened_at);
         $this->assertNull($reopened->total_net);
         $this->assertNull($reopened->expense_id);
         $this->assertSame(0, $reopened->payslips()->count());
@@ -230,18 +268,18 @@ class PayrollPeriodServiceTest extends TestCase
         $this->service->reopen($closed->fresh(), User::factory()->create());
     }
 
-    public function test_command_is_a_noop_without_due_periods(): void
+    public function test_command_is_a_noop_when_the_current_week_is_already_open(): void
     {
         $period = $this->openPeriod('2026-09-14', '2026-09-20');
 
         $this->artisan('payroll:close-period')
-            ->expectsOutput('No payroll period is due for closing.')
+            ->expectsOutput('Nothing to do: the current week is already covered.')
             ->assertSuccessful();
 
         $this->assertSame(PayrollPeriod::STATUS_OPEN, $period->fresh()->status);
     }
 
-    public function test_command_closes_the_due_period_and_opens_the_next(): void
+    public function test_command_closes_the_ended_week_and_opens_the_current_one(): void
     {
         $this->makeEmployee();
         $period = $this->openPeriod('2026-09-07', '2026-09-13');

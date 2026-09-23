@@ -130,10 +130,8 @@ class PayrollCalculatorServiceTest extends TestCase
         $this->assertEqualsWithDelta(2000.0, $totals['total_net'], 0.01);
     }
 
-    public function test_overtime_splits_at_the_weekly_threshold(): void
+    public function test_overtime_is_paid_at_the_normal_rate(): void
     {
-        PayrollSetting::current()->update(['overtime_weekly_threshold_hours' => 2]);
-
         // One worked day with 3 extra hours (8:00 → 20:00 minus 1h lunch).
         $this->punch($this->user, AttendanceLog::TYPE_CHECK_IN, '2026-09-07 08:00:00');
         $this->punch($this->user, AttendanceLog::TYPE_LUNCH_START, '2026-09-07 13:00:00');
@@ -143,12 +141,19 @@ class PayrollCalculatorServiceTest extends TestCase
         $result = $this->calculator->calculateFor($this->user, $this->period);
         $totals = $result['totals'];
 
-        // 180 overtime minutes: 120 double + 60 triple.
-        $this->assertSame(120, $totals['overtime_double_minutes']);
-        $this->assertSame(60, $totals['overtime_triple_minutes']);
+        // 180 overtime minutes at the normal rate (no double/triple split);
+        // the minutes are stored in the double column for compatibility.
+        $this->assertSame(180, $totals['overtime_double_minutes']);
+        $this->assertSame(0, $totals['overtime_triple_minutes']);
 
-        // Minute rate = 400 / 480; 120 * rate * 2 = 200 and 60 * rate * 3 = 150.
-        $this->assertEqualsWithDelta(350.0, $totals['overtime_amount'], 0.01);
+        // Minute rate = 400 / 480; 180 * rate = 150.
+        $this->assertEqualsWithDelta(150.0, $totals['overtime_amount'], 0.01);
+
+        // The receipt carries a single "Tiempo extra" line.
+        $overtimeLines = collect($result['lines'])->where('source', 'overtime')->values();
+        $this->assertCount(1, $overtimeLines);
+        $this->assertSame('Tiempo extra', $overtimeLines[0]['concept']);
+        $this->assertEqualsWithDelta(150.0, $overtimeLines[0]['amount'], 0.01);
     }
 
     public function test_a_worked_rest_day_counts_every_minute_as_overtime(): void
@@ -160,7 +165,7 @@ class PayrollCalculatorServiceTest extends TestCase
         $result = $this->calculator->calculateFor($this->user, $this->period);
         $totals = $result['totals'];
 
-        // 240 minutes below the weekly threshold → all at the double rate.
+        // 240 minutes at the normal rate (stored in the double column).
         $this->assertSame(240, $totals['overtime_double_minutes']);
         $this->assertSame(0, $totals['overtime_triple_minutes']);
 
@@ -241,18 +246,23 @@ class PayrollCalculatorServiceTest extends TestCase
         $this->assertSame('rest_day', $days['2026-09-13']['status']);
     }
 
-    public function test_vacations_and_medical_leaves_use_their_pay_fraction(): void
+    public function test_vacations_are_paid_and_imss_incapacities_never_are(): void
     {
-        PayrollSetting::current()->update([
-            'incapacity_paid' => true,
-            'incapacity_pay_percentage' => 60,
-        ]);
-
         Incident::create([
             'user_id' => $this->user->id,
             'type' => Incident::TYPE_MEDICAL_LEAVE,
             'start_date' => '2026-09-07',
             'end_date' => '2026-09-07',
+            'days' => 1,
+            'is_paid' => true, // Even an explicit override is ignored: the IMSS covers it.
+            'status' => Incident::STATUS_APPROVED,
+        ]);
+
+        Incident::create([
+            'user_id' => $this->user->id,
+            'type' => Incident::TYPE_WORK_INCAPACITY,
+            'start_date' => '2026-09-08',
+            'end_date' => '2026-09-08',
             'days' => 1,
             'status' => Incident::STATUS_APPROVED,
         ]);
@@ -260,20 +270,22 @@ class PayrollCalculatorServiceTest extends TestCase
         Incident::create([
             'user_id' => $this->user->id,
             'type' => Incident::TYPE_VACATION,
-            'start_date' => '2026-09-08',
+            'start_date' => '2026-09-09',
             'end_date' => '2026-09-11',
-            'days' => 4,
+            'days' => 3,
             'status' => Incident::STATUS_APPROVED,
         ]);
 
         $totals = $this->calculator->calculateFor($this->user, $this->period)['totals'];
 
-        // 0.6 (medical) + 4 (vacation) = 4.6 paid days.
-        $this->assertEqualsWithDelta(4.6, $totals['days_paid'], 0.01);
-        $this->assertEqualsWithDelta(4.0, $totals['vacation_days'], 0.01);
-        $this->assertEqualsWithDelta(0.6, $totals['incapacity_days'], 0.01);
-        $this->assertEqualsWithDelta(240.0, $totals['incapacity_amount'], 0.01);
-        $this->assertEqualsWithDelta(0.4, $totals['unpaid_days'], 0.01);
+        // Only the vacations pay: 3 days.
+        $this->assertEqualsWithDelta(3.0, $totals['days_paid'], 0.01);
+        $this->assertEqualsWithDelta(3.0, $totals['vacation_days'], 0.01);
+
+        // The two incapacity days are counted for reference but never paid.
+        $this->assertEqualsWithDelta(2.0, $totals['incapacity_days'], 0.01);
+        $this->assertEqualsWithDelta(0.0, $totals['incapacity_amount'], 0.01);
+        $this->assertEqualsWithDelta(2.0, $totals['unpaid_days'], 0.01);
     }
 
     public function test_incidents_count_as_paid_days_without_an_assigned_schedule(): void

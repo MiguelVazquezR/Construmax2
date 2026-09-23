@@ -65,6 +65,7 @@ const incidentTagType = (type) => ({
     absence_unjustified: 'danger',
     absence_justified: 'primary',
     medical_leave: 'info',
+    work_incapacity: 'info',
     permission_paid: 'primary',
     permission_unpaid: 'warning',
     vacation: 'warning',

@@ -10,6 +10,8 @@ import { usePermissions } from '@/Composables/usePermissions';
 const props = defineProps({
     periods: Object,
     openPeriod: Object,
+    nextPeriod: Object,
+    openNextAvailable: Boolean,
     payrollEmployees: Number,
     typeLabels: Object,
 });
@@ -19,17 +21,38 @@ useFlashMessages();
 const { can } = usePermissions();
 const canClose = computed(() => can('payroll.periods.close'));
 
+// The open-next-period button is only offered after an early close: when the
+// automatic rollover closes the week it opens the following one by itself.
+const canOpenNext = computed(() => canClose.value && props.openNextAvailable);
+
+const noOpenDescription = computed(() =>
+    props.openNextAvailable
+        ? 'Abre el siguiente periodo para continuar la pre-nómina. La nómina se cierra automáticamente los domingos a las 23:59 y el nuevo periodo se abre los lunes a las 00:00.'
+        : 'El siguiente periodo se abrirá automáticamente el lunes a las 00:00. La nómina se cierra automáticamente los domingos a las 23:59.'
+);
+
 const form = useForm({});
 
-const openPeriodType = computed(() => props.openPeriod?.type || 'weekly');
+// Long Spanish date for the confirmation dialog ("lunes 28 de septiembre").
+const WEEKDAYS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const MONTHS_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
+const longDate = (value) => {
+    const date = parseDate(value);
+    return `${WEEKDAYS_ES[date.getDay()]} ${date.getDate()} de ${MONTHS_ES[date.getMonth()]}`;
+};
+
+// The dialog clarifies the exact dates that will be opened: the following
+// Monday–Sunday week after the last period (never repeating existing dates).
 const createPeriod = () => {
-    const periodTypeLabel = (props.typeLabels?.[openPeriodType.value] ?? '').toLowerCase();
+    if (!props.nextPeriod) return;
+
+    const endYear = parseDate(props.nextPeriod.end_date).getFullYear();
 
     ElMessageBox.confirm(
-        `¿Crear el periodo de nómina ${periodTypeLabel} actual?`,
-        'Crear periodo',
-        { confirmButtonText: 'Crear periodo', cancelButtonText: 'Cancelar', type: 'info' }
+        `Se abrirá el siguiente periodo: del ${longDate(props.nextPeriod.start_date)} al ${longDate(props.nextPeriod.end_date)} de ${endYear}.`,
+        'Abrir siguiente periodo',
+        { confirmButtonText: 'Abrir periodo', cancelButtonText: 'Cancelar', type: 'info' }
     ).then(() => {
         form.post(route('payroll.periods.store'));
     }).catch(() => {});
@@ -68,22 +91,23 @@ const statusLabel = (status) => (status === 'open' ? 'Abierto' : 'Cerrado');
                 <div>
                     <h2 class="font-semibold text-gray-800 dark:text-white leading-tight">Periodos de nómina</h2>
                     <p class="text-sm text-gray-500 mt-1">
-                        Pre-nómina en tiempo real, cierre automático y recibos por periodo. Haz clic en un periodo para ver su detalle.
+                        Periodos semanales de lunes a domingo, con cierre automático los domingos a las 23:59
+                        y apertura los lunes a las 00:00. Haz clic en un periodo para ver su detalle.
                     </p>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 ml-auto">
                     <el-tag v-if="openPeriod" type="warning" effect="plain" size="large">
                         Periodo abierto: {{ formatDate(openPeriod.start_date) }} — {{ formatDate(openPeriod.end_date) }}
                     </el-tag>
                     <el-button
-                        v-else-if="canClose"
+                        v-if="canOpenNext"
                         type="primary"
                         color="#f26c17"
                         :icon="Plus"
                         :loading="form.processing"
                         @click="createPeriod"
                     >
-                        Crear periodo
+                        Abrir siguiente periodo
                     </el-button>
                 </div>
             </div>
@@ -96,7 +120,7 @@ const statusLabel = (status) => (status === 'open' ? 'Abierto' : 'Cerrado');
                 :closable="false"
                 show-icon
                 title="Sin periodo abierto"
-                description="Crea el periodo actual para comenzar la pre-nómina. El cierre y la creación del siguiente periodo se ejecutan automáticamente a la 01:00 del día de inicio configurado."
+                :description="noOpenDescription"
             />
 
             <el-alert

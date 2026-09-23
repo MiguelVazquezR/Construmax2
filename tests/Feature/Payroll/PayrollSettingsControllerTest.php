@@ -36,8 +36,6 @@ class PayrollSettingsControllerTest extends TestCase
             'face_match_threshold' => 90,
             'kiosk_pin_fallback_enabled' => true,
             'rekognition_collection_id' => 'construmax-attendance',
-            'period_type' => 'weekly',
-            'period_anchor_date' => '2026-09-21',
             'late_tolerance_minutes' => 10,
             'late_discount_mode' => 'track_only',
             'overtime_double_multiplier' => 2,
@@ -63,7 +61,6 @@ class PayrollSettingsControllerTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('Payroll/Settings/Index')
                 ->has('settings')
-                ->has('periodTypes')
                 ->has('lateDiscountModes')
                 ->has('expenseCategories')
             );
@@ -82,7 +79,6 @@ class PayrollSettingsControllerTest extends TestCase
     {
         $this->actingAs($this->admin)
             ->put(route('payroll.settings.update'), $this->validPayload([
-                'period_type' => 'semimonthly',
                 'late_tolerance_minutes' => 15,
                 'late_discount_mode' => 'deduct_minutes',
                 'incapacity_paid' => true,
@@ -93,12 +89,26 @@ class PayrollSettingsControllerTest extends TestCase
 
         $settings = PayrollSetting::current()->refresh();
 
-        $this->assertSame('semimonthly', $settings->period_type);
         $this->assertEquals(15, $settings->late_tolerance_minutes);
         $this->assertSame('deduct_minutes', $settings->late_discount_mode);
         $this->assertTrue($settings->incapacity_paid);
         $this->assertEquals(70, $settings->incapacity_pay_percentage);
         $this->assertEquals($this->admin->id, $settings->updated_by);
+    }
+
+    public function test_update_ignores_the_legacy_period_fields(): void
+    {
+        $this->actingAs($this->admin)
+            ->put(route('payroll.settings.update'), $this->validPayload([
+                'period_type' => 'semimonthly',
+                'period_anchor_date' => '2026-09-21',
+            ]))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $settings = PayrollSetting::current()->refresh();
+
+        $this->assertSame(PayrollSetting::PERIOD_WEEKLY, $settings->period_type);
     }
 
     public function test_update_validates_the_face_match_threshold(): void
@@ -108,14 +118,38 @@ class PayrollSettingsControllerTest extends TestCase
             ->assertSessionHasErrors('face_match_threshold');
     }
 
-    public function test_update_validates_the_triple_multiplier_against_the_double_one(): void
+    public function test_update_works_without_the_legacy_overtime_and_incapacity_fields(): void
     {
+        $payload = $this->validPayload();
+        unset(
+            $payload['overtime_double_multiplier'],
+            $payload['overtime_triple_multiplier'],
+            $payload['overtime_weekly_threshold_hours'],
+            $payload['incapacity_paid'],
+            $payload['incapacity_pay_percentage'],
+        );
+
         $this->actingAs($this->admin)
-            ->put(route('payroll.settings.update'), $this->validPayload([
-                'overtime_double_multiplier' => 3,
-                'overtime_triple_multiplier' => 2,
-            ]))
-            ->assertSessionHasErrors('overtime_triple_multiplier');
+            ->put(route('payroll.settings.update'), $payload)
+            ->assertRedirect()
+            ->assertSessionHas('success');
+    }
+
+    public function test_update_works_without_the_legacy_default_daily_hours(): void
+    {
+        $before = PayrollSetting::current()->default_daily_hours;
+
+        $payload = $this->validPayload();
+        unset($payload['default_daily_hours']);
+
+        $this->actingAs($this->admin)
+            ->put(route('payroll.settings.update'), $payload)
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        // The column is legacy (the hours follow the assigned schedule), so a
+        // form without it must keep the stored value untouched.
+        $this->assertEquals($before, PayrollSetting::current()->refresh()->default_daily_hours);
     }
 
     public function test_update_requires_the_permission(): void

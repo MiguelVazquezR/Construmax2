@@ -56,8 +56,13 @@ const form = useForm({
     rating_avg: 0,
 
     // Nómina y asistencia (opcional, según permisos)
+    employee_number: '',
+    hire_date: null,
+    is_payroll_subject: false,
+    daily_salary: null,
     is_attendance_subject: false,
     can_remote_attendance: false,
+    kiosk_pin: '',
     shift_id: null,
 
     // Archivos
@@ -71,6 +76,18 @@ const rules = reactive({
         { type: 'email', message: 'Formato de correo inválido', trigger: 'blur' }
     ],
     phone: [{ required: true, message: 'Teléfono principal requerido', trigger: 'blur' }],
+    shift_id: [
+        {
+            validator: (rule, value, callback) => {
+                if (form.is_payroll_subject && ! value) {
+                    callback(new Error('Selecciona un horario para el técnico sujeto a nómina.'));
+                } else {
+                    callback();
+                }
+            },
+            trigger: 'change',
+        },
+    ],
 });
 
 const handlePhotoChange = (file) => {

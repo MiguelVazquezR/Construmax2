@@ -36,6 +36,7 @@ class KioskController extends Controller
         return Inertia::render('Payroll/Kiosk/Index', [
             'punchTypes' => AttendanceLog::TYPES,
             'faceRecognitionEnabled' => $settings->face_recognition_enabled && $this->faceRecognition->isConfigured(),
+            'pinFallbackEnabled' => (bool) $settings->kiosk_pin_fallback_enabled,
             'appName' => config('app.name'),
         ]);
     }
@@ -58,29 +59,21 @@ class KioskController extends Controller
     }
 
     /**
-     * Register a punch identified with employee number + kiosk pin.
+     * Register a punch identified with the collaborator's kiosk pin.
      */
     public function punch(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'employee_number' => ['required', 'string', 'max:50'],
             'pin' => ['required', 'string', 'max:12'],
             'type' => ['required', 'string', 'in:'.implode(',', array_keys(AttendanceLog::TYPES))],
             'photo' => ['nullable', 'string', 'max:2000000'],
         ]);
 
-        $profile = PayrollProfile::where('employee_number', $validated['employee_number'])
-            ->with('user')
-            ->first();
+        $profile = $this->findProfileByPin($validated['pin']);
 
-        if (
-            ! $profile
-            || ! $profile->user
-            || ! $profile->has_kiosk_pin
-            || ! Hash::check($validated['pin'], $profile->kiosk_pin)
-        ) {
+        if (! $profile) {
             throw ValidationException::withMessages([
-                'pin' => 'Número de empleado o PIN incorrectos.',
+                'pin' => 'PIN incorrecto. Verifica tus dígitos o pide ayuda al administrador.',
             ]);
         }
 
@@ -101,6 +94,46 @@ class KioskController extends Controller
             'suggested_next' => $this->attendanceService->suggestedTypeFor($profile->user),
             'suggested_next_label' => AttendanceLog::TYPES[$this->attendanceService->suggestedTypeFor($profile->user)] ?? null,
         ]);
+    }
+
+    /**
+     * Find the collaborator whose kiosk pin matches. Pins saved before the
+     * lookup column existed are verified one by one and upgraded on first match.
+     */
+    private function findProfileByPin(string $pin): ?PayrollProfile
+    {
+        $candidates = PayrollProfile::query()
+            ->where('kiosk_pin_lookup', PayrollProfile::pinLookup($pin))
+            ->with('user')
+            ->get()
+            ->filter(fn (PayrollProfile $profile) => $profile->user !== null);
+
+        if ($candidates->count() > 1) {
+            throw ValidationException::withMessages([
+                'pin' => 'Este PIN está asignado a más de un colaborador. Pide al administrador que lo corrija.',
+            ]);
+        }
+
+        if ($candidates->isNotEmpty()) {
+            return $candidates->first();
+        }
+
+        // Legacy pins (stored before the lookup column): verify them against
+        // their bcrypt hash and remember the lookup for the next attempt.
+        $legacy = PayrollProfile::query()
+            ->whereNull('kiosk_pin_lookup')
+            ->whereNotNull('kiosk_pin')
+            ->with('user')
+            ->get()
+            ->first(fn (PayrollProfile $profile) => $profile->user !== null && Hash::check($pin, $profile->kiosk_pin));
+
+        if ($legacy) {
+            // Direct attribute (not fillable) so the fingerprint sticks.
+            $legacy->kiosk_pin_lookup = PayrollProfile::pinLookup($pin);
+            $legacy->save();
+        }
+
+        return $legacy;
     }
 
     /**

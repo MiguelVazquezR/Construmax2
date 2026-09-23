@@ -62,8 +62,19 @@ const handlePanelsChange = (names) => {
 
 const collaboratorFilter = ref([]);
 
+// Type filter: administrative collaborators or technicians only.
+const typeFilter = ref('');
+
+const rowFiltersActive = computed(() => collaboratorFilter.value.length > 0 || typeFilter.value !== '');
+
 const visibleRows = computed(() => {
-    const rows = props.rows || [];
+    let rows = props.rows || [];
+
+    if (typeFilter.value === 'admin') {
+        rows = rows.filter((row) => !row.is_technician);
+    } else if (typeFilter.value === 'technician') {
+        rows = rows.filter((row) => row.is_technician);
+    }
 
     if (collaboratorFilter.value.length === 0) {
         return rows;
@@ -72,9 +83,29 @@ const visibleRows = computed(() => {
     return rows.filter((row) => collaboratorFilter.value.includes(row.user_id));
 });
 
+// The KPI cards follow the active filters: period totals when nothing is
+// selected, or the filtered subset (one collaborator, technicians only, ...).
+const sumOf = (rows, key) => rows.reduce((total, row) => total + Number(row[key] || 0), 0);
+
+const kpiStats = computed(() => {
+    const rows = visibleRows.value;
+
+    return {
+        employees: rows.length,
+        days_paid: Math.round(sumOf(rows, 'days_paid') * 100) / 100,
+        unpaid_days: Math.round(sumOf(rows, 'unpaid_days') * 100) / 100,
+        late_minutes: Math.round(sumOf(rows, 'late_minutes')),
+        overtime_hours: Math.round((sumOf(rows, 'overtime_minutes') / 60) * 100) / 100,
+        total_gross: sumOf(rows, 'total_gross'),
+        total_deductions: sumOf(rows, 'total_deductions'),
+        total_net: sumOf(rows, 'total_net'),
+    };
+});
+
 // The selection travels to the pre-payroll and the receipts, so both pages
-// can be printed for a subset of the period's collaborators.
-const selectedUserIds = computed(() => (collaboratorFilter.value.length > 0 ? [...collaboratorFilter.value] : null));
+// can be printed for a subset of the period's collaborators. The type filter
+// (administratives / technicians) also narrows the selection.
+const selectedUserIds = computed(() => (rowFiltersActive.value ? visibleRows.value.map((row) => row.user_id) : null));
 
 const collaboratorLabel = (row) => `${row.name}${row.employee_number ? ` · ${row.employee_number}` : ''}`;
 
@@ -131,7 +162,7 @@ const form = useForm({});
 
 const closePeriod = () => {
     ElMessageBox.confirm(
-        'Al cerrar el periodo se generan los recibos y se registra el gasto de nómina. ¿Continuar?',
+        'Al cerrar el periodo se generan los recibos y se registra el gasto de nómina. El siguiente periodo (lunes a domingo) se abre automáticamente el lunes; si el cierre es antes del domingo, los días restantes quedan sin periodo. ¿Continuar?',
         'Cerrar periodo',
         { confirmButtonText: 'Cerrar periodo', cancelButtonText: 'Cancelar', type: 'warning' }
     ).then(() => {
@@ -221,11 +252,11 @@ const openPrePayroll = () => {
                     </div>
                 </div>
 
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 ml-auto">
                     <el-button
                         :icon="Document"
-                        :title="collaboratorFilter.length > 0
-                            ? 'Imprimir los recibos de los colaboradores seleccionados'
+                        :title="rowFiltersActive
+                            ? 'Imprimir los recibos de los colaboradores filtrados'
                             : (period.status === 'open'
                                 ? 'Imprimir la pre-nómina del periodo abierto'
                                 : 'Imprimir los recibos del periodo cerrado')"
@@ -235,8 +266,8 @@ const openPrePayroll = () => {
                     </el-button>
                     <el-button
                         :icon="Tickets"
-                        :title="collaboratorFilter.length > 0
-                            ? 'Ver la pre-nómina de los colaboradores seleccionados'
+                        :title="rowFiltersActive
+                            ? 'Ver la pre-nómina de los colaboradores filtrados'
                             : (period.status === 'open'
                                 ? 'Ver la pre-nómina de todos los colaboradores (cálculo en tiempo real)'
                                 : 'Ver la nómina de todos los colaboradores del periodo')"
@@ -257,35 +288,38 @@ const openPrePayroll = () => {
 
         <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 space-y-6">
 
-            <!-- Stats -->
+            <!-- Stats (they follow the collaborator / type filters) -->
+            <p v-if="rowFiltersActive" class="text-xs text-gray-500 dark:text-gray-400">
+                Las tarjetas reflejan únicamente a los colaboradores filtrados.
+            </p>
             <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4">
                 <div class="bg-white dark:bg-[#1e1e20] rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
                     <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Días pagados</p>
-                    <p class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ stats.days_paid }}</p>
+                    <p class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ kpiStats.days_paid }}</p>
                 </div>
                 <div class="bg-white dark:bg-[#1e1e20] rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
                     <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Días no pagados</p>
-                    <p class="text-xl font-bold text-red-500">{{ stats.unpaid_days }}</p>
+                    <p class="text-xl font-bold text-red-500">{{ kpiStats.unpaid_days }}</p>
                 </div>
                 <div class="bg-white dark:bg-[#1e1e20] rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
                     <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Retardos (min)</p>
-                    <p class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ stats.late_minutes }}</p>
+                    <p class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ kpiStats.late_minutes }}</p>
                 </div>
                 <div class="bg-white dark:bg-[#1e1e20] rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
                     <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Horas extra</p>
-                    <p class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ stats.overtime_hours }}</p>
+                    <p class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ kpiStats.overtime_hours }}</p>
                 </div>
                 <div class="bg-white dark:bg-[#1e1e20] rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
                     <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Percepciones</p>
-                    <p class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ money(stats.total_gross) }}</p>
+                    <p class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ money(kpiStats.total_gross) }}</p>
                 </div>
                 <div class="bg-white dark:bg-[#1e1e20] rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
                     <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Deducciones</p>
-                    <p class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ money(stats.total_deductions) }}</p>
+                    <p class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ money(kpiStats.total_deductions) }}</p>
                 </div>
                 <div class="bg-white dark:bg-[#1e1e20] rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
                     <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Neto</p>
-                    <p class="text-xl font-bold text-emerald-600">{{ money(stats.total_net) }}</p>
+                    <p class="text-xl font-bold text-emerald-600">{{ money(kpiStats.total_net) }}</p>
                 </div>
             </div>
 
@@ -330,7 +364,27 @@ const openPrePayroll = () => {
                                 :key="row.user_id"
                                 :label="collaboratorLabel(row)"
                                 :value="row.user_id"
-                            />
+                            >
+                                <div class="flex items-center justify-between gap-3">
+                                    <span>{{ collaboratorLabel(row) }}</span>
+                                    <el-tag v-if="row.is_technician" size="small" type="info" effect="plain">Técnico</el-tag>
+                                </div>
+                            </el-option>
+                        </el-select>
+                    </div>
+
+                    <div class="hidden w-px self-stretch bg-gray-100 dark:bg-[#2b2b2e] lg:block"></div>
+
+                    <div class="shrink-0">
+                        <p class="mb-1.5 text-xs font-bold uppercase tracking-wider text-gray-400">Tipo</p>
+                        <el-select
+                            v-model="typeFilter"
+                            placeholder="Administrativos y técnicos"
+                            clearable
+                            class="!w-56 shrink-0"
+                        >
+                            <el-option label="Administrativos" value="admin" />
+                            <el-option label="Técnicos" value="technician" />
                         </el-select>
                     </div>
                 </div>
@@ -344,7 +398,7 @@ const openPrePayroll = () => {
             <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-xl border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
                 <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 dark:border-[#2b2b2e]">
                     <p class="font-semibold text-gray-800 dark:text-gray-200">
-                        Colaboradores ({{ visibleRows.length }}<template v-if="collaboratorFilter.length > 0"> de {{ rows.length }}</template>)
+                        Colaboradores ({{ visibleRows.length }}<template v-if="rowFiltersActive"> de {{ rows.length }}</template>)
                     </p>
                     <div class="flex gap-2">
                         <el-button size="small" :icon="Expand" @click="expandAll">Expandir todos</el-button>
@@ -364,6 +418,7 @@ const openPrePayroll = () => {
                                         <p class="font-semibold text-gray-800 dark:text-gray-200">{{ row.name }}</p>
                                         <p class="text-xs text-gray-500 font-normal">
                                             {{ row.employee_number || 'Sin número' }}
+                                            <template v-if="row.position"> · {{ row.position }}</template>
                                             <template v-if="row.department"> · {{ row.department }}</template>
                                         </p>
                                     </div>
@@ -389,12 +444,6 @@ const openPrePayroll = () => {
                                 </div>
                                 <div class="text-xs text-gray-500 font-normal">
                                     Extra: <span class="font-semibold text-gray-700 dark:text-gray-200">{{ hours(row.overtime_minutes) }}</span>
-                                </div>
-                                <div class="text-xs text-gray-500 font-normal">
-                                    Vacaciones: <span class="font-semibold text-gray-700 dark:text-gray-200">{{ row.vacation_days }}</span>
-                                </div>
-                                <div class="text-xs text-gray-500 font-normal">
-                                    Incapacidad: <span class="font-semibold text-gray-700 dark:text-gray-200">{{ row.incapacity_days }}</span>
                                 </div>
                                 <div class="text-xs text-gray-500 font-normal">
                                     Ajustes:

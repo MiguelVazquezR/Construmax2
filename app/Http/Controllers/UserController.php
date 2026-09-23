@@ -76,8 +76,8 @@ class UserController extends Controller
             'position' => 'required|string|max:255',
             'phone' => 'required|string|max:20',
             'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
-            ...$this->payrollRules(),
-        ]);
+            ...$this->payrollRules($request),
+        ], $this->payrollMessages());
 
         // Only the fields the acting user is allowed to change (permissions aware)
         $payrollProfile = $this->syncPayrollProfileAction->sanitizeFor($request->user(), $validated);
@@ -158,8 +158,8 @@ class UserController extends Controller
             'position' => 'required|string|max:255',
             'phone' => 'required|string|max:20',
             'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
-            ...$this->payrollRules(),
-        ]);
+            ...$this->payrollRules($request),
+        ], $this->payrollMessages());
 
         // Only the fields the acting user is allowed to change (permissions aware)
         $payrollProfile = $this->syncPayrollProfileAction->sanitizeFor($request->user(), $validated);
@@ -294,8 +294,14 @@ class UserController extends Controller
      *
      * @return array<string, array<int, mixed>>
      */
-    private function payrollRules(): array
+    private function payrollRules(Request $request): array
     {
+        // A payroll subject whose flag will actually be saved must have a
+        // schedule assigned: its daily hours feed the minute rate used by
+        // overtime and late discounts.
+        $shiftRequired = $request->user()?->can('payroll.profiles.manage')
+            && $request->boolean('is_payroll_subject');
+
         return [
             'employee_number' => ['nullable', 'string', 'max:50'],
             'hire_date' => ['nullable', 'date'],
@@ -306,7 +312,23 @@ class UserController extends Controller
             'is_attendance_subject' => ['sometimes', 'boolean'],
             'can_remote_attendance' => ['sometimes', 'boolean'],
             'kiosk_pin' => ['nullable', 'string', 'min:4', 'max:12', 'regex:/^[0-9]+$/'],
-            'shift_id' => ['nullable', 'integer', 'exists:shifts,id'],
+            'shift_id' => [
+                $shiftRequired ? 'required' : 'nullable',
+                'integer',
+                'exists:shifts,id',
+            ],
+        ];
+    }
+
+    /**
+     * Custom messages of the optional payroll fields.
+     *
+     * @return array<string, string>
+     */
+    private function payrollMessages(): array
+    {
+        return [
+            'shift_id.required' => 'Selecciona un horario para el colaborador sujeto a nómina.',
         ];
     }
 

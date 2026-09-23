@@ -45,6 +45,7 @@ Route::middleware(['auth', 'verified'])->prefix('payroll')->name('payroll.')->gr
     // Incidents (absences, medical leaves, permissions...). They are managed
     // from the payroll period detail, so there is no standalone screen.
     Route::post('/incidents', [IncidentController::class, 'store'])->name('incidents.store');
+    Route::put('/incidents/{incident}', [IncidentController::class, 'update'])->name('incidents.update');
     Route::delete('/incidents/{incident}', [IncidentController::class, 'destroy'])->name('incidents.destroy');
 
     // Vacations: approval flow + self-service requests

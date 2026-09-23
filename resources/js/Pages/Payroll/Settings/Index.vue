@@ -5,12 +5,11 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import SettingsSection from '@/Components/Payroll/SettingsSection.vue';
 import { ElMessage } from 'element-plus';
 import {
-    Calendar, Camera, Clock, Coin, FirstAidKit, InfoFilled, Picture, Suitcase, Sunny, Timer,
+    Calendar, Camera, Clock, Coin, InfoFilled, Suitcase, Sunny,
 } from '@element-plus/icons-vue';
 
 const props = defineProps({
     settings: Object,
-    periodTypes: Object,
     lateDiscountModes: Object,
     expenseCategories: Array,
 });
@@ -21,22 +20,11 @@ const toNumber = (value, fallback = null) => {
     return Number.isNaN(parsed) ? fallback : parsed;
 };
 
-const toDateInput = (value) => (value ? String(value).substring(0, 10) : null);
-
 const form = useForm({
-    // Payroll period
-    period_type: props.settings.period_type || 'weekly',
-    period_anchor_date: toDateInput(props.settings.period_anchor_date),
-
     // Attendance and late arrivals
     late_tolerance_minutes: toNumber(props.settings.late_tolerance_minutes, 10),
     late_discount_mode: props.settings.late_discount_mode || 'track_only',
     remote_geolocation_required: Boolean(props.settings.remote_geolocation_required),
-
-    // Overtime
-    overtime_double_multiplier: toNumber(props.settings.overtime_double_multiplier, 2),
-    overtime_triple_multiplier: toNumber(props.settings.overtime_triple_multiplier, 3),
-    overtime_weekly_threshold_hours: toNumber(props.settings.overtime_weekly_threshold_hours, 9),
 
     // Worked holidays
     holiday_worked_extra_multiplier: toNumber(props.settings.holiday_worked_extra_multiplier, 2),
@@ -45,12 +33,7 @@ const form = useForm({
     vacation_min_days_to_request: toNumber(props.settings.vacation_min_days_to_request, 1),
     vacation_carryover_months: toNumber(props.settings.vacation_carryover_months, 18),
 
-    // Medical leaves
-    incapacity_paid: Boolean(props.settings.incapacity_paid),
-    incapacity_pay_percentage: toNumber(props.settings.incapacity_pay_percentage, 60),
-
     // Defaults
-    default_daily_hours: toNumber(props.settings.default_daily_hours, 8),
     payroll_expense_category_id: props.settings.payroll_expense_category_id ?? null,
 
     // Face recognition
@@ -62,10 +45,6 @@ const form = useForm({
     // Attendance evidence
     attendance_capture_retention_months: toNumber(props.settings.attendance_capture_retention_months, 12),
 });
-
-const periodTypeOptions = computed(() =>
-    Object.entries(props.periodTypes || {}).map(([value, label]) => ({ value, label }))
-);
 
 const lateDiscountOptions = computed(() =>
     Object.entries(props.lateDiscountModes || {}).map(([value, label]) => ({ value, label }))
@@ -100,41 +79,17 @@ const submit = () => {
                     <!-- Periodo de nómina -->
                     <SettingsSection
                         title="Periodo de nómina"
-                        description="Cada cuánto se calcula la nómina y desde qué fecha se cuentan los periodos."
+                        description="Los periodos son semanales, de lunes a domingo, y el sistema los abre y cierra automáticamente."
                     >
                         <template #icon><el-icon :size="18"><Calendar /></el-icon></template>
-
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <el-form-item label="Tipo de periodo" prop="period_type" :error="form.errors.period_type">
-                                <el-select v-model="form.period_type" class="w-full">
-                                    <el-option
-                                        v-for="option in periodTypeOptions"
-                                        :key="option.value"
-                                        :label="option.label"
-                                        :value="option.value"
-                                    />
-                                </el-select>
-                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Define la duración de cada periodo y sus fechas de pago.</p>
-                            </el-form-item>
-
-                            <el-form-item label="Fecha de inicio del primer periodo" prop="period_anchor_date" :error="form.errors.period_anchor_date">
-                                <el-date-picker
-                                    v-model="form.period_anchor_date"
-                                    type="date"
-                                    value-format="YYYY-MM-DD"
-                                    placeholder="Seleccionar fecha"
-                                    class="w-full"
-                                />
-                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Solo se usa para generar el primer periodo; después avanzan solos.</p>
-                            </el-form-item>
-                        </div>
 
                         <div class="flex items-start gap-2 rounded-lg bg-gray-50 dark:bg-[#252529] px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">
                             <el-icon class="mt-0.5 shrink-0"><InfoFilled /></el-icon>
                             <p>
-                                El cierre y la creación del siguiente periodo se ejecutan automáticamente a la 01:00:
-                                semanal (7 días), catorcenal (14 días) y quincenal (día 1 al 15 y 16 al último del mes).
-                                El periodo abierto se recalcula en tiempo real con los registros del día.
+                                Cada periodo va de lunes a domingo. La nómina se cierra automáticamente los domingos
+                                a las 23:59 y el nuevo periodo se abre los lunes a las 00:00. No puede haber dos
+                                periodos con las mismas fechas y el periodo abierto se recalcula en tiempo real
+                                con los registros del día.
                             </p>
                         </div>
                     </SettingsSection>
@@ -173,65 +128,8 @@ const submit = () => {
 
                         <el-form-item label="Ubicación obligatoria en asistencia remota" prop="remote_geolocation_required" :error="form.errors.remote_geolocation_required">
                             <el-switch v-model="form.remote_geolocation_required" style="--el-switch-on-color: #f26c17;" />
-                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Si está activo, el colaborador no puede registrar desde su celular sin compartir su ubicación.</p>
+                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-3">Si está activo, el colaborador no puede registrar desde su celular sin compartir su ubicación.</p>
                         </el-form-item>
-                    </SettingsSection>
-
-                    <!-- Tiempo extra -->
-                    <SettingsSection
-                        title="Tiempo extra"
-                        description="Cómo se pagan las horas trabajadas más allá de la jornada."
-                    >
-                        <template #icon><el-icon :size="18"><Timer /></el-icon></template>
-
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <el-form-item label="Multiplicador doble" prop="overtime_double_multiplier" :error="form.errors.overtime_double_multiplier">
-                                <el-input-number
-                                    v-model="form.overtime_double_multiplier"
-                                    :min="1"
-                                    :max="10"
-                                    :step="0.5"
-                                    :precision="2"
-                                    :controls="false"
-                                    style="width: 100%"
-                                />
-                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Pago de las primeras horas extra de la semana.</p>
-                            </el-form-item>
-
-                            <el-form-item label="Multiplicador triple" prop="overtime_triple_multiplier" :error="form.errors.overtime_triple_multiplier">
-                                <el-input-number
-                                    v-model="form.overtime_triple_multiplier"
-                                    :min="1"
-                                    :max="10"
-                                    :step="0.5"
-                                    :precision="2"
-                                    :controls="false"
-                                    style="width: 100%"
-                                />
-                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Pago del excedente al superar el umbral.</p>
-                            </el-form-item>
-
-                            <el-form-item label="Umbral semanal (horas)" prop="overtime_weekly_threshold_hours" :error="form.errors.overtime_weekly_threshold_hours">
-                                <el-input-number
-                                    v-model="form.overtime_weekly_threshold_hours"
-                                    :min="0"
-                                    :max="48"
-                                    :step="0.5"
-                                    :precision="2"
-                                    :controls="false"
-                                    style="width: 100%"
-                                />
-                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Horas extra por semana que se pagan al doble.</p>
-                            </el-form-item>
-                        </div>
-
-                        <div class="flex items-start gap-2 rounded-lg bg-gray-50 dark:bg-[#252529] px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">
-                            <el-icon class="mt-0.5 shrink-0"><InfoFilled /></el-icon>
-                            <p>
-                                Regla LFT: hasta el umbral semanal el tiempo extra se paga al doble; lo que lo supera
-                                se paga al triple. El tiempo trabajado en un día de descanso también cuenta como extra.
-                            </p>
-                        </div>
                     </SettingsSection>
 
                     <!-- Días festivos -->
@@ -306,33 +204,6 @@ const submit = () => {
                         </div>
                     </SettingsSection>
 
-                    <!-- Incapacidades -->
-                    <SettingsSection
-                        title="Incapacidades"
-                        description="Qué parte del día se paga cuando existe una incapacidad médica."
-                    >
-                        <template #icon><el-icon :size="18"><FirstAidKit /></el-icon></template>
-
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <el-form-item label="Se paga la incapacidad" prop="incapacity_paid" :error="form.errors.incapacity_paid">
-                                <el-switch v-model="form.incapacity_paid" style="--el-switch-on-color: #f26c17;" />
-                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Si se desactiva, los días de incapacidad quedan sin goce de sueldo.</p>
-                            </el-form-item>
-
-                            <el-form-item label="Porcentaje del día que se paga" prop="incapacity_pay_percentage" :error="form.errors.incapacity_pay_percentage">
-                                <el-input-number
-                                    v-model="form.incapacity_pay_percentage"
-                                    :min="0"
-                                    :max="100"
-                                    :disabled="!form.incapacity_paid"
-                                    :controls="false"
-                                    style="width: 100%"
-                                />
-                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Porcentaje del sueldo diario que se paga por cada día de incapacidad.</p>
-                            </el-form-item>
-                        </div>
-                    </SettingsSection>
-
                     <!-- Reconocimiento facial -->
                     <SettingsSection
                         title="Reconocimiento facial (AWS Rekognition)"
@@ -342,7 +213,7 @@ const submit = () => {
 
                         <el-form-item label="Reconocimiento facial activo" prop="face_recognition_enabled" :error="form.errors.face_recognition_enabled">
                             <el-switch v-model="form.face_recognition_enabled" style="--el-switch-on-color: #f26c17;" />
-                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Habilita el botón «Registrar con rostro» en el kiosco.</p>
+                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-3">Habilita el botón «Registrar con rostro» en el kiosco.</p>
                         </el-form-item>
 
                         <el-form-item label="Umbral de coincidencia (similitud mínima)" prop="face_match_threshold" :error="form.errors.face_match_threshold">
@@ -352,7 +223,7 @@ const submit = () => {
 
                         <el-form-item label="Respaldo con número de empleado y PIN en kiosco" prop="kiosk_pin_fallback_enabled" :error="form.errors.kiosk_pin_fallback_enabled">
                             <el-switch v-model="form.kiosk_pin_fallback_enabled" style="--el-switch-on-color: #f26c17;" />
-                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Permite registrar con número de empleado y PIN si el rostro no se reconoce.</p>
+                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-3">Muestra la opción de registrar con número de empleado y PIN como alternativa al rostro.</p>
                         </el-form-item>
 
                         <el-form-item label="Colección de rostros en Rekognition" prop="rekognition_collection_id" :error="form.errors.rekognition_collection_id">
@@ -372,24 +243,11 @@ const submit = () => {
                     <!-- Valores predeterminados -->
                     <SettingsSection
                         title="Valores predeterminados"
-                        description="Valores que se usan cuando el colaborador no tiene otro configurado."
+                        description="Ajustes generales del módulo de nómina."
                     >
                         <template #icon><el-icon :size="18"><Coin /></el-icon></template>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <el-form-item label="Jornada diaria por defecto (horas)" prop="default_daily_hours" :error="form.errors.default_daily_hours">
-                                <el-input-number
-                                    v-model="form.default_daily_hours"
-                                    :min="1"
-                                    :max="24"
-                                    :step="0.5"
-                                    :precision="2"
-                                    :controls="false"
-                                    style="width: 100%"
-                                />
-                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Horas de una jornada completa para quien no tiene horario asignado.</p>
-                            </el-form-item>
-
                             <el-form-item label="Categoría del gasto por nómina" prop="payroll_expense_category_id" :error="form.errors.payroll_expense_category_id">
                                 <el-select v-model="form.payroll_expense_category_id" placeholder="Seleccionar categoría" clearable class="w-full">
                                     <el-option
@@ -401,26 +259,18 @@ const submit = () => {
                                 </el-select>
                                 <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Categoría con la que se registra el gasto de la nómina en Control de gastos.</p>
                             </el-form-item>
+
+                            <el-form-item label="Conservar fotos de registro (meses)" prop="attendance_capture_retention_months" :error="form.errors.attendance_capture_retention_months">
+                                <el-input-number
+                                    v-model="form.attendance_capture_retention_months"
+                                    :min="1"
+                                    :max="120"
+                                    :controls="false"
+                                    style="width: 100%"
+                                />
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Las fotos de cada registro se eliminan automáticamente al cumplir este plazo.</p>
+                            </el-form-item>
                         </div>
-                    </SettingsSection>
-
-                    <!-- Evidencia de asistencia -->
-                    <SettingsSection
-                        title="Evidencia de asistencia"
-                        description="Cuánto tiempo se guardan las fotos de los registros."
-                    >
-                        <template #icon><el-icon :size="18"><Picture /></el-icon></template>
-
-                        <el-form-item label="Conservar fotos de registro (meses)" prop="attendance_capture_retention_months" :error="form.errors.attendance_capture_retention_months">
-                            <el-input-number
-                                v-model="form.attendance_capture_retention_months"
-                                :min="1"
-                                :max="120"
-                                :controls="false"
-                                style="width: 100%"
-                            />
-                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Las fotos de cada registro se eliminan automáticamente al cumplir este plazo.</p>
-                        </el-form-item>
                     </SettingsSection>
                 </div>
 

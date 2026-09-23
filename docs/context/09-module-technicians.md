@@ -73,6 +73,8 @@ PUT    /technicians/{technician}/bank-accounts/{account}/favorite  technicians.b
 | `updateRating` | Updates `rating_avg` |
 | `storeBankAccount` | Adds bank account (first one auto-favorited) |
 | `setFavoriteBankAccount` | Sets one account as favorite, unfavoriting others |
+| `destroy` | **External technicians:** status "Eliminado" + soft-delete of the user (they move to the *Eliminados* tab). **Internal technicians:** asks for a `termination_date`, saves it in their payroll profile, deactivates the user (`is_active = false`) and sets status "Inactivo" — they keep their record, stay in the payroll until that date and can be reactivated |
+| `restore` | Reactivates a dismissed technician (trashed or not): restores/deactivates the user, clears the payroll `termination_date` so they return to the payroll, and sets status "Activo" |
 
 ---
 
@@ -81,7 +83,8 @@ PUT    /technicians/{technician}/bank-accounts/{account}/favorite  technicians.b
 ### `Technicians/Index.vue`
 - Card-based grid with avatar, rating (color-coded: red ≤3, orange ≤4.5, green >4.5), specialties, status, ticket count
 - Toggle status button
-- Filters: search, state, specialty
+- Filters: search, state, **tipo de técnico (internos / externos — `is_internal`)**, specialty
+- Internal technicians show the "Interno" tag next to their name and the payroll dismissal dialog (`TechnicianDismissDialog`) asking for the termination date; dismissed internal technicians show a "Reactivar" action instead of "Dar de baja"
 
 ### `TechnicianForm.vue` (core)
 - User basics: name, email, phone, photo
@@ -116,7 +119,7 @@ The `Technician::involvedTickets()` method delegates to this scope.
 - **Tickets** (`06`): Technicians assigned via JSON arrays; involved tickets queried
 - **Budgets** (`07`): `TechnicianPayment` links technician payments to budgets
 - **Deposits** (`11`): Deposits reference technicians and their bank accounts
-- **Payroll & HR** (`16`): Technicians may record attendance (kiosk/remote) through their payroll profile attendance flags; payroll subjects (salary calculation) are employees only for now — the schema is ready to enable it for technicians later
+- **Payroll & HR** (`16`): Technicians may record attendance (kiosk/remote) through their payroll profile attendance flags, and **internal technicians can be payroll subjects** (salary, hours and "Sujeto a nómina" are available in their form under the `internal` flag). Dismissing an internal technician asks for a termination date: they stay in the payroll until that date and disappear from the later periods
 
 ---
 

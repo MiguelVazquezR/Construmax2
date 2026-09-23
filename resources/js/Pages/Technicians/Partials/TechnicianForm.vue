@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed } from 'vue';
+import { ref, reactive, computed, watch } from 'vue';
 import { 
     User, 
     MapLocation, 
@@ -42,6 +42,19 @@ const props = defineProps({
 });
 
 defineEmits(['photo-change', 'tax-file-change', 'tax-file-remove']);
+
+// External technicians are providers, not company staff: when the "Interno"
+// switch turns off, the whole payroll and attendance state is cleared (the
+// "Nómina y asistencia" section is hidden for them).
+watch(() => props.form.is_internal, (isInternal) => {
+    if (! isInternal) {
+        props.form.is_payroll_subject = false;
+        props.form.is_attendance_subject = false;
+        props.form.can_remote_attendance = false;
+        props.form.kiosk_pin = '';
+        props.form.shift_id = null;
+    }
+});
 
 // --- SPECIALTY MANAGEMENT ---
 const showSpecialtyModal = ref(false);
@@ -358,7 +371,13 @@ const mexicoStates = [
 
             <!-- 5. Nómina y asistencia -->
             <div class="bg-white dark:bg-[#1e1e20] shadow-sm rounded-lg border border-gray-100 dark:border-[#2b2b2e] p-6 pb-2">
-                <PayrollProfileFields :form="form" :show-payroll-fields="false" :shifts="shifts" />
+                <PayrollProfileFields
+                    :form="form"
+                    :show-payroll-fields="false"
+                    :internal="Boolean(form.is_internal)"
+                    :has-kiosk-pin="Boolean(technician?.user?.payroll_profile?.has_kiosk_pin)"
+                    :shifts="shifts"
+                />
             </div>
 
             <!-- 6. Notas Internas y Submit -->

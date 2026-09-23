@@ -26,81 +26,145 @@ class PayrollPeriodService
     }
 
     /**
-     * Open period that already ended and is due for automatic closing.
+     * Monday–Sunday range of the work week that contains the given date.
+     *
+     * @return array{0: CarbonImmutable, 1: CarbonImmutable}
      */
-    public function duePeriod(?CarbonImmutable $today = null): ?PayrollPeriod
+    public function weekRange(?CarbonImmutable $date = null): array
     {
-        $today = $today ?? CarbonImmutable::today();
+        $date = $date ?? CarbonImmutable::today();
+        $monday = $date->startOfWeek(CarbonImmutable::MONDAY);
 
-        return PayrollPeriod::query()
+        return [$monday, $monday->addDays(6)];
+    }
+
+    /**
+     * Dates of the next period that can be opened: the first full Monday–Sunday
+     * week after the latest period that does not repeat existing dates.
+     *
+     * @return array{0: CarbonImmutable, 1: CarbonImmutable}
+     */
+    public function nextPeriodRange(): array
+    {
+        $lastPeriod = PayrollPeriod::query()->orderByDesc('start_date')->first();
+
+        if (! $lastPeriod) {
+            return $this->weekRange();
+        }
+
+        $after = CarbonImmutable::parse($lastPeriod->end_date->toDateString())->addDay();
+        $monday = $after->startOfWeek(CarbonImmutable::MONDAY);
+
+        if ($monday->lessThan($after)) {
+            $monday = $monday->addWeek();
+        }
+
+        while ($this->rangeConflicts($monday, $monday->addDays(6))) {
+            $monday = $monday->addWeek();
+        }
+
+        return [$monday, $monday->addDays(6)];
+    }
+
+    /**
+     * Open the next period (the "Abrir siguiente periodo" action).
+     */
+    public function openNextPeriod(): PayrollPeriod
+    {
+        [$start, $end] = $this->nextPeriodRange();
+
+        return $this->createPeriod($start, $end);
+    }
+
+    /**
+     * Close the Monday–Sunday week that just ended. Periods reopened by hand
+     * stay open: the manager keeps them that way to fix their figures.
+     */
+    public function closeEndedWeek(?CarbonImmutable $now = null): ?PayrollPeriod
+    {
+        $now = $now ?? CarbonImmutable::now();
+        $lastSunday = $now->isSunday() && $now->format('H:i') === '23:59'
+            ? $now
+            : $now->startOfWeek(CarbonImmutable::MONDAY)->subDay();
+
+        $period = PayrollPeriod::query()
             ->open()
-            ->whereDate('end_date', '<', $today->toDateString())
+            ->whereDate('end_date', $lastSunday->toDateString())
+            ->whereNull('reopened_at')
             ->orderBy('start_date')
             ->first();
+
+        return $period ? $this->close($period) : null;
     }
 
     /**
-     * Create the first period containing today, based on the configured type
-     * and anchor date. No-op when an open period already exists.
+     * Open the current week (Monday–Sunday) once it has started, unless a
+     * period with those exact dates already exists.
      */
-    public function createFirstPeriod(): ?PayrollPeriod
+    public function ensureCurrentWeek(?CarbonImmutable $now = null): ?PayrollPeriod
     {
-        if ($existing = $this->currentOpenPeriod()) {
-            return $existing;
+        [$monday, $sunday] = $this->weekRange($now);
+
+        if ($this->rangeConflicts($monday, $sunday)) {
+            return null;
         }
 
-        $settings = PayrollSetting::current();
-        $type = $settings->period_type;
-        $today = CarbonImmutable::today();
+        return $this->createPeriod($monday, $sunday);
+    }
 
-        if ($type === PayrollSetting::PERIOD_SEMIMONTHLY) {
-            $start = $today->day <= 15
-                ? $today->startOfMonth()
-                : $today->startOfMonth()->addDays(15);
-        } else {
-            $periodDays = $type === PayrollSetting::PERIOD_BIWEEKLY ? 14 : 7;
-            $anchor = $settings->period_anchor_date
-                ? CarbonImmutable::parse($settings->period_anchor_date->toDateString())
-                : $today;
+    /**
+     * Automatic weekly rollover: closes the week that just ended (Sunday
+     * 23:59) and opens the current Monday–Sunday week (Monday 00:00).
+     *
+     * @return array{closed: ?PayrollPeriod, opened: ?PayrollPeriod}
+     */
+    public function syncAutomatic(?CarbonImmutable $now = null): array
+    {
+        $now = $now ?? CarbonImmutable::now();
 
-            if ($anchor->greaterThan($today)) {
-                $anchor = $today;
-            }
+        return [
+            'closed' => $this->closeEndedWeek($now),
+            'opened' => $this->ensureCurrentWeek($now),
+        ];
+    }
 
-            $elapsed = (int) $anchor->diffInDays($today);
-            $periods = intdiv($elapsed, $periodDays);
-            $start = $anchor->addDays($periods * $periodDays);
+    private function createPeriod(CarbonImmutable $start, CarbonImmutable $end): PayrollPeriod
+    {
+        if ($this->rangeConflicts($start, $end)) {
+            throw ValidationException::withMessages([
+                'start_date' => 'Ya existe un periodo de nómina con esas fechas.',
+            ]);
         }
 
         return PayrollPeriod::create([
-            'type' => $type,
+            'type' => PayrollPeriod::TYPE_WEEKLY,
             'start_date' => $start->toDateString(),
-            'end_date' => $this->endDateFor($type, $start)->toDateString(),
+            'end_date' => $end->toDateString(),
             'status' => PayrollPeriod::STATUS_OPEN,
         ]);
     }
 
     /**
-     * Create the period that follows a closed one (idempotent).
+     * True when the range shares days with an open period or repeats the exact
+     * dates of any existing one: two periods can never cover the same week.
      */
-    public function createNextPeriod(PayrollPeriod $period): PayrollPeriod
+    private function rangeConflicts(CarbonImmutable $start, CarbonImmutable $end): bool
     {
-        $start = $this->nextStartDate($period);
+        $startDate = $start->toDateString();
+        $endDate = $end->toDateString();
 
-        $existing = PayrollPeriod::query()
-            ->whereDate('start_date', $start->toDateString())
-            ->first();
-
-        if ($existing) {
-            return $existing;
-        }
-
-        return PayrollPeriod::create([
-            'type' => $period->type,
-            'start_date' => $start->toDateString(),
-            'end_date' => $this->endDateFor($period->type, $start)->toDateString(),
-            'status' => PayrollPeriod::STATUS_OPEN,
-        ]);
+        return PayrollPeriod::query()
+            ->where(function ($query) use ($startDate, $endDate) {
+                $query->where(function ($open) use ($startDate, $endDate) {
+                    $open->where('status', PayrollPeriod::STATUS_OPEN)
+                        ->whereDate('start_date', '<=', $endDate)
+                        ->whereDate('end_date', '>=', $startDate);
+                })->orWhere(function ($same) use ($startDate, $endDate) {
+                    $same->whereDate('start_date', $startDate)
+                        ->whereDate('end_date', $endDate);
+                });
+            })
+            ->exists();
     }
 
     /**
@@ -168,6 +232,7 @@ class PayrollPeriodService
                 'status' => PayrollPeriod::STATUS_OPEN,
                 'closed_at' => null,
                 'closed_by' => null,
+                'reopened_at' => now(),
                 'total_gross' => null,
                 'total_deductions' => null,
                 'total_net' => null,
@@ -198,31 +263,5 @@ class PayrollPeriodService
             'payroll_period_id' => $period->id,
             'created_by' => $actor?->id,
         ]);
-    }
-
-    private function nextStartDate(PayrollPeriod $period): CarbonImmutable
-    {
-        if ($period->type === PayrollSetting::PERIOD_SEMIMONTHLY) {
-            $start = CarbonImmutable::parse($period->start_date->toDateString());
-
-            return $start->day <= 15
-                ? $start->startOfMonth()->addDays(15) // 16th
-                : $start->startOfMonth()->addMonth(); // 1st of next month
-        }
-
-        $end = CarbonImmutable::parse($period->end_date->toDateString());
-
-        return $end->addDay();
-    }
-
-    private function endDateFor(string $type, CarbonImmutable $start): CarbonImmutable
-    {
-        return match ($type) {
-            PayrollSetting::PERIOD_BIWEEKLY => $start->addDays(13),
-            PayrollSetting::PERIOD_SEMIMONTHLY => $start->day <= 15
-                ? $start->startOfMonth()->addDays(14)
-                : $start->endOfMonth(),
-            default => $start->addDays(6),
-        };
     }
 }

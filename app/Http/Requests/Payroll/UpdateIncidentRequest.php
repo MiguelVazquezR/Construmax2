@@ -7,7 +7,7 @@ use App\Models\Incident;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class StoreIncidentRequest extends FormRequest
+class UpdateIncidentRequest extends FormRequest
 {
     use EnsuresNoIncidentOverlap;
 

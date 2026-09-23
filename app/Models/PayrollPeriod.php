@@ -29,6 +29,7 @@ class PayrollPeriod extends Model
         'status',
         'closed_at',
         'closed_by',
+        'reopened_at',
         'total_gross',
         'total_deductions',
         'total_net',
@@ -40,6 +41,7 @@ class PayrollPeriod extends Model
         'start_date' => 'date',
         'end_date' => 'date',
         'closed_at' => 'datetime',
+        'reopened_at' => 'datetime',
         'total_gross' => 'decimal:2',
         'total_deductions' => 'decimal:2',
         'total_net' => 'decimal:2',
@@ -78,6 +80,17 @@ class PayrollPeriod extends Model
     public function isOpen(): bool
     {
         return $this->status === self::STATUS_OPEN;
+    }
+
+    /**
+     * True when the period was closed before its last date (an early manual
+     * close): the remaining days stay without an open period until the pocket
+     * is reopened or the next Monday arrives.
+     */
+    public function closedEarly(): bool
+    {
+        return $this->closed_at !== null
+            && $this->closed_at->toDateString() < $this->end_date->toDateString();
     }
 
     public function label(): string

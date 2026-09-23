@@ -2,6 +2,7 @@
 
 namespace App\Services\Payroll;
 
+use App\Models\Incident;
 use App\Models\PayrollAdjustment;
 use App\Models\PayrollPeriod;
 use App\Models\PayrollSetting;
@@ -30,7 +31,7 @@ class PayrollCalculatorService
 
         return User::query()
             ->whereHas('payrollProfile', fn ($query) => $query->payrollSubjectOn($onDate))
-            ->with(['payrollProfile', 'employee'])
+            ->with(['payrollProfile', 'employee', 'technician'])
             ->orderBy('name')
             ->get();
     }
@@ -80,8 +81,8 @@ class PayrollCalculatorService
      *
      * Rules (all configurable in the payroll settings):
      *  - Scheduled workday with punches: 1 paid day; overtime beyond the
-     *    expected minutes accumulates (first hours at the double multiplier,
-     *    the excess at the triple one, LFT art. 66-68).
+     *    expected minutes accumulates and is paid at the normal rate as a
+     *    single "Tiempo extra" concept (no double/triple split).
      *  - Scheduled workday without punches and without incident: unpaid day
      *    once the day has passed (an unjustified absence); today and future
      *    days remain pending (*sin registro*) and count as neither paid nor
@@ -89,11 +90,11 @@ class PayrollCalculatorService
      *  - Holiday: paid rest day; when worked, an extra day at the configured
      *    multiplier (LFT art. 75).
      *  - Incidents: paid fraction by type (vacations and paid permissions are
-     *    full days; medical leaves use their configured percentage; justified
-     *    absences, unpaid permissions and unjustified absences are not paid).
-     *    They apply on scheduled workdays and also when the collaborator has
-     *    no schedule, whose registered incidents are the only source of truth
-     *    for the day.
+     *    full days; IMSS incapacities are counted for reference but never
+     *    paid; justified absences, unpaid permissions and unjustified
+     *    absences are not paid). They apply on scheduled workdays and also
+     *    when the collaborator has no schedule, whose registered incidents
+     *    are the only source of truth for the day.
      *  - Late arrivals: only discounted when the settings say so, and only
      *    when the late was not manually ignored.
      *  - Worked rest days: every worked minute is overtime, and the same
@@ -181,9 +182,9 @@ class PayrollCalculatorService
 
                 if ($summary->incidentTypeKey === 'vacation') {
                     $totals['vacation_days'] += $fraction;
-                } elseif ($summary->incidentTypeKey === 'medical_leave') {
-                    $totals['incapacity_days'] += $fraction;
-                    $totals['incapacity_amount'] += round($fraction * $dailySalary, 2);
+                } elseif (in_array($summary->incidentTypeKey, [Incident::TYPE_MEDICAL_LEAVE, Incident::TYPE_WORK_INCAPACITY], true)) {
+                    // IMSS incapacities: counted for reference, never paid.
+                    $totals['incapacity_days'] += 1.0;
                 }
             } elseif ($summary->holidayName !== null) {
                 // 2. Holiday: paid rest day; extra pay when worked.
@@ -256,17 +257,13 @@ class PayrollCalculatorService
             $cursor = $cursor->addDay();
         }
 
-        // Overtime split: double up to the weekly threshold, triple beyond.
-        $thresholdMinutes = (float) $settings->overtime_weekly_threshold_hours * 60;
-        $doubleMinutes = min($overtimePoolMinutes, $thresholdMinutes);
-        $tripleMinutes = max(0.0, $overtimePoolMinutes - $thresholdMinutes);
-
-        $doubleAmount = $doubleMinutes * $minuteRate * (float) $settings->overtime_double_multiplier;
-        $tripleAmount = $tripleMinutes * $minuteRate * (float) $settings->overtime_triple_multiplier;
-
-        $totals['overtime_double_minutes'] = (int) round($doubleMinutes);
-        $totals['overtime_triple_minutes'] = (int) round($tripleMinutes);
-        $totals['overtime_amount'] = round($doubleAmount + $tripleAmount, 2);
+        // Overtime is paid at the normal rate: the business rule is a single
+        // "Tiempo extra" concept, without the double/triple split. The minutes
+        // still land in the double column so the legacy aggregations
+        // (double + triple) keep adding up to the total.
+        $totals['overtime_double_minutes'] = (int) round($overtimePoolMinutes);
+        $totals['overtime_triple_minutes'] = 0;
+        $totals['overtime_amount'] = round($overtimePoolMinutes * $minuteRate, 2);
 
         // Manual adjustments.
         $adjustments = PayrollAdjustment::query()
@@ -306,7 +303,7 @@ class PayrollCalculatorService
                 'daily_hours' => $dailyHours,
             ],
             'days' => $days,
-            'lines' => $this->buildLines($totals, $dailySalary, $minuteRate, $doubleAmount, $tripleAmount, $adjustments, $settings),
+            'lines' => $this->buildLines($totals, $dailySalary, $minuteRate, $adjustments, $settings),
             'totals' => $totals,
         ];
     }
@@ -319,8 +316,6 @@ class PayrollCalculatorService
         array $totals,
         float $dailySalary,
         float $minuteRate,
-        float $doubleAmount,
-        float $tripleAmount,
         Collection $adjustments,
         PayrollSetting $settings,
     ): array {
@@ -339,23 +334,11 @@ class PayrollCalculatorService
 
         if ($totals['overtime_double_minutes'] > 0) {
             $lines[] = [
-                'concept' => 'Tiempo extra doble',
+                'concept' => 'Tiempo extra',
                 'type' => 'earning',
                 'quantity' => round($totals['overtime_double_minutes'] / 60, 2),
-                'unit_rate' => round($minuteRate * 60 * (float) $settings->overtime_double_multiplier, 2),
-                'amount' => round($doubleAmount, 2),
-                'source' => 'overtime',
-                'sort_order' => $sort += 10,
-            ];
-        }
-
-        if ($totals['overtime_triple_minutes'] > 0) {
-            $lines[] = [
-                'concept' => 'Tiempo extra triple',
-                'type' => 'earning',
-                'quantity' => round($totals['overtime_triple_minutes'] / 60, 2),
-                'unit_rate' => round($minuteRate * 60 * (float) $settings->overtime_triple_multiplier, 2),
-                'amount' => round($tripleAmount, 2),
+                'unit_rate' => round($minuteRate * 60, 2),
+                'amount' => round($totals['overtime_amount'], 2),
                 'source' => 'overtime',
                 'sort_order' => $sort += 10,
             ];

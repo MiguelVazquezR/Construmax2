@@ -23,6 +23,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -39,6 +40,8 @@ class PayrollPeriodController extends Controller
     {
         $this->authorizePeriods($request);
 
+        $this->periodService->syncAutomatic();
+
         $periods = PayrollPeriod::query()
             ->withCount('payslips')
             ->orderByDesc('start_date')
@@ -46,29 +49,41 @@ class PayrollPeriodController extends Controller
             ->withQueryString();
 
         $openPeriod = $this->periodService->currentOpenPeriod();
+        [$nextStart, $nextEnd] = $this->periodService->nextPeriodRange();
+
+        $lastPeriod = PayrollPeriod::query()->orderByDesc('start_date')->first();
 
         return Inertia::render('Payroll/Periods/Index', [
             'periods' => $periods,
             'openPeriod' => $openPeriod,
+            'nextPeriod' => [
+                'start_date' => $nextStart->toDateString(),
+                'end_date' => $nextEnd->toDateString(),
+            ],
+            // The manual button is only needed after an early close: the
+            // automatic rollover opens the following week by itself.
+            'openNextAvailable' => $openPeriod === null && $lastPeriod?->closedEarly() === true,
             'payrollEmployees' => $this->calculator->payrollSubjects()->count(),
             'typeLabels' => PayrollSetting::PERIOD_TYPES,
         ]);
     }
 
     /**
-     * Create the first period from the configured type and anchor date.
+     * Open the next Monday–Sunday week (the confirmation dialog on the index
+     * shows the exact dates before submitting). Periods with the same dates
+     * are never created twice and other open periods keep working.
      */
     public function store(Request $request): RedirectResponse
     {
         $this->authorizeClose($request);
 
-        if ($this->periodService->currentOpenPeriod()) {
-            return back()->with('error', 'Ya existe un periodo de nómina abierto.');
+        try {
+            $period = $this->periodService->openNextPeriod();
+        } catch (ValidationException) {
+            return back()->with('error', 'Ya existe un periodo de nómina con esas fechas.');
         }
 
-        $period = $this->periodService->createFirstPeriod();
-
-        return back()->with('success', 'Periodo de nómina creado: '.$period->label().'.');
+        return back()->with('success', 'Periodo abierto: '.$period->label().'.');
     }
 
     public function show(Request $request, PayrollPeriod $period): Response
@@ -433,12 +448,15 @@ class PayrollPeriodController extends Controller
             foreach ($this->calculator->payrollSubjects($period->start_date) as $user) {
                 $result = $this->calculator->calculateFor($user, $period);
                 $totals = $result['totals'];
+                $isTechnician = $user->technician !== null;
 
                 $rows[] = $this->buildRow(
                     $user->id,
                     $user->name,
                     $result['snapshot']['employee_number'],
                     $result['snapshot']['department'],
+                    $isTechnician ? 'Técnico' : $result['snapshot']['position'],
+                    $isTechnician,
                     $totals,
                     null,
                     $result['snapshot']['termination_date'],
@@ -446,17 +464,21 @@ class PayrollPeriodController extends Controller
             }
         } else {
             $payslips = $period->payslips()
-                ->with(['user:id,name', 'user.payrollProfile'])
+                ->with(['user:id,name', 'user.payrollProfile', 'user.technician'])
                 ->get()
                 ->sortBy(fn ($payslip) => mb_strtolower((string) $payslip->user?->name))
                 ->values();
 
             foreach ($payslips as $payslip) {
+                $isTechnician = $payslip->user?->technician !== null;
+
                 $rows[] = $this->buildRow(
                     $payslip->user_id,
                     $payslip->user?->name,
                     $payslip->employee_number,
                     $payslip->department,
+                    $isTechnician ? 'Técnico' : $payslip->position,
+                    $isTechnician,
                     [
                         'days_worked' => (float) $payslip->days_worked,
                         'days_paid' => (float) $payslip->days_paid,
@@ -501,13 +523,15 @@ class PayrollPeriodController extends Controller
      * @param  array<string, mixed>  $totals
      * @return array<string, mixed>
      */
-    private function buildRow(int $userId, ?string $name, ?string $employeeNumber, ?string $department, array $totals, ?int $payslipId, ?string $terminationDate = null): array
+    private function buildRow(int $userId, ?string $name, ?string $employeeNumber, ?string $department, ?string $position, bool $isTechnician, array $totals, ?int $payslipId, ?string $terminationDate = null): array
     {
         return [
             'user_id' => $userId,
             'name' => $name,
             'employee_number' => $employeeNumber,
             'department' => $department,
+            'position' => $position,
+            'is_technician' => $isTechnician,
             'termination_date' => $terminationDate,
             'days_worked' => round((float) $totals['days_worked'], 2),
             'days_paid' => round((float) $totals['days_paid'], 2),

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { Camera, CircleCheck, WarningFilled } from '@element-plus/icons-vue';
 import axios from 'axios';
@@ -7,6 +7,7 @@ import axios from 'axios';
 const props = defineProps({
     punchTypes: Object,
     faceRecognitionEnabled: Boolean,
+    pinFallbackEnabled: Boolean,
     appName: String,
 });
 
@@ -19,6 +20,16 @@ const status = ref('checking'); // checking | authorized | unauthorized
 const clock = ref(new Date());
 
 const selectedType = ref(null);
+// Identification method: face or kiosk pin. When both are available the
+// collaborator must choose first, so the camera is not requested from the
+// start.
+const method = ref(
+    props.faceRecognitionEnabled && props.pinFallbackEnabled
+        ? null
+        : (props.faceRecognitionEnabled ? 'face' : (props.pinFallbackEnabled ? 'pin' : null))
+);
+const pin = ref('');
+const pinSubmitting = ref(false);
 const faceSubmitting = ref(false);
 const errorMessage = ref('');
 const result = ref(null);
@@ -28,6 +39,13 @@ const videoRef = ref(null);
 let stream = null;
 let clockTimer = null;
 let resultTimer = null;
+
+const stepTwoTitle = computed(() => {
+    if (method.value === 'pin') return 'Identifícate con tu PIN';
+    if (method.value === 'face') return 'Identifícate con tu rostro';
+
+    return 'Identifícate';
+});
 
 const typeEntries = computed(() =>
     Object.entries(props.punchTypes || {}).map(([value, label]) => ({ value, label }))
@@ -64,11 +82,22 @@ const bootstrap = async () => {
 };
 
 const initCamera = async () => {
+    if (stream) return;
+
     try {
         stream = await navigator.mediaDevices.getUserMedia({
             video: { width: 640, height: 480, facingMode: 'user' },
             audio: false,
         });
+
+        await nextTick();
+
+        // The method may have changed to PIN while the camera was starting:
+        // release it immediately so no camera access stays active.
+        if (method.value !== 'face') {
+            releaseCamera();
+            return;
+        }
 
         if (videoRef.value) {
             videoRef.value.srcObject = stream;
@@ -77,6 +106,20 @@ const initCamera = async () => {
     } catch {
         cameraReady.value = false;
     }
+};
+
+// Releases the camera completely (the browser's camera indicator turns off).
+const releaseCamera = () => {
+    if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+        stream = null;
+    }
+
+    if (videoRef.value) {
+        videoRef.value.srcObject = null;
+    }
+
+    cameraReady.value = false;
 };
 
 const capturePhoto = () => {
@@ -133,6 +176,57 @@ const submitFace = async () => {
     }
 };
 
+const submitPin = async () => {
+    errorMessage.value = '';
+
+    if (!selectedType.value) {
+        errorMessage.value = 'Selecciona el tipo de registro.';
+        return;
+    }
+
+    if (!pin.value) {
+        errorMessage.value = 'Escribe tu PIN de kiosco.';
+        return;
+    }
+
+    pinSubmitting.value = true;
+
+    try {
+        const { data } = await axios.post(route('attendance.kiosk.punch'), {
+            pin: pin.value,
+            type: selectedType.value,
+        }, {
+            headers: { 'X-Attendance-Device': token.value },
+        });
+
+        result.value = data;
+        selectedType.value = null;
+        pin.value = '';
+
+        clearTimeout(resultTimer);
+        resultTimer = setTimeout(() => {
+            result.value = null;
+        }, SESSION_RESET_MS);
+    } catch (error) {
+        const errors = error.response?.data?.errors;
+        errorMessage.value = errors
+            ? Object.values(errors).flat()[0]
+            : 'No se pudo guardar el registro. Intenta de nuevo.';
+    } finally {
+        pinSubmitting.value = false;
+    }
+};
+
+// The camera is requested only while the face method is selected: choosing
+// the PIN releases it so no camera access stays active.
+watch(method, (value) => {
+    if (value === 'face' && props.faceRecognitionEnabled && status.value === 'authorized') {
+        initCamera();
+    } else {
+        releaseCamera();
+    }
+});
+
 onMounted(async () => {
     clockTimer = setInterval(() => {
         clock.value = new Date();
@@ -140,7 +234,7 @@ onMounted(async () => {
 
     await bootstrap();
 
-    if (status.value === 'authorized') {
+    if (status.value === 'authorized' && method.value === 'face') {
         await initCamera();
     }
 });
@@ -148,10 +242,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
     clearInterval(clockTimer);
     clearTimeout(resultTimer);
-
-    if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-    }
+    releaseCamera();
 });
 </script>
 
@@ -196,7 +287,7 @@ onBeforeUnmount(() => {
         <!-- Kiosk -->
         <main v-else class="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-8 px-8 py-8">
             <!-- Left: clock + form -->
-            <section class="lg:col-span-3 flex flex-col">
+            <section :class="method === 'face' && faceRecognitionEnabled ? 'lg:col-span-3' : 'lg:col-span-5'" class="flex flex-col">
                 <div class="text-center mb-8">
                     <p class="text-6xl font-bold tabular-nums tracking-tight text-gray-800 dark:text-white">{{ timeLabel }}</p>
                     <p class="text-gray-400 capitalize mt-2">{{ dateLabel }}</p>
@@ -230,19 +321,83 @@ onBeforeUnmount(() => {
                     <div class="flex items-center gap-3 mb-4">
                         <span class="w-7 h-7 rounded-full bg-[#f26c17] text-white text-sm font-bold flex items-center justify-center shrink-0">2</span>
                         <div>
-                            <h2 class="text-lg font-semibold text-gray-800 dark:text-white">Identifícate con tu rostro</h2>
-                            <p class="text-xs text-gray-400">Mira de frente a la cámara y presiona el botón.</p>
+                            <h2 class="text-lg font-semibold text-gray-800 dark:text-white">
+                                {{ stepTwoTitle }}
+                            </h2>
+                            <p class="text-xs text-gray-400">
+                                <template v-if="faceRecognitionEnabled && pinFallbackEnabled">Elige cómo quieres identificarte.</template>
+                                <template v-else-if="method === 'pin'">Escribe tu PIN de kiosco.</template>
+                                <template v-else>Mira de frente a la cámara y presiona el botón.</template>
+                            </p>
                         </div>
                     </div>
 
+                    <!-- Identification method -->
+                    <div v-if="faceRecognitionEnabled && pinFallbackEnabled" class="grid grid-cols-2 gap-3 mb-6">
+                        <button
+                            type="button"
+                            class="rounded-xl border px-4 py-3 text-sm font-semibold transition-all"
+                            :class="method === 'face'
+                                ? 'bg-[#f26c17] border-[#f26c17] text-white shadow-md shadow-[#f26c17]/30'
+                                : 'bg-white dark:bg-[#252529] border-gray-200 dark:border-[#2b2b2e] text-gray-600 dark:text-gray-300 hover:border-[#f26c17]/60 hover:text-[#f26c17]'"
+                            @click="method = 'face'"
+                        >
+                            Con mi rostro
+                        </button>
+                        <button
+                            type="button"
+                            class="rounded-xl border px-4 py-3 text-sm font-semibold transition-all"
+                            :class="method === 'pin'
+                                ? 'bg-[#f26c17] border-[#f26c17] text-white shadow-md shadow-[#f26c17]/30'
+                                : 'bg-white dark:bg-[#252529] border-gray-200 dark:border-[#2b2b2e] text-gray-600 dark:text-gray-300 hover:border-[#f26c17]/60 hover:text-[#f26c17]'"
+                            @click="method = 'pin'"
+                        >
+                            Con número y PIN
+                        </button>
+                    </div>
+
                     <!-- Identification -->
+                    <!-- Personal registration notice (only with the PIN: the face identifies the collaborator) -->
+                    <div v-if="method === 'pin'" class="flex items-start gap-2 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-400/30 px-4 py-3 mb-5 text-xs text-amber-700 dark:text-amber-200">
+                        <el-icon class="mt-0.5 shrink-0"><WarningFilled /></el-icon>
+                        <p>
+                            El registro es personal e individual: no registres la asistencia de otra persona.
+                            Hacerlo afecta su nómina y puede generar penalizaciones.
+                        </p>
+                    </div>
+
                     <p v-if="errorMessage" class="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-400/30 rounded-lg px-4 py-3 mb-5">
                         {{ errorMessage }}
                     </p>
 
-                    <div class="mt-auto">
+                    <div class="mt-auto space-y-3">
+                        <!-- Pin -->
+                        <template v-if="method === 'pin' && pinFallbackEnabled">
+                            <el-input
+                                v-model="pin"
+                                size="large"
+                                type="password"
+                                maxlength="12"
+                                inputmode="numeric"
+                                placeholder="PIN de kiosco"
+                                show-password
+                                @keyup.enter="submitPin"
+                            />
+                            <el-button
+                                type="primary"
+                                color="#f26c17"
+                                size="large"
+                                class="!h-14 !text-base w-full"
+                                :loading="pinSubmitting"
+                                @click="submitPin"
+                            >
+                                Registrar con PIN
+                            </el-button>
+                        </template>
+
+                        <!-- Face -->
                         <el-button
-                            v-if="faceRecognitionEnabled"
+                            v-else-if="method === 'face' && faceRecognitionEnabled"
                             type="primary"
                             color="#f26c17"
                             size="large"
@@ -256,11 +411,19 @@ onBeforeUnmount(() => {
                     </div>
 
                     <p class="text-xs text-gray-400 dark:text-gray-500 mt-4">
-                        <template v-if="!faceRecognitionEnabled">
-                            El reconocimiento facial no está activo en este kiosco. Pide al administrador que lo habilite en Configuración de nómina.
+                        <template v-if="!faceRecognitionEnabled && !pinFallbackEnabled">
+                            Este kiosco no tiene métodos de registro activos. Pide al administrador que habilite el reconocimiento facial o el respaldo con PIN en Configuración de nómina.
+                        </template>
+                        <template v-else-if="!method">
+                            Elige cómo quieres identificarte para continuar.
+                        </template>
+                        <template v-else-if="method === 'pin'">
+                            Si olvidaste tu PIN, pide ayuda al administrador.
                         </template>
                         <template v-else-if="!cameraReady">
-                            Se requiere la cámara para identificar tu rostro. Pide ayuda al administrador.
+                            Se requiere la cámara para identificar tu rostro.
+                            <template v-if="pinFallbackEnabled">Puedes registrar con tu PIN.</template>
+                            <template v-else>Pide ayuda al administrador.</template>
                         </template>
                         <template v-else>
                             Presiona "Registrar con rostro" y mira de frente a la cámara.
@@ -269,8 +432,8 @@ onBeforeUnmount(() => {
                 </div>
             </section>
 
-            <!-- Right: camera -->
-            <section class="lg:col-span-2 flex flex-col gap-4">
+            <!-- Right: camera (only when identifying with the face) -->
+            <section v-if="faceRecognitionEnabled && method === 'face'" class="lg:col-span-2 flex flex-col gap-4">
                 <div class="relative rounded-2xl overflow-hidden border border-gray-200 dark:border-[#2b2b2e] bg-gray-900 aspect-[4/3] flex items-center justify-center shadow-sm">
                     <video
                         ref="videoRef"
@@ -286,13 +449,24 @@ onBeforeUnmount(() => {
                     </div>
                 </div>
 
-                <div v-if="faceRecognitionEnabled" class="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-400/30 rounded-xl px-4 py-3 text-sm text-emerald-700 dark:text-emerald-200">
+                <div class="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-400/30 rounded-xl px-4 py-3 text-sm text-emerald-700 dark:text-emerald-200">
                     Reconocimiento facial activo: presiona "Registrar con rostro" para identificarte.
                 </div>
+            </section>
 
-                <p v-else class="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-400/30 rounded-xl px-4 py-3 text-sm text-red-600 dark:text-red-200">
-                    El reconocimiento facial no está habilitado en este kiosco. Pide al administrador que lo active en Configuración de nómina.
-                </p>
+            <!-- Right: pin help (pin method or face disabled) -->
+            <section v-else-if="pinFallbackEnabled && (method === 'pin' || !faceRecognitionEnabled)" class="lg:col-span-2 flex flex-col gap-4">
+                <div class="bg-white dark:bg-[#1e1e20] border border-gray-100 dark:border-[#2b2b2e] rounded-2xl p-6 shadow-sm">
+                    <h3 class="font-semibold text-gray-800 dark:text-white">¿Cómo registro con PIN?</h3>
+                    <ol class="text-sm text-gray-500 dark:text-gray-400 mt-3 space-y-2 list-decimal list-inside">
+                        <li>Elige el tipo de registro.</li>
+                        <li>Escribe tu PIN de kiosco.</li>
+                        <li>Presiona "Registrar con PIN".</li>
+                    </ol>
+                    <p class="text-xs text-gray-400 mt-4">
+                        Si no tienes PIN, pide al administrador que lo configure en tu perfil.
+                    </p>
+                </div>
             </section>
         </main>
 

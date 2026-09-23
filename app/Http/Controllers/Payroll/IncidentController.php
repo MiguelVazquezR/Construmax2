@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Payroll;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Payroll\StoreIncidentRequest;
+use App\Http\Requests\Payroll\UpdateIncidentRequest;
 use App\Models\Incident;
 use App\Services\Payroll\ImageAttachmentService;
 use Carbon\CarbonImmutable;
@@ -46,6 +47,30 @@ class IncidentController extends Controller
         }
 
         return back()->with('success', 'Incidencia registrada.');
+    }
+
+    public function update(UpdateIncidentRequest $request, Incident $incident): RedirectResponse
+    {
+        $validated = $request->validated();
+
+        $start = CarbonImmutable::parse($validated['start_date']);
+        $end = isset($validated['end_date']) && $validated['end_date'] !== null
+            ? CarbonImmutable::parse($validated['end_date'])
+            : $start;
+
+        $incident->update([
+            'type' => $validated['type'],
+            'start_date' => $start->toDateString(),
+            'end_date' => $end->toDateString(),
+            'days' => abs($start->diffInDays($end)) + 1,
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        if ($request->hasFile('support')) {
+            $this->attachmentService->attach($incident, $request->file('support'), 'support');
+        }
+
+        return back()->with('success', 'Incidencia actualizada.');
     }
 
     public function destroy(Request $request, Incident $incident): RedirectResponse

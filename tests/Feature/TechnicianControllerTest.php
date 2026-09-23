@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\PayrollProfile;
 use App\Models\Technician;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -204,9 +205,9 @@ class TechnicianControllerTest extends TestCase
 
     // --- destroy ---
 
-    public function test_destroy_deletes_technician_and_user(): void
+    public function test_destroy_soft_deletes_an_external_technician(): void
     {
-        $techUser = User::factory()->asTechnician()->create();
+        $techUser = User::factory()->externalTechnician()->create();
         $technician = $techUser->technician;
 
         $this->actingAs($this->user)
@@ -214,7 +215,90 @@ class TechnicianControllerTest extends TestCase
             ->assertRedirect(route('technicians.index'))
             ->assertSessionHas('success');
 
-        $this->assertDatabaseMissing('users', ['id' => $techUser->id]);
-        $this->assertDatabaseMissing('technicians', ['id' => $technician->id]);
+        $this->assertSoftDeleted('users', ['id' => $techUser->id]);
+        $this->assertDatabaseHas('technicians', ['id' => $technician->id, 'status' => 'Eliminado']);
+    }
+
+    public function test_dismissing_an_internal_technician_saves_the_termination_date(): void
+    {
+        $techUser = User::factory()->internalTechnician()->create();
+        $technician = $techUser->technician;
+        $profile = PayrollProfile::create([
+            'user_id' => $techUser->id,
+            'hire_date' => '2026-01-15',
+            'is_payroll_subject' => true,
+        ]);
+
+        $this->actingAs($this->user)
+            ->delete(route('technicians.destroy', $technician), ['termination_date' => '2026-09-20'])
+            ->assertRedirect(route('technicians.index'))
+            ->assertSessionHas('success');
+
+        // The technician stays in the system (reactivatable) but deactivated.
+        $this->assertFalse((bool) $techUser->fresh()->is_active);
+        $this->assertFalse($techUser->fresh()->trashed());
+        $this->assertSame('Inactivo', $technician->fresh()->status);
+        $this->assertSame('2026-09-20', $profile->fresh()->termination_date->toDateString());
+
+        // Still in the payroll period that contains the date, gone afterwards.
+        $this->assertTrue(PayrollProfile::payrollSubjectOn('2026-09-16')->whereKey($profile->id)->exists());
+        $this->assertFalse(PayrollProfile::payrollSubjectOn('2026-10-01')->whereKey($profile->id)->exists());
+    }
+
+    public function test_dismissing_an_internal_technician_rejects_a_date_before_the_hire_date(): void
+    {
+        $techUser = User::factory()->asTechnician(['is_internal' => true, 'status' => 'Activo'])->create();
+        $technician = $techUser->technician;
+        $profile = PayrollProfile::create([
+            'user_id' => $techUser->id,
+            'hire_date' => '2026-01-15',
+            'is_payroll_subject' => true,
+        ]);
+
+        $this->actingAs($this->user)
+            ->delete(route('technicians.destroy', $technician), ['termination_date' => '2025-12-31'])
+            ->assertSessionHasErrors('termination_date');
+
+        $this->assertTrue((bool) $techUser->fresh()->is_active);
+        $this->assertSame('Activo', $technician->fresh()->status);
+        $this->assertNull($profile->fresh()->termination_date);
+    }
+
+    public function test_dismissing_an_internal_technician_creates_the_payroll_profile_with_the_date(): void
+    {
+        $techUser = User::factory()->internalTechnician()->create();
+        $technician = $techUser->technician;
+
+        $this->actingAs($this->user)
+            ->delete(route('technicians.destroy', $technician), ['termination_date' => '2026-09-20'])
+            ->assertRedirect(route('technicians.index'));
+
+        $profile = PayrollProfile::where('user_id', $techUser->id)->first();
+
+        $this->assertNotNull($profile);
+        $this->assertSame('2026-09-20', $profile->termination_date->toDateString());
+    }
+
+    public function test_reactivating_a_dismissed_internal_technician_clears_the_termination_date(): void
+    {
+        $techUser = User::factory()->internalTechnician()->create();
+        $technician = $techUser->technician;
+        $profile = PayrollProfile::create([
+            'user_id' => $techUser->id,
+            'hire_date' => '2026-01-15',
+            'is_payroll_subject' => true,
+            'termination_date' => '2026-09-20',
+        ]);
+        $techUser->update(['is_active' => false]);
+        $technician->update(['status' => 'Inactivo']);
+
+        $this->actingAs($this->user)
+            ->patch(route('technicians.restore', $technician->id))
+            ->assertRedirect(route('technicians.index'))
+            ->assertSessionHas('success');
+
+        $this->assertTrue((bool) $techUser->fresh()->is_active);
+        $this->assertNull($profile->fresh()->termination_date);
+        $this->assertSame('Activo', $technician->fresh()->status);
     }
 }

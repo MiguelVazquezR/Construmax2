@@ -31,6 +31,15 @@ const photoPreview = ref(
         : null
 );
 
+// El perfil de nómina llega cargado dentro de la relación del usuario.
+const profile = props.technician.user?.payroll_profile || {};
+
+const toNumber = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? null : parsed;
+};
+
 // Inicializar form con datos existentes
 const form = useForm({
     _method: 'PUT', // Truco para enviar archivos en update
@@ -70,8 +79,13 @@ const form = useForm({
     rating_avg: Number(props.technician.rating_avg) || 0,
 
     // Nómina y asistencia (opcional, según permisos)
-    is_attendance_subject: Boolean(props.technician.payroll_profile?.is_attendance_subject),
-    can_remote_attendance: Boolean(props.technician.payroll_profile?.can_remote_attendance),
+    employee_number: profile.employee_number || '',
+    hire_date: profile.hire_date ? String(profile.hire_date).substring(0, 10) : null,
+    is_payroll_subject: Boolean(profile.is_payroll_subject),
+    daily_salary: toNumber(profile.daily_salary),
+    is_attendance_subject: Boolean(profile.is_attendance_subject),
+    can_remote_attendance: Boolean(profile.can_remote_attendance),
+    kiosk_pin: '', // Empty keeps the current pin.
     shift_id: props.currentShiftId ?? null,
 
     // Archivos 
@@ -86,6 +100,18 @@ const rules = reactive({
     ],
     phone: [{ required: true, message: 'Teléfono principal requerido', trigger: 'blur' }],
     status: [{ required: true, message: 'El estatus es requerido', trigger: 'change' }],
+    shift_id: [
+        {
+            validator: (rule, value, callback) => {
+                if (form.is_payroll_subject && ! value) {
+                    callback(new Error('Selecciona un horario para el técnico sujeto a nómina.'));
+                } else {
+                    callback();
+                }
+            },
+            trigger: 'change',
+        },
+    ],
 });
 
 const handlePhotoChange = (file) => {

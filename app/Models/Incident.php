@@ -23,6 +23,8 @@ class Incident extends Model implements HasMedia
 
     public const TYPE_MEDICAL_LEAVE = 'medical_leave';
 
+    public const TYPE_WORK_INCAPACITY = 'work_incapacity';
+
     public const TYPE_PERMISSION_PAID = 'permission_paid';
 
     public const TYPE_PERMISSION_UNPAID = 'permission_unpaid';
@@ -34,11 +36,23 @@ class Incident extends Model implements HasMedia
     public const TYPES = [
         self::TYPE_ABSENCE_JUSTIFIED => 'Falta justificada',
         self::TYPE_ABSENCE_UNJUSTIFIED => 'Falta injustificada',
-        self::TYPE_MEDICAL_LEAVE => 'Incapacidad médica',
+        self::TYPE_MEDICAL_LEAVE => 'Incapacidad general',
+        self::TYPE_WORK_INCAPACITY => 'Incapacidad de trabajo',
         self::TYPE_PERMISSION_PAID => 'Permiso con goce de sueldo',
         self::TYPE_PERMISSION_UNPAID => 'Permiso sin goce de sueldo',
         self::TYPE_VACATION => 'Vacaciones',
         self::TYPE_OTHER => 'Otro',
+    ];
+
+    /**
+     * Incapacities are covered by the IMSS: they never affect the payroll
+     * (they are neither paid nor deducted, regardless of any override).
+     *
+     * @var array<int, string>
+     */
+    public const IMSS_TYPES = [
+        self::TYPE_MEDICAL_LEAVE,
+        self::TYPE_WORK_INCAPACITY,
     ];
 
     /**
@@ -176,12 +190,14 @@ class Incident extends Model implements HasMedia
      */
     public function resolvedIsPaid(?PayrollSetting $settings = null): bool
     {
-        if ($this->is_paid !== null) {
-            return (bool) $this->is_paid;
+        // Incapacities are paid by the IMSS: they never touch the payroll,
+        // even when someone sets the explicit is_paid override.
+        if (in_array($this->type, self::IMSS_TYPES, true)) {
+            return false;
         }
 
-        if ($this->type === self::TYPE_MEDICAL_LEAVE) {
-            return (bool) ($settings ?? PayrollSetting::current())->incapacity_paid;
+        if ($this->is_paid !== null) {
+            return (bool) $this->is_paid;
         }
 
         return in_array($this->type, self::PAID_TYPES, true);
@@ -192,12 +208,8 @@ class Incident extends Model implements HasMedia
      */
     public function payPercentage(?PayrollSetting $settings = null): float
     {
-        $settings ??= PayrollSetting::current();
-
-        if ($this->type === self::TYPE_MEDICAL_LEAVE) {
-            return $this->resolvedIsPaid($settings)
-                ? ((int) $settings->incapacity_pay_percentage) / 100
-                : 0.0;
+        if (in_array($this->type, self::IMSS_TYPES, true)) {
+            return 0.0;
         }
 
         return $this->resolvedIsPaid($settings) ? 1.0 : 0.0;

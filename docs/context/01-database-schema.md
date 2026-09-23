@@ -467,17 +467,17 @@ Created by migrations `2026_09_19_000001` … `000015` (see `docs/context/16-mod
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | bigint PK | |
-| `period_type` | string | `weekly` / `biweekly` / `semimonthly` |
-| `period_anchor_date` | date | First period reference |
+| `period_type` | string | **Legacy**: periods are always weekly (Monday–Sunday) and the settings form no longer edits this column |
+| `period_anchor_date` | date | **Legacy**: unused, the weeks follow the calendar |
 | `late_tolerance_minutes` | int | Default late tolerance |
 | `late_discount_mode` | string | `track_only` / `deduct_minutes` |
-| `overtime_double_multiplier` / `overtime_triple_multiplier` | decimal | Default 2 / 3 |
-| `overtime_weekly_threshold_hours` | decimal | Default 9 |
+| `overtime_double_multiplier` / `overtime_triple_multiplier` | decimal | Legacy (unused): overtime is paid at the normal rate |
+| `overtime_weekly_threshold_hours` | decimal | Legacy (unused) |
 | `holiday_worked_extra_multiplier` | decimal | Default 2 |
 | `vacation_min_days_to_request` | int | |
 | `vacation_carryover_months` | int | Default 18 |
 | `incapacity_paid` / `incapacity_pay_percentage` | bool / int | Default false / 60 |
-| `default_daily_hours` | decimal | Default 8 |
+| `default_daily_hours` | decimal | Default 8. No longer in the settings form: hidden fallback for profiles without an assigned schedule |
 | `payroll_expense_category_id` | FK → expense_categories.id | Mirrored expense category |
 | `face_recognition_enabled`, `face_match_threshold`, `rekognition_collection_id`, `kiosk_pin_fallback_enabled` | mixed | Facial recognition + kiosk fallback |
 | `attendance_capture_retention_months` | int | Default 12 (purged by `payroll:prune-captures`) |
@@ -485,7 +485,7 @@ Created by migrations `2026_09_19_000001` … `000015` (see `docs/context/16-mod
 | `updated_by` | FK → users.id | nullable |
 
 ### `payroll_profiles`
-One per user. `employee_number` (unique, auto `EMP-####`), `hire_date`, `termination_date`, `daily_salary`, `daily_hours`, `is_payroll_subject`, `is_attendance_subject`, `can_remote_attendance`, `kiosk_pin` (hashed), `notes`.
+One per user. `employee_number` (unique, auto `EMP-####`), `hire_date`, `termination_date`, `daily_salary`, `daily_hours` (kept in sync from the assigned schedule by `AssignUserShiftAction`; no longer typed in the forms), `is_payroll_subject`, `is_attendance_subject`, `can_remote_attendance`, `kiosk_pin` (bcrypt) + `kiosk_pin_lookup` (HMAC fingerprint for the kiosk search; migration `2026_09_22_000001`), `notes`.
 
 ### `attendance_devices`
 Authorized kiosk devices: `name`, `location`, `token_hash` (sha256, unique), registered by/at, `last_seen_at`/`last_seen_ip`/`user_agent`, `is_active`, revoked by/at.
@@ -506,13 +506,13 @@ Sparse per user+date: `late_ignored`, `notes`, `updated_by` (unique user_id + da
 `date` (unique), `name`, `year`, `source` (`lft`/`manual`), `is_mandatory`, `apply_extra_pay`, `notes`.
 
 ### `incidents`
-`user_id`, `type` (absence_justified/absence_unjustified/medical_leave/permission_paid/permission_unpaid/vacation/other), `start_date`, `end_date`, `days`, `affects_pay`, `status`, `notes`, `vacation_request_id` (nullable), created/approved audit. Optional `support` attachment.
+`user_id`, `type` (absence_justified/absence_unjustified/medical_leave/work_incapacity/permission_paid/permission_unpaid/vacation/other; IMSS incapacities are never paid), `start_date`, `end_date`, `days`, `affects_pay`, `status`, `notes`, `vacation_request_id` (nullable), created/approved audit. Optional `support` attachment.
 
 ### `vacation_requests`
 `user_id`, `start_date`, `end_date`, `days`, `status` (pending/approved/rejected/cancelled), `reason`, `requested_by`, `reviewed_by`, `reviewed_at`, `review_notes`.
 
 ### `payroll_periods`
-`type`, `start_date`, `end_date`, `status` (open/closed), `closed_at`, `closed_by` (null = automatic), `total_gross`, `total_deductions`, `total_net`, `expense_id`, `notes`.
+`type`, `start_date`, `end_date`, `status` (open/closed), `closed_at`, `closed_by` (null = automatic), `reopened_at` (migration `2026_09_22_000002`: a period reopened by hand is never closed automatically again), `total_gross`, `total_deductions`, `total_net`, `expense_id`, `notes`. Periods are weekly (Monday–Sunday) and no two rows can ever share dates.
 
 ### `payroll_adjustments`
 `payroll_period_id`, `user_id`, `type` (earning/deduction), `concept`, `amount`, `notes`, `created_by`.

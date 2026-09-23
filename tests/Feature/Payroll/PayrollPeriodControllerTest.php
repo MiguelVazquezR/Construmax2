@@ -8,7 +8,6 @@ use App\Models\PayrollAdjustment;
 use App\Models\PayrollNote;
 use App\Models\PayrollPeriod;
 use App\Models\PayrollProfile;
-use App\Models\PayrollSetting;
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
 use App\Models\User;
@@ -112,8 +111,48 @@ class PayrollPeriodControllerTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('Payroll/Periods/Index')
                 ->has('periods')
+                ->has('nextPeriod')
+                ->where('openNextAvailable', false)
                 ->has('typeLabels')
             );
+    }
+
+    public function test_index_offers_the_next_period_after_an_early_close(): void
+    {
+        PayrollPeriod::create([
+            'type' => PayrollPeriod::TYPE_WEEKLY,
+            'start_date' => '2026-09-14',
+            'end_date' => '2026-09-20',
+            'status' => PayrollPeriod::STATUS_CLOSED,
+            'closed_at' => '2026-09-16 10:00:00',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.index'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('openNextAvailable', true));
+    }
+
+    public function test_index_hides_the_next_button_after_an_on_time_close(): void
+    {
+        PayrollPeriod::create([
+            'type' => PayrollPeriod::TYPE_WEEKLY,
+            'start_date' => '2026-09-07',
+            'end_date' => '2026-09-13',
+            'status' => PayrollPeriod::STATUS_CLOSED,
+            'closed_at' => '2026-09-13 23:59:10',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.index'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('openNextAvailable', false));
+
+        // The automatic rollover opened the current week by itself.
+        $this->assertDatabaseHas('payroll_periods', [
+            'start_date' => '2026-09-14 00:00:00',
+            'status' => PayrollPeriod::STATUS_OPEN,
+        ]);
     }
 
     public function test_index_is_forbidden_without_permission(): void
@@ -123,12 +162,23 @@ class PayrollPeriodControllerTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_store_creates_the_first_period(): void
+    public function test_store_opens_the_current_week_when_there_are_no_periods(): void
     {
-        PayrollSetting::current()->update([
-            'period_type' => PayrollSetting::PERIOD_WEEKLY,
-            'period_anchor_date' => '2026-09-07',
+        $this->actingAs($this->admin)
+            ->post(route('payroll.periods.store'))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('payroll_periods', [
+            'start_date' => '2026-09-14 00:00:00',
+            'end_date' => '2026-09-20 00:00:00',
+            'status' => PayrollPeriod::STATUS_OPEN,
         ]);
+    }
+
+    public function test_store_opens_the_next_week_and_keeps_the_open_period(): void
+    {
+        $existing = $this->openPeriod();
 
         $this->actingAs($this->admin)
             ->post(route('payroll.periods.store'))
@@ -139,16 +189,32 @@ class PayrollPeriodControllerTest extends TestCase
             'start_date' => '2026-09-14 00:00:00',
             'status' => PayrollPeriod::STATUS_OPEN,
         ]);
+        $this->assertSame(PayrollPeriod::STATUS_OPEN, $existing->fresh()->status);
+        $this->assertSame(2, PayrollPeriod::query()->where('status', PayrollPeriod::STATUS_OPEN)->count());
     }
 
-    public function test_store_is_blocked_when_a_period_is_already_open(): void
+    public function test_store_never_repeats_existing_dates(): void
     {
         $this->openPeriod();
+
+        PayrollPeriod::create([
+            'type' => PayrollPeriod::TYPE_WEEKLY,
+            'start_date' => '2026-09-14',
+            'end_date' => '2026-09-20',
+            'status' => PayrollPeriod::STATUS_CLOSED,
+        ]);
 
         $this->actingAs($this->admin)
             ->post(route('payroll.periods.store'))
             ->assertRedirect()
-            ->assertSessionHas('error');
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('payroll_periods', [
+            'start_date' => '2026-09-21 00:00:00',
+            'end_date' => '2026-09-27 00:00:00',
+            'status' => PayrollPeriod::STATUS_OPEN,
+        ]);
+        $this->assertSame(1, PayrollPeriod::query()->whereDate('start_date', '2026-09-14')->count());
     }
 
     public function test_show_renders_the_live_pre_payroll_rows(): void
