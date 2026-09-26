@@ -17,18 +17,28 @@ const form = ref({ type: 'grant', days: 1, reason: '' });
 
 const typeOptions = [
     { value: 'initial', label: 'Saldo inicial' },
-    { value: 'grant', label: 'Agregar días' },
-    { value: 'adjustment', label: 'Ajustar días' },
+    { value: 'grant', label: 'Días ganados' },
+    { value: 'taken', label: 'Días tomados' },
+    { value: 'adjustment', label: 'Ajuste manual' },
 ];
 
 const typeHints = {
     initial: 'Días que se abonan una sola vez, por ejemplo el saldo que el colaborador ya tenía antes de usar el sistema.',
     grant: 'Días adicionales que la empresa otorga y se suman al saldo disponible.',
+    taken: 'Vacaciones que el colaborador ya tomó y se registran por primera vez para descontarlas del saldo.',
     adjustment: 'Corrección del saldo: usa un número negativo para descontar días.',
 };
 
 const currentHint = computed(() => typeHints[form.value.type] ?? '');
 const isAdjustment = computed(() => form.value.type === 'adjustment');
+const isTaken = computed(() => form.value.type === 'taken');
+
+const daysLabel = computed(() => ({
+    initial: 'Días del saldo inicial',
+    grant: 'Días ganados',
+    taken: 'Días tomados',
+    adjustment: 'Días (usa un número negativo para descontar)',
+}[form.value.type] || 'Días'));
 
 const roundDays = (value) => Math.round(value * 100) / 100;
 
@@ -36,13 +46,16 @@ const daysError = computed(() => {
     const days = Number(form.value.days);
 
     if (!days) return 'Captura una cantidad de días distinta de cero.';
-    if (days < 0 && !isAdjustment.value) return 'Solo el ajuste manual permite descontar días.';
+    if (days < 0 && ! isAdjustment.value) return 'Los días negativos solo se permiten en el ajuste manual.';
     if (days > 365 || days < -365) return 'No se pueden capturar más de 365 días en un movimiento.';
     return null;
 });
 
+// Taken days are captured as a positive amount and discount the balance.
+const signedDays = computed(() => (isTaken.value ? -Math.abs(Number(form.value.days) || 0) : Number(form.value.days) || 0));
+
 const previewBalance = computed(() =>
-    roundDays(Number(props.availableDays || 0) + (Number(form.value.days) || 0))
+    roundDays(Number(props.availableDays || 0) + signedDays.value)
 );
 
 const open = (type = 'grant') => {
@@ -109,7 +122,7 @@ defineExpose({ open });
 
                 <p class="text-xs text-gray-500 dark:text-gray-400 -mt-3 mb-1">{{ currentHint }}</p>
 
-                <el-form-item label="Días" required :error="errors.days || daysError" class="vacation-days-item">
+                <el-form-item :label="daysLabel" required :error="errors.days || daysError" class="vacation-days-item">
                     <el-input-number
                         v-model="form.days"
                         :min="isAdjustment ? -365 : 0.5"

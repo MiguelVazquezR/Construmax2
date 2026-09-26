@@ -27,6 +27,7 @@ class PayrollSettingController extends Controller
         return Inertia::render('Payroll/Settings/Index', [
             'settings' => PayrollSetting::current(),
             'lateDiscountModes' => PayrollSetting::LATE_DISCOUNT_MODES,
+            'vacationPremiumNoticeModes' => PayrollSetting::PREMIUM_NOTICE_MODES,
             'expenseCategories' => ExpenseCategory::active()->orderBy('name')->get(['id', 'name']),
         ]);
     }

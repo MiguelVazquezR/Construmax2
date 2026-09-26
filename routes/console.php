@@ -22,3 +22,7 @@ Schedule::command('payroll:close-period')->mondays('00:00');
 
 // Purge attendance captures past the configured retention window (Mondays 03:00)
 Schedule::command('payroll:prune-captures')->weeklyOn(1, '03:00');
+
+// Vacation premium notice: collaborators completing a year of service inside
+// the current weekly payroll period (the daily run feeds the "each day" mode)
+Schedule::command('payroll:check-vacation-premiums')->dailyAt('07:10');

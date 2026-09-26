@@ -13,6 +13,7 @@ use App\Models\VacationRequest;
 use App\Services\Payroll\AttendanceDayService;
 use App\Services\Payroll\AttendanceDaySummary;
 use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
+use App\Services\Payroll\VacationPeriodService;
 use App\Services\Payroll\VacationService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -36,6 +37,7 @@ class MyAttendanceController extends Controller
     public function __construct(
         private readonly AttendanceDayService $attendanceDayService,
         private readonly VacationService $vacationService,
+        private readonly VacationPeriodService $vacationPeriodService,
         private readonly RegisterAttendancePunchAction $registerPunchAction,
         private readonly FaceRecognitionService $faceRecognition,
     ) {}
@@ -113,6 +115,12 @@ class MyAttendanceController extends Controller
             ->values()
             ->all();
 
+        $vacationBalance = $this->vacationService->balanceFor($user);
+
+        // The collaborator reviews the same stored periods (and premium
+        // status) managed by the payroll team.
+        $this->vacationPeriodService->syncFor($user, $vacationBalance['seasons']);
+
         return Inertia::render('Payroll/MyAttendance/Index', [
             'profile' => [
                 'employee_number' => $profile->employee_number,
@@ -126,7 +134,9 @@ class MyAttendanceController extends Controller
             'suggestedNextType' => $this->suggestedNextType($user),
             'recentDays' => $recentDays,
             'punches' => $punches,
-            'vacationBalance' => $this->vacationService->balanceFor($user),
+            'vacationBalance' => $vacationBalance,
+            'vacationMovements' => $this->vacationService->movementsFor($user),
+            'vacationPeriods' => $this->vacationPeriodService->payloadFor($user),
             'vacationRequests' => $vacationRequests,
             'payslips' => $payslips,
             'punchTypes' => AttendanceLog::TYPES,

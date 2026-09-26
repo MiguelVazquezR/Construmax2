@@ -35,6 +35,17 @@ class PayrollSetting extends Model
         self::LATE_DEDUCT_MINUTES => 'Descontar minutos de retardo',
     ];
 
+    // --- Vacation premium notices ---
+
+    public const PREMIUM_NOTICE_ONCE = 'once';
+
+    public const PREMIUM_NOTICE_DAILY = 'daily';
+
+    public const PREMIUM_NOTICE_MODES = [
+        self::PREMIUM_NOTICE_ONCE => 'Un solo aviso al inicio del periodo',
+        self::PREMIUM_NOTICE_DAILY => 'Aviso cada día del periodo',
+    ];
+
     protected $fillable = [
         'face_recognition_enabled',
         'face_match_threshold',
@@ -50,6 +61,8 @@ class PayrollSetting extends Model
         'holiday_worked_extra_multiplier',
         'vacation_min_days_to_request',
         'vacation_carryover_months',
+        'vacation_premium_notice_enabled',
+        'vacation_premium_notice_mode',
         'incapacity_paid',
         'incapacity_pay_percentage',
         'default_daily_hours',
@@ -72,6 +85,8 @@ class PayrollSetting extends Model
         'holiday_worked_extra_multiplier' => 'decimal:2',
         'vacation_min_days_to_request' => 'decimal:2',
         'vacation_carryover_months' => 'integer',
+        'vacation_premium_notice_enabled' => 'boolean',
+        'vacation_premium_notice_mode' => 'string',
         'incapacity_paid' => 'boolean',
         'incapacity_pay_percentage' => 'integer',
         'default_daily_hours' => 'decimal:2',

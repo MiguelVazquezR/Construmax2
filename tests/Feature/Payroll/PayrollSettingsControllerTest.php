@@ -44,6 +44,8 @@ class PayrollSettingsControllerTest extends TestCase
             'holiday_worked_extra_multiplier' => 2,
             'vacation_min_days_to_request' => 1,
             'vacation_carryover_months' => 18,
+            'vacation_premium_notice_enabled' => true,
+            'vacation_premium_notice_mode' => 'once',
             'incapacity_paid' => false,
             'incapacity_pay_percentage' => 60,
             'default_daily_hours' => 8,
@@ -62,6 +64,7 @@ class PayrollSettingsControllerTest extends TestCase
                 ->component('Payroll/Settings/Index')
                 ->has('settings')
                 ->has('lateDiscountModes')
+                ->has('vacationPremiumNoticeModes')
                 ->has('expenseCategories')
             );
     }
@@ -81,6 +84,7 @@ class PayrollSettingsControllerTest extends TestCase
             ->put(route('payroll.settings.update'), $this->validPayload([
                 'late_tolerance_minutes' => 15,
                 'late_discount_mode' => 'deduct_minutes',
+                'vacation_premium_notice_mode' => 'daily',
                 'incapacity_paid' => true,
                 'incapacity_pay_percentage' => 70,
             ]))
@@ -91,6 +95,8 @@ class PayrollSettingsControllerTest extends TestCase
 
         $this->assertEquals(15, $settings->late_tolerance_minutes);
         $this->assertSame('deduct_minutes', $settings->late_discount_mode);
+        $this->assertSame('daily', $settings->vacation_premium_notice_mode);
+        $this->assertTrue($settings->vacation_premium_notice_enabled);
         $this->assertTrue($settings->incapacity_paid);
         $this->assertEquals(70, $settings->incapacity_pay_percentage);
         $this->assertEquals($this->admin->id, $settings->updated_by);

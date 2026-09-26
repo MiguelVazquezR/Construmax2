@@ -8,8 +8,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Payroll\ReviewVacationRequest;
 use App\Http\Requests\Payroll\StoreVacationRequest;
 use App\Models\User;
-use App\Models\VacationAdjustment;
 use App\Models\VacationRequest;
+use App\Services\Payroll\VacationPeriodService;
 use App\Services\Payroll\VacationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -22,6 +22,7 @@ class VacationController extends Controller
 {
     public function __construct(
         private readonly VacationService $vacationService,
+        private readonly VacationPeriodService $vacationPeriodService,
         private readonly RequestVacationAction $requestVacationAction,
         private readonly ReviewVacationRequestAction $reviewVacationRequestAction,
     ) {}
@@ -44,15 +45,27 @@ class VacationController extends Controller
         $selectedUserId = $request->filled('user_id') ? $request->integer('user_id') : null;
         $selectedUser = $selectedUserId ? User::find($selectedUserId) : null;
 
+        $balance = $selectedUser ? $this->vacationService->balanceFor($selectedUser) : null;
+
+        // Keep the stored periods (and their premiums) in sync with the
+        // calculated seasons before rendering them.
+        if ($selectedUser && $balance !== null) {
+            $this->vacationPeriodService->syncFor($selectedUser, $balance['seasons']);
+        }
+
         return Inertia::render('Payroll/Vacations/Index', [
             'requests' => $requests,
             'users' => $this->vacationUsers(),
             'statuses' => VacationRequest::STATUSES,
-            'balance' => $selectedUser ? $this->vacationService->balanceFor($selectedUser) : null,
-            'adjustments' => $this->adjustmentsFor($selectedUser),
+            'balance' => $balance,
+            'periods' => $selectedUser ? $this->vacationPeriodService->payloadFor($selectedUser) : [],
+            'movements' => $selectedUser ? $this->vacationService->movementsFor($selectedUser) : [],
             'selectedUser' => $selectedUser ? ['id' => $selectedUser->id, 'name' => $selectedUser->name] : null,
             'selectedUserId' => $selectedUserId,
-            'filters' => $request->only(['status', 'user_id']),
+            'filters' => [
+                'status' => $request->input('status'),
+                'user_id' => $selectedUserId,
+            ],
         ]);
     }
 
@@ -147,26 +160,6 @@ class VacationController extends Controller
     private function canManage(Request $request): bool
     {
         return $request->user()->can('payroll.vacations.manage');
-    }
-
-    /**
-     * Manual movements of the balance of the selected collaborator.
-     */
-    private function adjustmentsFor(?User $user): array
-    {
-        if (! $user) {
-            return [];
-        }
-
-        return VacationAdjustment::query()
-            ->forUser($user->id)
-            ->with('author:id,name')
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->get()
-            ->map(fn (VacationAdjustment $adjustment) => $adjustment->toPayload())
-            ->values()
-            ->all();
     }
 
     /**

@@ -15,11 +15,14 @@ class VacationAdjustment extends Model
 
     public const TYPE_GRANT = 'grant';
 
+    public const TYPE_TAKEN = 'taken';
+
     public const TYPE_ADJUSTMENT = 'adjustment';
 
     public const TYPES = [
         self::TYPE_INITIAL => 'Saldo inicial',
-        self::TYPE_GRANT => 'Días agregados',
+        self::TYPE_GRANT => 'Días ganados',
+        self::TYPE_TAKEN => 'Días tomados',
         self::TYPE_ADJUSTMENT => 'Ajuste manual',
     ];
 
@@ -56,12 +59,12 @@ class VacationAdjustment extends Model
     }
 
     /**
-     * Only manual adjustments may discount days; the initial balance and the
-     * granted days always add to the available balance.
+     * The manual adjustment and the historic taken days may discount days;
+     * the initial balance and the granted days always add to the balance.
      */
     public function allowsNegativeDays(): bool
     {
-        return $this->type === self::TYPE_ADJUSTMENT;
+        return in_array($this->type, [self::TYPE_ADJUSTMENT, self::TYPE_TAKEN], true);
     }
 
     /**

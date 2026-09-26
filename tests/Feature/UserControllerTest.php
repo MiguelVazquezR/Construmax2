@@ -150,9 +150,11 @@ class UserControllerTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('Users/Show')
                 ->has('vacation.balance')
-                ->has('vacation.adjustments', 1)
+                ->has('vacation.periods', 1)
+                ->has('vacation.movements', 1)
                 ->has('vacation.requests')
-                ->where('vacation.adjustments.0.type_label', 'Saldo inicial')
+                ->where('vacation.movements.0.type_label', 'Saldo inicial')
+                ->where('vacation.movements.0.balance_after', 10)
                 ->where('vacation.balance.adjustment_days', 10)
                 ->where('vacation.balance.available_days', 10.92)
             );

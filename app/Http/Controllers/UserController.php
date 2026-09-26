@@ -10,11 +10,11 @@ use App\Models\PayrollSetting;
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
 use App\Models\User;
-use App\Models\VacationAdjustment;
 use App\Models\VacationRequest;
 use App\Services\Media\ImageOptimizerService;
 use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
 use App\Services\Payroll\ScheduleResolverService;
+use App\Services\Payroll\VacationPeriodService;
 use App\Services\Payroll\VacationService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request; // Importar modelo Role
@@ -34,6 +34,7 @@ class UserController extends Controller
         private readonly EnrollProfilePhotoAction $enrollProfilePhotoAction,
         private readonly ImageOptimizerService $imageOptimizer,
         private readonly VacationService $vacationService,
+        private readonly VacationPeriodService $vacationPeriodService,
         private readonly AssignUserShiftAction $assignUserShiftAction,
         private readonly ScheduleResolverService $scheduleResolver,
     ) {}
@@ -241,21 +242,11 @@ class UserController extends Controller
 
     /**
      * Vacation information of the collaborator shown in the "Información
-     * general" tab: the live balance, the manual movements registered by the
-     * payroll team and the latest requests.
+     * general" tab: the live balance, the stored periods (with their premium
+     * status), the movements ledger and the latest requests.
      */
     private function vacationPayload(Request $request, User $user): array
     {
-        $adjustments = VacationAdjustment::query()
-            ->forUser($user->id)
-            ->with('author:id,name')
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->get()
-            ->map(fn (VacationAdjustment $adjustment) => $adjustment->toPayload())
-            ->values()
-            ->all();
-
         $requests = VacationRequest::query()
             ->forUser($user->id)
             ->with(['reviewer:id,name', 'requestedBy:id,name'])
@@ -279,12 +270,19 @@ class UserController extends Controller
             ->values()
             ->all();
 
+        $balance = $this->vacationService->balanceFor($user);
+
+        // Keep the stored periods (and their premiums) in sync before showing
+        // them next to the calculated seasons.
+        $this->vacationPeriodService->syncFor($user, $balance['seasons']);
+
         return [
             'can_manage' => $request->user()->can('payroll.vacations.manage'),
             'can_view_module' => $request->user()->can('payroll.vacations.manage')
                 || $request->user()->can('payroll.vacations.approve'),
-            'balance' => $this->vacationService->balanceFor($user),
-            'adjustments' => $adjustments,
+            'balance' => $balance,
+            'periods' => $this->vacationPeriodService->payloadFor($user),
+            'movements' => $this->vacationService->movementsFor($user),
             'requests' => $requests,
         ];
     }

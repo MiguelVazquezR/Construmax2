@@ -5,12 +5,13 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import SettingsSection from '@/Components/Payroll/SettingsSection.vue';
 import { ElMessage } from 'element-plus';
 import {
-    Calendar, Camera, Clock, Coin, InfoFilled, Suitcase, Sunny,
+    Camera, Clock, Coin, InfoFilled, Suitcase, Sunny,
 } from '@element-plus/icons-vue';
 
 const props = defineProps({
     settings: Object,
     lateDiscountModes: Object,
+    vacationPremiumNoticeModes: Object,
     expenseCategories: Array,
 });
 
@@ -32,6 +33,8 @@ const form = useForm({
     // Vacations
     vacation_min_days_to_request: toNumber(props.settings.vacation_min_days_to_request, 1),
     vacation_carryover_months: toNumber(props.settings.vacation_carryover_months, 18),
+    vacation_premium_notice_enabled: Boolean(props.settings.vacation_premium_notice_enabled),
+    vacation_premium_notice_mode: props.settings.vacation_premium_notice_mode || 'once',
 
     // Defaults
     payroll_expense_category_id: props.settings.payroll_expense_category_id ?? null,
@@ -48,6 +51,10 @@ const form = useForm({
 
 const lateDiscountOptions = computed(() =>
     Object.entries(props.lateDiscountModes || {}).map(([value, label]) => ({ value, label }))
+);
+
+const premiumNoticeOptions = computed(() =>
+    Object.entries(props.vacationPremiumNoticeModes || {}).map(([value, label]) => ({ value, label }))
 );
 
 const submit = () => {
@@ -75,24 +82,6 @@ const submit = () => {
         <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
             <el-form :model="form" label-position="top" size="default" @submit.prevent="submit">
                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-
-                    <!-- Periodo de nómina -->
-                    <SettingsSection
-                        title="Periodo de nómina"
-                        description="Los periodos son semanales, de lunes a domingo, y el sistema los abre y cierra automáticamente."
-                    >
-                        <template #icon><el-icon :size="18"><Calendar /></el-icon></template>
-
-                        <div class="flex items-start gap-2 rounded-lg bg-gray-50 dark:bg-[#252529] px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">
-                            <el-icon class="mt-0.5 shrink-0"><InfoFilled /></el-icon>
-                            <p>
-                                Cada periodo va de lunes a domingo. La nómina se cierra automáticamente los domingos
-                                a las 23:59 y el nuevo periodo se abre los lunes a las 00:00. No puede haber dos
-                                periodos con las mismas fechas y el periodo abierto se recalcula en tiempo real
-                                con los registros del día.
-                            </p>
-                        </div>
-                    </SettingsSection>
 
                     <!-- Asistencia y retardos -->
                     <SettingsSection
@@ -191,6 +180,25 @@ const submit = () => {
                                     style="width: 100%"
                                 />
                                 <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Meses que sobrevive el saldo no usado de cada temporada antes de vencer.</p>
+                            </el-form-item>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <el-form-item label="Aviso de prima vacacional" prop="vacation_premium_notice_enabled" :error="form.errors.vacation_premium_notice_enabled">
+                                <el-switch v-model="form.vacation_premium_notice_enabled" style="--el-switch-on-color: #f26c17;" />
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-3">La prima se paga al cumplirse cada año de servicio. El aviso llega a los suscritos en Configuración → Notificaciones.</p>
+                            </el-form-item>
+
+                            <el-form-item label="Momento del aviso" prop="vacation_premium_notice_mode" :error="form.errors.vacation_premium_notice_mode">
+                                <el-select v-model="form.vacation_premium_notice_mode" class="w-full" :disabled="! form.vacation_premium_notice_enabled">
+                                    <el-option
+                                        v-for="option in premiumNoticeOptions"
+                                        :key="option.value"
+                                        :label="option.label"
+                                        :value="option.value"
+                                    />
+                                </el-select>
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">El aviso se envía dentro del periodo de nómina en el que el colaborador cumple su año de servicio: un solo aviso al inicio o cada día del periodo hasta registrar el pago.</p>
                             </el-form-item>
                         </div>
 

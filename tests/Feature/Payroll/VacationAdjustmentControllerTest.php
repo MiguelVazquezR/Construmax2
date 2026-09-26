@@ -95,6 +95,47 @@ class VacationAdjustmentControllerTest extends TestCase
         $this->assertSame(2.92, $balance['available_days']);
     }
 
+    public function test_manager_registers_historic_taken_days(): void
+    {
+        Carbon::setTestNow('2026-02-01');
+
+        $this->actingAs($this->admin)
+            ->post(route('payroll.vacations.adjustments.store', $this->employee), [
+                'type' => VacationAdjustment::TYPE_TAKEN,
+                'days' => 5,
+                'reason' => 'Vacaciones tomadas antes de usar el sistema',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $adjustment = VacationAdjustment::first();
+
+        // Captured as a positive amount but stored as a discount.
+        $this->assertSame(-5.0, (float) $adjustment->days);
+        $this->assertSame('Días tomados', $adjustment->typeLabel());
+
+        $balance = app(VacationService::class)->balanceFor($this->employee);
+
+        // 4 weeks accrued (0.92) minus the 5 taken days.
+        $this->assertSame(5.0, $balance['manual_taken_days']);
+        $this->assertSame(5.0, $balance['taken_days']);
+        $this->assertSame(0.0, $balance['available_days']);
+    }
+
+    public function test_taken_days_accept_a_negative_amount_and_normalize_it(): void
+    {
+        Carbon::setTestNow('2026-02-01');
+
+        $this->actingAs($this->admin)
+            ->post(route('payroll.vacations.adjustments.store', $this->employee), [
+                'type' => VacationAdjustment::TYPE_TAKEN,
+                'days' => -3,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(-3.0, (float) VacationAdjustment::first()->days);
+    }
+
     public function test_negative_days_are_rejected_outside_of_a_manual_adjustment(): void
     {
         $this->actingAs($this->admin)

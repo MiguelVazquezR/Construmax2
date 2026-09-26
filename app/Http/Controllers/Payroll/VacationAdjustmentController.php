@@ -18,17 +18,25 @@ class VacationAdjustmentController extends Controller
 
     /**
      * Register a manual movement on the vacation balance of a collaborator:
-     * the initial balance, days granted by the company or a positive/negative
-     * correction made by the payroll team.
+     * the initial balance, days granted by the company, historic taken days
+     * or a positive/negative correction made by the payroll team.
      */
     public function store(StoreVacationAdjustmentRequest $request, User $user): RedirectResponse
     {
         $data = $request->validated();
 
+        $days = round((float) $data['days'], 2);
+
+        // Historic taken days are captured as a positive amount and stored
+        // as a discount.
+        if ($data['type'] === VacationAdjustment::TYPE_TAKEN) {
+            $days = -abs($days);
+        }
+
         $adjustment = VacationAdjustment::create([
             'user_id' => $user->id,
             'type' => $data['type'],
-            'days' => round((float) $data['days'], 2),
+            'days' => $days,
             'reason' => $data['reason'] ?? null,
             'created_by' => $request->user()->id,
         ]);
@@ -56,13 +64,13 @@ class VacationAdjustmentController extends Controller
 
     private function savedMessage(VacationAdjustment $adjustment, User $user, array $balance): string
     {
-        $withSign = $adjustment->type === VacationAdjustment::TYPE_ADJUSTMENT;
-        $days = $this->formatDays((float) $adjustment->days, $withSign);
+        $days = (float) $adjustment->days;
 
         $message = match ($adjustment->type) {
-            VacationAdjustment::TYPE_INITIAL => 'Saldo inicial de '.$days.' día(s) registrado para '.$user->name.'.',
-            VacationAdjustment::TYPE_GRANT => 'Se agregaron '.$days.' día(s) al saldo de '.$user->name.'.',
-            default => 'Ajuste de '.$days.' día(s) registrado para '.$user->name.'.',
+            VacationAdjustment::TYPE_INITIAL => 'Saldo inicial de '.$this->formatDays($days, false).' día(s) registrado para '.$user->name.'.',
+            VacationAdjustment::TYPE_GRANT => 'Se sumaron '.$this->formatDays($days, false).' día(s) ganados al saldo de '.$user->name.'.',
+            VacationAdjustment::TYPE_TAKEN => 'Se registraron '.$this->formatDays(abs($days), false).' día(s) tomados para '.$user->name.'.',
+            default => 'Ajuste de '.$this->formatDays($days, true).' día(s) registrado para '.$user->name.'.',
         };
 
         return $message.' Ahora tiene '.$this->formatDays((float) $balance['available_days'], false).' día(s) disponibles.';

@@ -15,6 +15,8 @@ const props = defineProps({
     recentDays: Array,
     punches: Array,
     vacationBalance: Object,
+    vacationMovements: Array,
+    vacationPeriods: Array,
     vacationRequests: Array,
     payslips: Array,
     punchTypes: Object,
@@ -75,6 +77,26 @@ const vacationSeasons = computed(() => {
 
     return seasons ? Object.values(seasons).sort((a, b) => b.season - a.season) : [];
 });
+
+// Premium status per service year (registered by the payroll team).
+const periodByYear = computed(() =>
+    Object.fromEntries((props.vacationPeriods || []).map((period) => [period.year_number, period]))
+);
+
+const formatSignedDays = (value) => {
+    const number = Number(value ?? 0);
+    const absolute = Math.round(Math.abs(number) * 100) / 100;
+
+    if (number > 0) return `+${absolute}`;
+    if (number < 0) return `-${absolute}`;
+
+    return '0';
+};
+
+const movementTagType = (movement) => {
+    if (movement.kind === 'request') return 'info';
+    return { initial: 'primary', grant: 'success', taken: 'info', adjustment: 'warning' }[movement.type] || 'info';
+};
 
 const formatMinutes = (minutes) => {
     const value = Number(minutes || 0);
@@ -216,7 +238,7 @@ const submitVacation = () => {
         preserveScroll: true,
         onSuccess: () => {
             vacationDialogVisible.value = false;
-            router.reload({ only: ['vacationBalance', 'vacationRequests'] });
+            router.reload({ only: ['vacationBalance', 'vacationMovements', 'vacationPeriods', 'vacationRequests'] });
         },
     });
 };
@@ -230,7 +252,7 @@ const cancelVacation = (id) => {
         .then(() => {
             router.delete(route('payroll.vacations.requests.cancel', id), {
                 preserveScroll: true,
-                onSuccess: () => router.reload({ only: ['vacationBalance', 'vacationRequests'] }),
+                onSuccess: () => router.reload({ only: ['vacationBalance', 'vacationMovements', 'vacationPeriods', 'vacationRequests'] }),
             });
         })
         .catch(() => {});
@@ -536,6 +558,9 @@ onBeforeUnmount(() => {
                                     <p class="text-xs uppercase tracking-wider text-gray-400 mb-1">Tomados</p>
                                     <p class="text-3xl font-bold text-blue-600">{{ vacationBalance?.taken_days ?? 0 }}</p>
                                     <p class="text-xs text-gray-400 mt-1">días</p>
+                                    <p v-if="Number(vacationBalance?.manual_taken_days) > 0" class="text-[11px] text-gray-400 mt-1">
+                                        incluye {{ vacationBalance.manual_taken_days }} registrados manualmente
+                                    </p>
                                 </div>
                                 <div class="rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-[#252529]/60 p-5 text-center">
                                     <p class="text-xs uppercase tracking-wider text-gray-400 mb-1">En solicitud</p>
@@ -588,6 +613,37 @@ onBeforeUnmount(() => {
                             </el-table>
 
                             <div>
+                                <h3 class="font-semibold text-gray-800 dark:text-gray-200">Historial de movimientos</h3>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                                    Bitácora de los días que se agregaron o descontaron de tu saldo.
+                                </p>
+                                <el-table :data="vacationMovements" stripe empty-text="Sin movimientos registrados.">
+                                    <el-table-column label="Fecha" width="130">
+                                        <template #default="scope">{{ fmtDate(scope.row.date) }}</template>
+                                    </el-table-column>
+                                    <el-table-column label="Tipo" min-width="140">
+                                        <template #default="scope">
+                                            <el-tag size="small" :type="movementTagType(scope.row)" effect="plain">
+                                                {{ scope.row.type_label }}
+                                            </el-tag>
+                                        </template>
+                                    </el-table-column>
+                                    <el-table-column label="Días" width="100" align="center">
+                                        <template #default="scope">
+                                            <span class="font-semibold" :class="Number(scope.row.days) < 0 ? 'text-red-500' : 'text-emerald-600'">
+                                                {{ formatSignedDays(scope.row.days) }}
+                                            </span>
+                                        </template>
+                                    </el-table-column>
+                                    <el-table-column label="Saldo global" width="120" align="center">
+                                        <template #default="scope">
+                                            <span class="font-semibold">{{ scope.row.balance_after }}</span>
+                                        </template>
+                                    </el-table-column>
+                                </el-table>
+                            </div>
+
+                            <div>
                                 <h3 class="font-semibold text-gray-800 dark:text-gray-200 mb-3">Saldos por temporada</h3>
                                 <el-table :data="vacationSeasons" stripe>
                                     <el-table-column label="Temporada" width="110">
@@ -608,6 +664,14 @@ onBeforeUnmount(() => {
                                     </el-table-column>
                                     <el-table-column label="Vence" width="120">
                                         <template #default="scope">{{ fmtDate(scope.row.expiry_date) }}</template>
+                                    </el-table-column>
+                                    <el-table-column label="Prima vacacional" min-width="150">
+                                        <template #default="scope">
+                                            <span v-if="periodByYear[scope.row.season]?.premium_paid_at" class="text-xs font-semibold text-emerald-600">
+                                                Pagada {{ fmtDate(periodByYear[scope.row.season].premium_paid_at) }}
+                                            </span>
+                                            <span v-else class="text-xs text-gray-400">Pendiente</span>
+                                        </template>
                                     </el-table-column>
                                 </el-table>
                             </div>

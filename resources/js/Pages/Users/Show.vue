@@ -5,11 +5,13 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import FaceEnrollmentDialog from '@/Components/Payroll/FaceEnrollmentDialog.vue';
 import ShiftSummaryPopover from '@/Components/Payroll/ShiftSummaryPopover.vue';
 import VacationAdjustmentDialog from '@/Components/Payroll/VacationAdjustmentDialog.vue';
+import VacationMovementMenu from '@/Components/Payroll/VacationMovementMenu.vue';
+import VacationPeriodDialog from '@/Components/Payroll/VacationPeriodDialog.vue';
 import UserStatusDialog from '@/Components/Users/UserStatusDialog.vue';
 import { ElMessageBox } from 'element-plus';
 import { useFlashMessages } from '@/Composables/useFlashMessages';
 import { usePermissions } from '@/Composables/usePermissions';
-import { Back, Calendar, Camera, Delete, Edit, Suitcase, Sunny, SwitchButton, Ticket, User } from '@element-plus/icons-vue';
+import { Back, Calendar, Camera, CircleCheck, Delete, Edit, Plus, Promotion, Suitcase, Sunny, SwitchButton, Ticket, User } from '@element-plus/icons-vue';
 
 const { can } = usePermissions();
 
@@ -26,6 +28,7 @@ const activeTab = ref('general');
 const faceDialogVisible = ref(false);
 const statusDialog = ref(null);
 const adjustmentDialog = ref(null);
+const periodDialog = ref(null);
 
 const onFaceSaved = () => {
     router.reload({ only: ['user', 'faceEnrollment'] });
@@ -100,10 +103,11 @@ const money = (value) =>
 
 const vacationBalance = computed(() => props.vacation?.balance ?? null);
 const vacationRequests = computed(() => props.vacation?.requests ?? []);
-const vacationAdjustments = computed(() => props.vacation?.adjustments ?? []);
+const vacationMovements = computed(() => props.vacation?.movements ?? []);
+const vacationPeriods = computed(() => props.vacation?.periods ?? []);
 const canManageVacations = computed(() => props.vacation?.can_manage === true);
 
-const showVacationCard = computed(() => Boolean(props.user.payroll_profile) || vacationAdjustments.value.length > 0);
+const showVacationCard = computed(() => Boolean(props.user.payroll_profile) || vacationMovements.value.length > 0);
 
 const vacationSubtitle = computed(() => {
     const hireDate = props.user.payroll_profile?.hire_date;
@@ -150,11 +154,10 @@ const formatSignedDays = (value) => {
     return '0';
 };
 
-const adjustmentTagType = (type) => ({
-    initial: 'primary',
-    grant: 'success',
-    adjustment: 'warning',
-}[type] || 'info');
+const movementTagType = (movement) => {
+    if (movement.kind === 'request') return 'info';
+    return { initial: 'primary', grant: 'success', taken: 'info', adjustment: 'warning' }[movement.type] || 'info';
+};
 
 const requestStatusTagType = (status) => ({
     pending: 'warning',
@@ -170,6 +173,23 @@ const removeAdjustment = (adjustment) => {
         { confirmButtonText: 'Eliminar', cancelButtonText: 'Cancelar', type: 'warning' }
     ).then(() => {
         router.delete(route('payroll.vacations.adjustments.destroy', adjustment.id), {
+            preserveScroll: true,
+            onSuccess: onVacationSaved,
+        });
+    }).catch(() => {});
+};
+
+const openPeriodDialog = (period = null) => {
+    periodDialog.value?.open(period);
+};
+
+const removePeriod = (period) => {
+    ElMessageBox.confirm(
+        `¿Eliminar el periodo «Año ${period.year_number}» (${formatDate(period.start_date)} — ${formatDate(period.end_date)})? El periodo se elimina de la lista y no se vuelve a generar automáticamente.`,
+        'Eliminar periodo vacacional',
+        { confirmButtonText: 'Eliminar', cancelButtonText: 'Cancelar', type: 'warning' }
+    ).then(() => {
+        router.delete(route('payroll.vacations.periods.destroy', period.id), {
             preserveScroll: true,
             onSuccess: onVacationSaved,
         });
@@ -448,7 +468,7 @@ const removeAdjustment = (adjustment) => {
                             <!-- VACACIONES DEL COLABORADOR -->
                             <div
                                 v-if="showVacationCard && vacationBalance"
-                                class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] overflow-hidden"
+                                class="vacation-card rounded-xl border border-gray-100 dark:border-[#2b2b2e] overflow-hidden"
                             >
                                 <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4 bg-gray-50 dark:bg-[#252529]/50 border-b border-gray-100 dark:border-[#2b2b2e]">
                                     <div class="flex items-center gap-3">
@@ -460,64 +480,9 @@ const removeAdjustment = (adjustment) => {
                                             <p class="text-xs text-gray-500 dark:text-gray-400">{{ vacationSubtitle }}</p>
                                         </div>
                                     </div>
-
-                                    <div v-if="canManageVacations" class="flex flex-wrap gap-2">
-                                        <el-button size="small" plain @click="openAdjustmentDialog('initial')">
-                                            Saldo inicial
-                                        </el-button>
-                                        <el-button size="small" plain @click="openAdjustmentDialog('grant')">
-                                            Agregar días
-                                        </el-button>
-                                        <el-button size="small" plain @click="openAdjustmentDialog('adjustment')">
-                                            Ajustar días
-                                        </el-button>
-                                    </div>
                                 </div>
 
-                                <div class="p-5 space-y-5">
-                                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
-                                            <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Disponibles</p>
-                                            <p class="text-2xl font-bold text-emerald-600">
-                                                {{ formatDays(vacationBalance.available_days) }}
-                                            </p>
-                                            <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{{ availabilityCaption }}</p>
-                                        </div>
-
-                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
-                                            <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Tomados</p>
-                                            <p class="text-2xl font-bold text-gray-800 dark:text-gray-100">
-                                                {{ formatDays(vacationBalance.taken_days) }}
-                                            </p>
-                                            <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
-                                                de {{ formatDays(vacationBalance.accrued_days) }} acumulados
-                                            </p>
-                                        </div>
-
-                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
-                                            <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Pendientes</p>
-                                            <p class="text-2xl font-bold text-amber-500">
-                                                {{ formatDays(vacationBalance.pending_days) }}
-                                            </p>
-                                            <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
-                                                en solicitudes por aprobar
-                                            </p>
-                                        </div>
-
-                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
-                                            <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Ajustes manuales</p>
-                                            <p
-                                                class="text-2xl font-bold"
-                                                :class="Number(vacationBalance.adjustment_days) < 0 ? 'text-red-500' : 'text-blue-600 dark:text-blue-400'"
-                                            >
-                                                {{ formatSignedDays(vacationBalance.adjustment_days) }}
-                                            </p>
-                                            <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
-                                                saldo inicial y días agregados
-                                            </p>
-                                        </div>
-                                    </div>
-
+                                <div class="p-5 space-y-6">
                                     <el-alert
                                         v-if="! user.payroll_profile?.hire_date"
                                         type="warning"
@@ -527,93 +492,105 @@ const removeAdjustment = (adjustment) => {
                                         description="Captura la fecha de ingreso en la sección Nómina y asistencia (Información general) para calcular el saldo por antigüedad. Mientras tanto solo cuentan los movimientos manuales."
                                     />
 
-                                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                                        <div>
-                                            <div class="flex items-center justify-between mb-2">
-                                                <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">Solicitudes recientes</p>
-                                                <Link
-                                                    v-if="vacation?.can_view_module"
-                                                    :href="route('payroll.vacations.index', { user_id: user.id })"
-                                                    class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
-                                                >
-                                                    Ver todas
-                                                </Link>
-                                            </div>
-
-                                            <div v-if="vacationRequests.length" class="space-y-2">
-                                                <div
-                                                    v-for="request in vacationRequests"
-                                                    :key="request.id"
-                                                    class="flex items-start justify-between gap-3 rounded-xl border border-gray-100 dark:border-[#2b2b2e] px-3.5 py-3"
-                                                >
-                                                    <div class="flex items-start gap-3">
-                                                        <div
-                                                            class="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-                                                            :class="{
-                                                                'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600': request.status === 'approved',
-                                                                'bg-amber-50 dark:bg-amber-500/10 text-amber-500': request.status === 'pending',
-                                                                'bg-red-50 dark:bg-red-500/10 text-red-500': request.status === 'rejected',
-                                                                'bg-gray-100 dark:bg-[#252529] text-gray-400': ! ['approved', 'pending', 'rejected'].includes(request.status),
-                                                            }"
-                                                        >
-                                                            <el-icon :size="15"><Calendar /></el-icon>
-                                                        </div>
-                                                        <div>
-                                                            <p class="text-sm font-medium text-gray-800 dark:text-gray-100">
-                                                                {{ formatDate(request.start_date) }} — {{ formatDate(request.end_date) }}
-                                                            </p>
-                                                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                                                {{ formatDays(request.days) }} día(s)
-                                                                <template v-if="request.reason"> · {{ request.reason }}</template>
-                                                            </p>
-                                                            <p v-if="request.reviewer_name" class="text-[11px] text-gray-400 mt-0.5">
-                                                                Revisó {{ request.reviewer_name }}<template v-if="request.review_notes"> · {{ request.review_notes }}</template>
-                                                            </p>
-                                                            <p
-                                                                v-else-if="request.requested_by_name && request.requested_by_name !== user.name"
-                                                                class="text-[11px] text-gray-400 mt-0.5"
-                                                            >
-                                                                Registró {{ request.requested_by_name }}<template v-if="request.requested_at"> el {{ formatDate(request.requested_at) }}</template>
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <el-tag :type="requestStatusTagType(request.status)" size="small" effect="light" class="shrink-0">
-                                                        {{ request.status_label }}
-                                                    </el-tag>
+                                    <div class="space-y-6">
+                                        <!-- Periods and vacation premiums by service year -->
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
+                                            <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-gray-50 dark:bg-[#252529]/50 border-b border-gray-100 dark:border-[#2b2b2e]">
+                                                <div>
+                                                    <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Periodos y primas vacacionales</p>
+                                                    <p class="text-xs text-gray-500 dark:text-gray-400">Estado de vacaciones por año de servicio.</p>
                                                 </div>
+                                                <el-button
+                                                    v-if="canManageVacations"
+                                                    :icon="Plus"
+                                                    circle
+                                                    title="Agregar periodo"
+                                                    @click="openPeriodDialog()"
+                                                />
                                             </div>
 
-                                            <p v-else class="text-xs text-gray-400 dark:text-gray-500 italic py-4">
-                                                Sin solicitudes de vacaciones registradas.
+                                            <el-table v-if="vacationPeriods.length" :data="vacationPeriods" style="width: 100%" stripe>
+                                                <el-table-column label="Año" min-width="190">
+                                                    <template #default="scope">
+                                                        <p class="font-semibold text-gray-800 dark:text-gray-100">Año {{ scope.row.year_number }}</p>
+                                                        <p class="text-xs text-gray-400">{{ formatDate(scope.row.start_date) }} — {{ formatDate(scope.row.end_date) }}</p>
+                                                    </template>
+                                                </el-table-column>
+
+                                                <el-table-column label="Días" min-width="170">
+                                                    <template #default="scope">
+                                                        <p class="text-xs text-gray-500 dark:text-gray-400">Otorgados: <span class="font-semibold text-gray-700 dark:text-gray-200">{{ formatDays(scope.row.entitled_days) }}</span></p>
+                                                        <p class="text-xs text-gray-500 dark:text-gray-400">Devengados: <span class="font-semibold text-gray-700 dark:text-gray-200">{{ formatDays(scope.row.accrued_days) }}</span></p>
+                                                        <p class="text-xs text-gray-500 dark:text-gray-400">Tomados: <span class="font-semibold text-gray-700 dark:text-gray-200">{{ formatDays(scope.row.taken_days) }}</span></p>
+                                                    </template>
+                                                </el-table-column>
+
+                                                <el-table-column label="Estado" width="120" align="center">
+                                                    <template #default="scope">
+                                                        <el-tag :type="scope.row.is_completed ? 'primary' : 'success'" size="small" effect="light">
+                                                            {{ scope.row.is_completed ? 'Completado' : 'En curso' }}
+                                                        </el-tag>
+                                                    </template>
+                                                </el-table-column>
+
+                                                <el-table-column label="Prima vacacional" min-width="150">
+                                                    <template #default="scope">
+                                                        <div v-if="scope.row.premium_paid_at">
+                                                            <p class="flex items-center gap-1 text-sm font-semibold text-emerald-600">
+                                                                <el-icon><CircleCheck /></el-icon> Pagada
+                                                            </p>
+                                                            <p class="text-xs text-gray-400">{{ formatDate(scope.row.premium_paid_at) }}</p>
+                                                        </div>
+                                                        <span v-else class="text-sm text-gray-400">Pendiente</span>
+                                                    </template>
+                                                </el-table-column>
+
+                                                <el-table-column v-if="canManageVacations" label="" width="110" align="right">
+                                                    <template #default="scope">
+                                                        <el-button :icon="Edit" size="small" text title="Editar periodo" @click="openPeriodDialog(scope.row)" />
+                                                        <el-button :icon="Delete" size="small" text type="danger" title="Eliminar periodo" @click="removePeriod(scope.row)" />
+                                                    </template>
+                                                </el-table-column>
+                                            </el-table>
+
+                                            <p v-else class="text-xs text-gray-400 dark:text-gray-500 italic px-4 py-4">
+                                                Sin periodos registrados para este colaborador.
                                             </p>
                                         </div>
 
-                                        <div>
-                                            <div class="flex items-center justify-between mb-2">
-                                                <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                                                    Movimientos de saldo
-                                                    <span v-if="vacationAdjustments.length" class="text-gray-400 font-normal">
-                                                        ({{ vacationAdjustments.length }})
-                                                    </span>
-                                                </p>
+                                        <!-- Movements ledger with the running balance -->
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
+                                            <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-gray-50 dark:bg-[#252529]/50 border-b border-gray-100 dark:border-[#2b2b2e]">
+                                                <div>
+                                                    <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Historial de movimientos</p>
+                                                    <p class="text-xs text-gray-500 dark:text-gray-400">Bitácora detallada de transacciones.</p>
+                                                </div>
+                                                <VacationMovementMenu v-if="canManageVacations" @select="openAdjustmentDialog" />
                                             </div>
 
                                             <el-table
-                                                v-if="vacationAdjustments.length"
-                                                :data="vacationAdjustments"
+                                                v-if="vacationMovements.length"
+                                                :data="vacationMovements"
                                                 size="small"
                                                 stripe
+                                                max-height="320"
                                                 style="width: 100%"
                                             >
-                                                <el-table-column label="Tipo" min-width="140">
+                                                <el-table-column label="Fecha" min-width="130">
                                                     <template #default="scope">
-                                                        <el-tag :type="adjustmentTagType(scope.row.type)" size="small" effect="plain">
+                                                        <span class="text-xs text-gray-500">{{ formatDate(scope.row.date) }}</span>
+                                                    </template>
+                                                </el-table-column>
+
+                                                <el-table-column label="Tipo" min-width="150">
+                                                    <template #default="scope">
+                                                        <el-tag :type="movementTagType(scope.row)" size="small" effect="plain">
                                                             {{ scope.row.type_label }}
                                                         </el-tag>
                                                     </template>
                                                 </el-table-column>
 
-                                                <el-table-column label="Días" width="80" align="center">
+                                                <el-table-column label="Días" width="100" align="center">
                                                     <template #default="scope">
                                                         <span
                                                             class="font-semibold"
@@ -624,25 +601,16 @@ const removeAdjustment = (adjustment) => {
                                                     </template>
                                                 </el-table-column>
 
-                                                <el-table-column label="Motivo" min-width="150">
+                                                <el-table-column label="Saldo global" width="120" align="center">
                                                     <template #default="scope">
-                                                        <span class="text-xs text-gray-500">{{ scope.row.reason || '—' }}</span>
+                                                        <span class="font-semibold text-gray-700 dark:text-gray-200">{{ formatDays(scope.row.balance_after) }}</span>
                                                     </template>
                                                 </el-table-column>
 
-                                                <el-table-column label="Registró" min-width="140">
-                                                    <template #default="scope">
-                                                        <span class="text-xs text-gray-500">
-                                                            {{ scope.row.author_name || '—' }}
-                                                            <br>
-                                                            {{ formatDate(scope.row.created_at) }}
-                                                        </span>
-                                                    </template>
-                                                </el-table-column>
-
-                                                <el-table-column v-if="canManageVacations" label="" width="60" align="right">
+                                                <el-table-column v-if="canManageVacations" label="" width="70" align="right">
                                                     <template #default="scope">
                                                         <el-button
+                                                            v-if="scope.row.deletable"
                                                             :icon="Delete"
                                                             size="small"
                                                             text
@@ -654,85 +622,97 @@ const removeAdjustment = (adjustment) => {
                                                 </el-table-column>
                                             </el-table>
 
-                                            <p v-else class="text-xs text-gray-400 dark:text-gray-500 italic py-4">
-                                                Sin movimientos manuales registrados.
+                                            <p v-else class="text-xs text-gray-400 dark:text-gray-500 italic px-4 py-4">
+                                                Sin movimientos registrados para este colaborador.
                                             </p>
+
+                                            <!-- Running balance summary -->
+                                            <div class="grid grid-cols-1 sm:grid-cols-2 divide-y divide-gray-100 sm:divide-y-0 sm:divide-x dark:divide-[#2b2b2e] border-t border-gray-100 dark:border-[#2b2b2e]">
+                                                <div class="flex items-center gap-3 px-5 py-4">
+                                                    <el-icon :size="20" class="text-blue-500"><Promotion /></el-icon>
+                                                    <div>
+                                                        <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Días disponibles (global)</p>
+                                                        <p class="text-xl font-bold text-blue-600">{{ formatDays(vacationBalance.available_days) }}</p>
+                                                        <p class="text-[11px] text-gray-400 dark:text-gray-500">{{ availabilityCaption }}</p>
+                                                    </div>
+                                                </div>
+                                                <div class="flex items-center gap-3 px-5 py-4">
+                                                    <el-icon :size="20" class="text-emerald-500"><Calendar /></el-icon>
+                                                    <div>
+                                                        <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Días tomados (histórico)</p>
+                                                        <p class="text-xl font-bold text-emerald-600">{{ formatDays(vacationBalance.taken_days) }}</p>
+                                                        <p v-if="Number(vacationBalance.manual_taken_days) > 0" class="text-[11px] text-gray-400 dark:text-gray-500">
+                                                            incluye {{ formatDays(vacationBalance.manual_taken_days) }} registrados manualmente
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <el-collapse v-if="(vacationBalance.seasons || []).length">
-                                        <el-collapse-item name="seasons">
-                                            <template #title>
-                                                <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                                                    Detalle por temporada (antigüedad)
-                                                </span>
-                                            </template>
+                                    <!-- Recent requests -->
+                                    <div>
+                                        <div class="flex items-center justify-between mb-2">
+                                            <div>
+                                                <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">Solicitudes recientes</p>
+                                                <p class="text-xs text-gray-500 dark:text-gray-400">Últimas solicitudes de vacaciones del colaborador.</p>
+                                            </div>
+                                            <Link
+                                                v-if="vacation?.can_view_module"
+                                                :href="route('payroll.vacations.index', { user_id: user.id })"
+                                                class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                                            >
+                                                Ver todas
+                                            </Link>
+                                        </div>
 
-                                            <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                                                Los días se descuentan de la temporada más antigua con saldo, aunque las vacaciones
-                                                se tomen en un año posterior; abajo de cada temporada se indica de dónde salió cada solicitud.
-                                            </p>
-
-                                            <div class="space-y-3">
-                                                <div
-                                                    v-for="season in vacationBalance.seasons"
-                                                    :key="season.season"
-                                                    class="rounded-xl border p-4"
-                                                    :class="season.is_current
-                                                        ? 'border-[#f26c17]/25 bg-[#fffaf5] dark:bg-[#262019]/60 dark:border-[#f26c17]/20'
-                                                        : 'border-gray-100 dark:border-[#2b2b2e]'"
-                                                >
-                                                    <div class="flex flex-wrap items-center justify-between gap-2">
-                                                        <div class="flex items-center gap-2">
-                                                            <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Año {{ season.season }}</p>
-                                                            <el-tag v-if="season.is_current" size="small" type="primary" effect="plain">En curso</el-tag>
-                                                        </div>
-                                                        <p class="text-xs text-gray-400">
-                                                            {{ formatDate(season.start) }} — {{ formatDate(season.end) }} · vence el {{ formatDate(season.expiry_date) }}
+                                        <div v-if="vacationRequests.length" class="grid grid-cols-1 xl:grid-cols-2 gap-2">
+                                            <div
+                                                v-for="request in vacationRequests"
+                                                :key="request.id"
+                                                class="flex items-start justify-between gap-3 rounded-xl border border-gray-100 dark:border-[#2b2b2e] px-3.5 py-3"
+                                            >
+                                                <div class="flex items-start gap-3">
+                                                    <div
+                                                        class="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                                                        :class="{
+                                                            'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600': request.status === 'approved',
+                                                            'bg-amber-50 dark:bg-amber-500/10 text-amber-500': request.status === 'pending',
+                                                            'bg-red-50 dark:bg-red-500/10 text-red-500': request.status === 'rejected',
+                                                            'bg-gray-100 dark:bg-[#252529] text-gray-400': ! ['approved', 'pending', 'rejected'].includes(request.status),
+                                                        }"
+                                                    >
+                                                        <el-icon :size="15"><Calendar /></el-icon>
+                                                    </div>
+                                                    <div>
+                                                        <p class="text-sm font-medium text-gray-800 dark:text-gray-100">
+                                                            {{ formatDate(request.start_date) }} — {{ formatDate(request.end_date) }}
+                                                        </p>
+                                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                                            {{ formatDays(request.days) }} día(s)
+                                                            <template v-if="request.reason"> · {{ request.reason }}</template>
+                                                        </p>
+                                                        <p v-if="request.reviewer_name" class="text-[11px] text-gray-400 mt-0.5">
+                                                            Revisó {{ request.reviewer_name }}<template v-if="request.review_notes"> · {{ request.review_notes }}</template>
+                                                        </p>
+                                                        <p
+                                                            v-else-if="request.requested_by_name && request.requested_by_name !== user.name"
+                                                            class="text-[11px] text-gray-400 mt-0.5"
+                                                        >
+                                                            Registró {{ request.requested_by_name }}<template v-if="request.requested_at"> el {{ formatDate(request.requested_at) }}</template>
                                                         </p>
                                                     </div>
-
-                                                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
-                                                        <div>
-                                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Por derecho</p>
-                                                            <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ formatDays(season.entitled) }}</p>
-                                                        </div>
-                                                        <div>
-                                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Obtenidos</p>
-                                                            <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ formatDays(season.accrued) }}</p>
-                                                        </div>
-                                                        <div>
-                                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Tomados</p>
-                                                            <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ formatDays(season.taken) }}</p>
-                                                        </div>
-                                                        <div>
-                                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Disponibles</p>
-                                                            <p class="text-sm font-semibold text-emerald-600">{{ formatDays(season.available) }}</p>
-                                                        </div>
-                                                    </div>
-
-                                                    <div v-if="(season.consumptions || []).length" class="mt-3 pt-3 border-t border-dashed border-gray-100 dark:border-[#2b2b2e]">
-                                                        <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold mb-1.5">Días tomados de esta temporada</p>
-                                                        <div class="flex flex-wrap gap-1.5">
-                                                            <span
-                                                                v-for="(consumption, index) in season.consumptions"
-                                                                :key="index"
-                                                                class="inline-flex items-center gap-1.5 rounded-full border border-gray-100 dark:border-[#2b2b2e] bg-gray-50 dark:bg-[#252529] px-2.5 py-1 text-xs text-gray-600 dark:text-gray-300"
-                                                            >
-                                                                <strong class="text-gray-800 dark:text-gray-100">{{ formatDays(consumption.days) }}</strong>
-                                                                <span>{{ formatDate(consumption.start_date) }} — {{ formatDate(consumption.end_date) }}</span>
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                    <p v-else class="mt-3 text-xs text-gray-400 italic">Sin días tomados de esta temporada.</p>
-
-                                                    <p v-if="Number(season.expired) > 0" class="text-xs text-red-500 mt-2">
-                                                        {{ formatDays(season.expired) }} día(s) vencidos por no usarse antes de la fecha límite.
-                                                    </p>
                                                 </div>
+                                                <el-tag :type="requestStatusTagType(request.status)" size="small" effect="light" class="shrink-0">
+                                                    {{ request.status_label }}
+                                                </el-tag>
                                             </div>
-                                        </el-collapse-item>
-                                    </el-collapse>
+                                        </div>
+
+                                        <p v-else class="text-xs text-gray-400 dark:text-gray-500 italic py-4">
+                                            Sin solicitudes de vacaciones registradas.
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -849,6 +829,14 @@ const removeAdjustment = (adjustment) => {
             :available-days="Number(vacationBalance.available_days)"
             @saved="onVacationSaved"
         />
+
+        <VacationPeriodDialog
+            v-if="vacation && vacationBalance"
+            ref="periodDialog"
+            :user-id="user.id"
+            :user-name="user.name"
+            @saved="onVacationSaved"
+        />
     </AppLayout>
 </template>
 
@@ -864,27 +852,17 @@ const removeAdjustment = (adjustment) => {
     background-color: #3f3f46;
 }
 
-/* Season detail: blends with the card background instead of EP's darker panel. */
-:deep(.el-collapse) {
-    --el-collapse-header-bg-color: transparent;
-    --el-collapse-content-bg-color: transparent;
-    border-top: 1px solid var(--el-border-color-lighter);
-    border-bottom: none;
+/* Tables inside the vacations card blend with the card background, matching
+   the vacations module (same look as the payroll screen). */
+.vacation-card :deep(.el-table) {
+    --el-table-bg-color: transparent;
+    --el-table-tr-bg-color: transparent;
+    --el-table-row-hover-bg-color: rgba(242, 108, 23, 0.06);
 }
 
-:deep(.el-collapse-item__header) {
+.vacation-card :deep(.el-table th.el-table__cell) {
     background-color: transparent;
-    border-bottom: none;
-    height: auto;
-    padding: 12px 0;
-}
-
-:deep(.el-collapse-item__wrap) {
-    background-color: transparent;
-    border-bottom: none;
-}
-
-:deep(.el-collapse-item__content) {
-    padding: 0 0 4px;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
 }
 </style>

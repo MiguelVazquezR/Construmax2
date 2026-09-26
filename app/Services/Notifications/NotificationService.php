@@ -20,6 +20,8 @@ class NotificationService
 
     public const TYPE_PAYROLL_PERIOD_CLOSED = 'payroll.period-closed';
 
+    public const TYPE_PAYROLL_VACATION_PREMIUM = 'payroll.vacation-premium';
+
     /**
      * Get subscribers for a notification type.
      */

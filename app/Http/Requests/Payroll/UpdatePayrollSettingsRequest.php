@@ -40,6 +40,8 @@ class UpdatePayrollSettingsRequest extends FormRequest
             // Vacations
             'vacation_min_days_to_request' => ['required', 'numeric', 'min:0', 'max:60'],
             'vacation_carryover_months' => ['required', 'integer', 'min:0', 'max:60'],
+            'vacation_premium_notice_enabled' => ['required', 'boolean'],
+            'vacation_premium_notice_mode' => ['required', 'in:once,daily'],
 
             // Medical leaves (both incapacity types are covered by the IMSS;
             // the columns are legacy and no longer part of the form)

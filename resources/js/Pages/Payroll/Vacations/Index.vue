@@ -3,8 +3,10 @@ import { computed, reactive, ref } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import VacationAdjustmentDialog from '@/Components/Payroll/VacationAdjustmentDialog.vue';
+import VacationMovementMenu from '@/Components/Payroll/VacationMovementMenu.vue';
+import VacationPeriodDialog from '@/Components/Payroll/VacationPeriodDialog.vue';
 import { ElMessageBox } from 'element-plus';
-import { Plus, CircleCheck, Close, Calendar, Delete } from '@element-plus/icons-vue';
+import { Plus, CircleCheck, Close, Calendar, Delete, Edit, Promotion } from '@element-plus/icons-vue';
 import { useFlashMessages } from '@/Composables/useFlashMessages';
 import { usePermissions } from '@/Composables/usePermissions';
 
@@ -13,7 +15,8 @@ const props = defineProps({
     users: Array,
     statuses: Object,
     balance: Object,
-    adjustments: Array,
+    periods: Array,
+    movements: Array,
     selectedUser: Object,
     selectedUserId: Number,
     filters: Object,
@@ -27,9 +30,16 @@ const canManage = computed(() => can('payroll.vacations.manage'));
 
 const activeTab = ref('requests');
 
+const toUserId = (value) => {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
 const filters = reactive({
     status: props.filters?.status || '',
-    user_id: props.filters?.user_id || props.selectedUserId || null,
+    // The query string returns the id as text; converting it keeps the option
+    // selected (and its name visible) after a page reload.
+    user_id: toUserId(props.filters?.user_id ?? props.selectedUserId),
 });
 
 const clean = (source) =>
@@ -38,6 +48,18 @@ const clean = (source) =>
 const statusOptions = computed(() =>
     Object.entries(props.statuses || {}).map(([value, label]) => ({ value, label }))
 );
+
+// Keep the selected collaborator in the filter even when they are not part of
+// the default list (users without attendance or payroll profile).
+const userOptions = computed(() => {
+    const list = [...(props.users || [])];
+
+    if (props.selectedUser && !list.some((user) => user.id === props.selectedUser.id)) {
+        list.push(props.selectedUser);
+    }
+
+    return list;
+});
 
 const applyFilters = () => {
     router.get(route('payroll.vacations.index'), clean(filters), { preserveState: true, replace: true });
@@ -64,7 +86,7 @@ const openAdjustmentDialog = (type) => {
 };
 
 const onAdjustmentSaved = () => {
-    router.reload({ only: ['balance', 'adjustments'] });
+    router.reload({ only: ['balance', 'movements', 'periods'] });
 };
 
 const removeAdjustment = (adjustment) => {
@@ -77,6 +99,32 @@ const removeAdjustment = (adjustment) => {
             preserveScroll: true,
             preserveState: true,
             onSuccess: onAdjustmentSaved,
+        });
+    }).catch(() => {});
+};
+
+// --- Vacation periods by service year ---
+
+const periodDialog = ref(null);
+
+const openPeriodDialog = (period = null) => {
+    periodDialog.value?.open(period);
+};
+
+const onPeriodSaved = () => {
+    router.reload({ only: ['periods'] });
+};
+
+const removePeriod = (period) => {
+    ElMessageBox.confirm(
+        `¿Eliminar el periodo «Año ${period.year_number}» (${formatDate(period.start_date)} — ${formatDate(period.end_date)})? El periodo se elimina de la lista y no se vuelve a generar automáticamente.`,
+        'Eliminar periodo vacacional',
+        { confirmButtonText: 'Eliminar', cancelButtonText: 'Cancelar', type: 'warning' }
+    ).then(() => {
+        router.delete(route('payroll.vacations.periods.destroy', period.id), {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: onPeriodSaved,
         });
     }).catch(() => {});
 };
@@ -165,11 +213,10 @@ const statusTagType = (status) => ({
     cancelled: 'info',
 }[status] || 'info');
 
-const adjustmentTagType = (type) => ({
-    initial: 'primary',
-    grant: 'success',
-    adjustment: 'warning',
-}[type] || 'info');
+const movementTagType = (movement) => {
+    if (movement.kind === 'request') return 'info';
+    return { initial: 'primary', grant: 'success', taken: 'info', adjustment: 'warning' }[movement.type] || 'info';
+};
 
 const formatSignedDays = (value) => {
     const number = Number(value ?? 0);
@@ -184,11 +231,6 @@ const formatSignedDays = (value) => {
 const initialsOf = (name) => {
     const parts = String(name || '').trim().split(/\s+/).slice(0, 2);
     return parts.map((part) => part.charAt(0).toUpperCase()).join('') || '?';
-};
-
-const seasonStatusLabel = (season) => {
-    if (season.is_current) return 'En curso';
-    return 'Concluida';
 };
 </script>
 
@@ -219,7 +261,7 @@ const seasonStatusLabel = (season) => {
 
                         <div class="p-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
                             <el-select v-model="filters.user_id" filterable clearable placeholder="Colaborador" @change="applyFilters">
-                                <el-option v-for="user in users" :key="user.id" :label="user.name" :value="user.id" />
+                                <el-option v-for="user in userOptions" :key="user.id" :label="user.name" :value="user.id" />
                             </el-select>
 
                             <el-select v-model="filters.status" clearable placeholder="Estatus" @change="applyFilters">
@@ -337,7 +379,7 @@ const seasonStatusLabel = (season) => {
                                 class="max-w-md"
                                 @change="selectBalanceUser"
                             >
-                                <el-option v-for="user in users" :key="user.id" :label="user.name" :value="user.id" />
+                                <el-option v-for="user in userOptions" :key="user.id" :label="user.name" :value="user.id" />
                             </el-select>
 
                             <template v-if="balance">
@@ -378,32 +420,32 @@ const seasonStatusLabel = (season) => {
                                     </div>
                                 </div>
 
-                                <!-- Manual movements of the balance (they never expire) -->
+                                <!-- Ledger of manual movements and taken days -->
                                 <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
                                     <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-gray-50 dark:bg-[#252529]/50 border-b border-gray-100 dark:border-[#2b2b2e]">
                                         <div>
-                                            <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Movimientos manuales del saldo</p>
-                                            <p class="text-xs text-gray-500 dark:text-gray-400">
-                                                Saldo inicial, días agregados y correcciones. No vencen y se consumen al final.
-                                            </p>
+                                            <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Historial de movimientos</p>
+                                            <p class="text-xs text-gray-500 dark:text-gray-400">Bitácora detallada de transacciones.</p>
                                         </div>
-                                        <div v-if="canManage" class="flex flex-wrap gap-2">
-                                            <el-button size="small" plain @click="openAdjustmentDialog('initial')">Saldo inicial</el-button>
-                                            <el-button size="small" plain @click="openAdjustmentDialog('grant')">Agregar días</el-button>
-                                            <el-button size="small" plain @click="openAdjustmentDialog('adjustment')">Ajustar días</el-button>
-                                        </div>
+                                        <VacationMovementMenu v-if="canManage" @select="openAdjustmentDialog" />
                                     </div>
 
-                                    <el-table v-if="adjustments.length" :data="adjustments" style="width: 100%" stripe size="small">
+                                    <el-table v-if="movements.length" :data="movements" style="width: 100%" stripe size="small">
+                                        <el-table-column label="Fecha" min-width="130">
+                                            <template #default="scope">
+                                                <span class="text-xs text-gray-500">{{ formatDate(scope.row.date) }}</span>
+                                            </template>
+                                        </el-table-column>
+
                                         <el-table-column label="Tipo" min-width="150">
                                             <template #default="scope">
-                                                <el-tag :type="adjustmentTagType(scope.row.type)" size="small" effect="plain">
+                                                <el-tag :type="movementTagType(scope.row)" size="small" effect="plain">
                                                     {{ scope.row.type_label }}
                                                 </el-tag>
                                             </template>
                                         </el-table-column>
 
-                                        <el-table-column label="Días" width="90" align="center">
+                                        <el-table-column label="Días" width="100" align="center">
                                             <template #default="scope">
                                                 <span
                                                     class="font-semibold"
@@ -414,23 +456,16 @@ const seasonStatusLabel = (season) => {
                                             </template>
                                         </el-table-column>
 
-                                        <el-table-column label="Motivo" min-width="180">
+                                        <el-table-column label="Saldo global" width="120" align="center">
                                             <template #default="scope">
-                                                <span class="text-xs text-gray-500">{{ scope.row.reason || '—' }}</span>
-                                            </template>
-                                        </el-table-column>
-
-                                        <el-table-column label="Registró" min-width="160">
-                                            <template #default="scope">
-                                                <span class="text-xs text-gray-500">
-                                                    {{ scope.row.author_name || '—' }} · {{ formatDate(scope.row.created_at) }}
-                                                </span>
+                                                <span class="font-semibold text-gray-700 dark:text-gray-200">{{ scope.row.balance_after }}</span>
                                             </template>
                                         </el-table-column>
 
                                         <el-table-column v-if="canManage" label="" width="70" align="right">
                                             <template #default="scope">
                                                 <el-button
+                                                    v-if="scope.row.deletable"
                                                     :icon="Delete"
                                                     size="small"
                                                     text
@@ -443,56 +478,94 @@ const seasonStatusLabel = (season) => {
                                     </el-table>
 
                                     <p v-else class="text-xs text-gray-400 dark:text-gray-500 italic px-4 py-4">
-                                        Sin movimientos manuales registrados para este colaborador.
+                                        Sin movimientos registrados para este colaborador.
                                     </p>
+
+                                    <!-- Running balance summary -->
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 divide-y divide-gray-100 sm:divide-y-0 sm:divide-x dark:divide-[#2b2b2e] border-t border-gray-100 dark:border-[#2b2b2e]">
+                                        <div class="flex items-center gap-3 px-5 py-4">
+                                            <el-icon :size="20" class="text-blue-500"><Promotion /></el-icon>
+                                            <div>
+                                                <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Días disponibles (global)</p>
+                                                <p class="text-xl font-bold text-blue-600">{{ balance.available_days }}</p>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center gap-3 px-5 py-4">
+                                            <el-icon :size="20" class="text-emerald-500"><Calendar /></el-icon>
+                                            <div>
+                                                <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Días tomados (histórico)</p>
+                                                <p class="text-xl font-bold text-emerald-600">{{ balance.taken_days }}</p>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <el-table v-if="balance.seasons.length" :data="balance.seasons" style="width: 100%" stripe>
-                                    <el-table-column label="Temporada" width="120" align="center">
-                                        <template #default="scope">
-                                            Año {{ scope.row.season }}
-                                        </template>
-                                    </el-table-column>
+                                <!-- Periods and vacation premiums by service year -->
+                                <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] overflow-hidden">
+                                    <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-gray-50 dark:bg-[#252529]/50 border-b border-gray-100 dark:border-[#2b2b2e]">
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Periodos y primas vacacionales</p>
+                                            <p class="text-xs text-gray-500 dark:text-gray-400">Estado de vacaciones por año de servicio.</p>
+                                        </div>
+                                        <el-button
+                                            v-if="canManage"
+                                            :icon="Plus"
+                                            circle
+                                            title="Agregar periodo"
+                                            @click="openPeriodDialog()"
+                                        />
+                                    </div>
 
-                                    <el-table-column label="Periodo" min-width="200">
-                                        <template #default="scope">
-                                            <span class="text-sm">
-                                                {{ formatDate(scope.row.start) }} — {{ formatDate(scope.row.end) }}
-                                                <el-tag v-if="scope.row.is_current" size="small" type="primary" effect="plain" class="ml-1">En curso</el-tag>
-                                            </span>
-                                        </template>
-                                    </el-table-column>
+                                    <el-table v-if="periods.length" :data="periods" style="width: 100%" stripe>
+                                        <el-table-column label="Año" min-width="190">
+                                            <template #default="scope">
+                                                <p class="font-semibold text-gray-800 dark:text-gray-100">Año {{ scope.row.year_number }}</p>
+                                                <p class="text-xs text-gray-400">{{ formatDate(scope.row.start_date) }} — {{ formatDate(scope.row.end_date) }}</p>
+                                            </template>
+                                        </el-table-column>
 
-                                    <el-table-column label="Por derecho" width="110" align="center">
-                                        <template #default="scope">{{ scope.row.entitled }}</template>
-                                    </el-table-column>
+                                        <el-table-column label="Días" min-width="170">
+                                            <template #default="scope">
+                                                <p class="text-xs text-gray-500 dark:text-gray-400">Otorgados: <span class="font-semibold text-gray-700 dark:text-gray-200">{{ scope.row.entitled_days }}</span></p>
+                                                <p class="text-xs text-gray-500 dark:text-gray-400">Devengados: <span class="font-semibold text-gray-700 dark:text-gray-200">{{ scope.row.accrued_days }}</span></p>
+                                                <p class="text-xs text-gray-500 dark:text-gray-400">Tomados: <span class="font-semibold text-gray-700 dark:text-gray-200">{{ scope.row.taken_days }}</span></p>
+                                            </template>
+                                        </el-table-column>
 
-                                    <el-table-column label="Obtenidos" width="110" align="center">
-                                        <template #default="scope">{{ scope.row.accrued }}</template>
-                                    </el-table-column>
+                                        <el-table-column label="Estado" width="120" align="center">
+                                            <template #default="scope">
+                                                <el-tag :type="scope.row.is_completed ? 'primary' : 'success'" size="small" effect="light">
+                                                    {{ scope.row.is_completed ? 'Completado' : 'En curso' }}
+                                                </el-tag>
+                                            </template>
+                                        </el-table-column>
 
-                                    <el-table-column label="Tomados" width="100" align="center">
-                                        <template #default="scope">{{ scope.row.taken }}</template>
-                                    </el-table-column>
+                                        <el-table-column label="Prima vacacional" min-width="150">
+                                            <template #default="scope">
+                                                <div v-if="scope.row.premium_paid_at">
+                                                    <p class="flex items-center gap-1 text-sm font-semibold text-emerald-600">
+                                                        <el-icon><CircleCheck /></el-icon> Pagada
+                                                    </p>
+                                                    <p class="text-xs text-gray-400">{{ formatDate(scope.row.premium_paid_at) }}</p>
+                                                </div>
+                                                <span v-else class="text-sm text-gray-400">Pendiente</span>
+                                            </template>
+                                        </el-table-column>
 
-                                    <el-table-column label="Vencidos" width="100" align="center">
-                                        <template #default="scope">
-                                            <span :class="{ 'text-red-500': scope.row.expired > 0 }">{{ scope.row.expired }}</span>
-                                        </template>
-                                    </el-table-column>
+                                        <el-table-column v-if="canManage" label="" width="110" align="right">
+                                            <template #default="scope">
+                                                <el-button :icon="Edit" size="small" text title="Editar periodo" @click="openPeriodDialog(scope.row)" />
+                                                <el-button :icon="Delete" size="small" text type="danger" title="Eliminar periodo" @click="removePeriod(scope.row)" />
+                                            </template>
+                                        </el-table-column>
+                                    </el-table>
 
-                                    <el-table-column label="Disponibles" width="110" align="center">
-                                        <template #default="scope">
-                                            <span class="font-semibold text-emerald-600">{{ scope.row.available }}</span>
-                                        </template>
-                                    </el-table-column>
-
-                                    <el-table-column label="Vence el" width="140" align="center">
-                                        <template #default="scope">
-                                            <span class="text-xs text-gray-500">{{ formatDate(scope.row.expiry_date) }}</span>
-                                        </template>
-                                    </el-table-column>
-                                </el-table>
+                                    <el-empty
+                                        v-else
+                                        :image-size="90"
+                                        description="Sin periodos registrados para este colaborador."
+                                    />
+                                </div>
                             </template>
 
                             <el-empty
@@ -555,6 +628,14 @@ const seasonStatusLabel = (season) => {
             :user-name="selectedUser.name"
             :available-days="Number(balance?.available_days || 0)"
             @saved="onAdjustmentSaved"
+        />
+
+        <VacationPeriodDialog
+            v-if="selectedUser"
+            ref="periodDialog"
+            :user-id="selectedUser.id"
+            :user-name="selectedUser.name"
+            @saved="onPeriodSaved"
         />
     </AppLayout>
 </template>

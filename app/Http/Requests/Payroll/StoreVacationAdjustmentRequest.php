@@ -31,8 +31,8 @@ class StoreVacationAdjustmentRequest extends FormRequest
                 $validator->errors()->add('days', 'Los días del movimiento deben ser distintos de cero.');
             }
 
-            if ($days < 0 && $this->input('type') !== VacationAdjustment::TYPE_ADJUSTMENT) {
-                $validator->errors()->add('days', 'Solo el ajuste manual permite descontar días.');
+            if ($days < 0 && ! in_array($this->input('type'), [VacationAdjustment::TYPE_ADJUSTMENT, VacationAdjustment::TYPE_TAKEN], true)) {
+                $validator->errors()->add('days', 'Los días negativos solo se permiten en el ajuste manual o al registrar días tomados.');
             }
         });
     }

@@ -15,6 +15,7 @@ use App\Http\Controllers\Payroll\ShiftAssignmentController;
 use App\Http\Controllers\Payroll\ShiftController;
 use App\Http\Controllers\Payroll\VacationAdjustmentController;
 use App\Http\Controllers\Payroll\VacationController;
+use App\Http\Controllers\Payroll\VacationPeriodController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'verified'])->prefix('payroll')->name('payroll.')->group(function () {
@@ -60,6 +61,12 @@ Route::middleware(['auth', 'verified'])->prefix('payroll')->name('payroll.')->gr
     // and corrections) registered from the collaborator profile
     Route::post('/users/{user}/vacation-adjustments', [VacationAdjustmentController::class, 'store'])->name('vacations.adjustments.store');
     Route::delete('/vacation-adjustments/{adjustment}', [VacationAdjustmentController::class, 'destroy'])->name('vacations.adjustments.destroy');
+
+    // Stored vacation periods by service year (premium tracking, manual edits
+    // and removal of wrong periods)
+    Route::post('/users/{user}/vacation-periods', [VacationPeriodController::class, 'store'])->name('vacations.periods.store');
+    Route::put('/vacation-periods/{period}', [VacationPeriodController::class, 'update'])->name('vacations.periods.update');
+    Route::delete('/vacation-periods/{period}', [VacationPeriodController::class, 'destroy'])->name('vacations.periods.destroy');
 
     // Payroll periods: pre-payroll, attendance corrections, adjustments and closing
     Route::get('/periods', [PayrollPeriodController::class, 'index'])->name('periods.index');

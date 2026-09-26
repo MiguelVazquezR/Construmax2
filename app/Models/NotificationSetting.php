@@ -27,6 +27,7 @@ class NotificationSetting extends Model
         'invoice.overdue' => 'Vencimiento de factura',
         'deposit.pending-approval' => 'Depósito pendiente de aprobación',
         'payroll.period-closed' => 'Cierre de periodo de nómina',
+        'payroll.vacation-premium' => 'Prima vacacional por pagar',
     ];
 
     public function user(): BelongsTo

@@ -57,6 +57,8 @@ class MyAttendanceTest extends TestCase
                 ->has('recentDays', 7)
                 ->has('punches')
                 ->has('vacationBalance')
+                ->has('vacationMovements')
+                ->has('vacationPeriods')
                 ->has('vacationRequests')
                 ->has('payslips')
                 ->has('punchTypes')

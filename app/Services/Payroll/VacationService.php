@@ -54,6 +54,7 @@ class VacationService
      *     entitled_days: float,
      *     accrued_days: float,
      *     taken_days: float,
+     *     manual_taken_days: float,
      *     pending_days: float,
      *     adjustment_days: float,
      *     adjustment_available_days: float,
@@ -72,6 +73,7 @@ class VacationService
         $hire = $user->payrollProfile?->hire_date;
 
         $adjustmentDays = $this->adjustmentDaysFor($user);
+        $manualTakenDays = $this->manualTakenDaysFor($user);
         $pool = $adjustmentDays;
 
         if (! $hire) {
@@ -79,6 +81,7 @@ class VacationService
                 adjustmentDays: $adjustmentDays,
                 adjustmentAvailable: $pool - $this->approvedDaysFor($user),
                 pendingDays: $this->pendingDaysFor($user),
+                manualTakenDays: $manualTakenDays,
             );
         }
 
@@ -122,6 +125,7 @@ class VacationService
                 adjustmentDays: $adjustmentDays,
                 adjustmentAvailable: $pool - $this->approvedDaysFor($user),
                 pendingDays: $this->pendingDaysFor($user),
+                manualTakenDays: $manualTakenDays,
             );
         }
 
@@ -188,7 +192,8 @@ class VacationService
             'current_season' => $current,
             'entitled_days' => (float) $this->entitledDaysForYearOfService($current),
             'accrued_days' => round($totalAccrued, 2),
-            'taken_days' => round($totalTaken, 2),
+            'taken_days' => round($totalTaken + $manualTakenDays, 2),
+            'manual_taken_days' => $manualTakenDays,
             'pending_days' => $this->pendingDaysFor($user),
             'adjustment_days' => $adjustmentDays,
             'adjustment_available_days' => round($pool, 2),
@@ -220,6 +225,76 @@ class VacationService
     public function adjustmentDaysFor(User $user): float
     {
         return round((float) VacationAdjustment::query()->forUser($user->id)->sum('days'), 2);
+    }
+
+    /**
+     * Days taken that the payroll team registered manually (historic vacations
+     * loaded when the system was adopted). They already discount the pool, so
+     * this only feeds the totals shown by the screens.
+     */
+    public function manualTakenDaysFor(User $user): float
+    {
+        $taken = (float) VacationAdjustment::query()
+            ->forUser($user->id)
+            ->where('type', VacationAdjustment::TYPE_TAKEN)
+            ->sum('days');
+
+        return round(abs($taken), 2);
+    }
+
+    /**
+     * Chronological ledger of the collaborator for the "Historial de
+     * movimientos" card: manual movements plus taken days (approved requests),
+     * each one with the running global balance.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function movementsFor(User $user): array
+    {
+        $adjustments = VacationAdjustment::query()
+            ->forUser($user->id)
+            ->with('author:id,name')
+            ->get()
+            ->map(fn (VacationAdjustment $adjustment) => [
+                'id' => $adjustment->id,
+                'kind' => 'adjustment',
+                'type' => $adjustment->type,
+                'date' => $adjustment->created_at?->toDateString(),
+                'type_label' => $adjustment->typeLabel(),
+                'days' => (float) $adjustment->days,
+                'reason' => $adjustment->reason,
+                'author_name' => $adjustment->author?->name,
+                'deletable' => true,
+            ]);
+
+        $taken = VacationRequest::query()
+            ->forUser($user->id)
+            ->approved()
+            ->get()
+            ->map(fn (VacationRequest $request) => [
+                'id' => $request->id,
+                'kind' => 'request',
+                'date' => $request->start_date?->toDateString(),
+                'type_label' => 'Tomado',
+                'days' => -1 * (float) $request->days,
+                'reason' => $request->reason,
+                'author_name' => null,
+                'deletable' => false,
+            ]);
+
+        $balance = 0.0;
+
+        return $adjustments
+            ->concat($taken)
+            ->sortBy([['date', 'asc'], ['id', 'asc']])
+            ->values()
+            ->map(function (array $movement) use (&$balance) {
+                $balance = round($balance + $movement['days'], 2);
+                $movement['balance_after'] = $balance;
+
+                return $movement;
+            })
+            ->all();
     }
 
     private function approvedDaysFor(User $user): float
@@ -328,20 +403,22 @@ class VacationService
     }
 
     /**
-     * @return array{hire_date: ?string, current_season: int, entitled_days: float, accrued_days: float, taken_days: float, pending_days: float, adjustment_days: float, adjustment_available_days: float, available_days: float, seasons: array<int, array<string, mixed>>, pool_consumptions: array<int, array<string, mixed>>}
+     * @return array{hire_date: ?string, current_season: int, entitled_days: float, accrued_days: float, taken_days: float, manual_taken_days: float, pending_days: float, adjustment_days: float, adjustment_available_days: float, available_days: float, seasons: array<int, array<string, mixed>>, pool_consumptions: array<int, array<string, mixed>>}
      */
     private function emptyBalance(
         ?string $hireDate = null,
         float $adjustmentDays = 0.0,
         float $adjustmentAvailable = 0.0,
         float $pendingDays = 0.0,
+        float $manualTakenDays = 0.0,
     ): array {
         return [
             'hire_date' => $hireDate,
             'current_season' => 0,
             'entitled_days' => 0.0,
             'accrued_days' => 0.0,
-            'taken_days' => 0.0,
+            'taken_days' => $manualTakenDays,
+            'manual_taken_days' => $manualTakenDays,
             'pending_days' => $pendingDays,
             'adjustment_days' => $adjustmentDays,
             'adjustment_available_days' => round($adjustmentAvailable, 2),

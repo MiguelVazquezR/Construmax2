@@ -324,6 +324,24 @@ class VacationServiceTest extends TestCase
         $this->assertSame(7.0, $balance['available_days']);
     }
 
+    public function test_manual_taken_days_discount_and_count_as_taken(): void
+    {
+        Carbon::setTestNow('2026-02-01');
+
+        $user = $this->employee('2026-01-01');
+
+        VacationAdjustment::create(['user_id' => $user->id, 'type' => VacationAdjustment::TYPE_INITIAL, 'days' => 10]);
+        VacationAdjustment::create(['user_id' => $user->id, 'type' => VacationAdjustment::TYPE_TAKEN, 'days' => -2]);
+
+        $balance = $this->service->balanceFor($user);
+
+        // The historic taken days discount the pool and feed the totals.
+        $this->assertSame(2.0, $balance['manual_taken_days']);
+        $this->assertSame(2.0, $balance['taken_days']);
+        $this->assertSame(8.0, $balance['adjustment_days']);
+        $this->assertSame(8.92, $balance['available_days']);
+    }
+
     public function test_a_negative_adjustment_cannot_leave_the_balance_below_zero(): void
     {
         Carbon::setTestNow('2026-02-01');
@@ -340,5 +358,33 @@ class VacationServiceTest extends TestCase
 
         $this->assertSame(-5.0, $balance['adjustment_days']);
         $this->assertSame(0.0, $balance['available_days']);
+    }
+
+    // --- Movements ledger (vacations history) ---
+
+    public function test_movements_ledger_merges_adjustments_and_taken_days(): void
+    {
+        Carbon::setTestNow('2026-02-01');
+
+        $user = $this->employee('2026-01-01');
+
+        VacationAdjustment::create(['user_id' => $user->id, 'type' => VacationAdjustment::TYPE_INITIAL, 'days' => 10]);
+        VacationAdjustment::create(['user_id' => $user->id, 'type' => VacationAdjustment::TYPE_ADJUSTMENT, 'days' => -1.5]);
+
+        VacationRequest::create([
+            'user_id' => $user->id,
+            'start_date' => '2026-01-15',
+            'end_date' => '2026-01-19',
+            'days' => 5,
+            'status' => VacationRequest::STATUS_APPROVED,
+        ]);
+
+        $movements = $this->service->movementsFor($user);
+
+        // Oldest first, with the running balance and the deletable flag
+        // (only the manual movements can be removed from the ledger).
+        $this->assertSame(['Tomado', 'Saldo inicial', 'Ajuste manual'], array_column($movements, 'type_label'));
+        $this->assertSame([-5.0, 5.0, 3.5], array_column($movements, 'balance_after'));
+        $this->assertSame([false, true, true], array_column($movements, 'deletable'));
     }
 }
