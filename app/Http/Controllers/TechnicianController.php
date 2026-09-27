@@ -118,10 +118,13 @@ class TechnicianController extends Controller
             ...$this->payrollRules($request),
         ], $this->payrollMessages());
 
-        // Only internal technicians are paid through payroll: external collaborators
-        // can never be saved as payroll subjects.
-        if (array_key_exists('is_payroll_subject', $validated) && ! ($validated['is_internal'] ?? false)) {
+        // Only internal technicians are company staff: external collaborators
+        // can never be saved as payroll subjects nor register attendance
+        // (those records would never show up in a payroll period).
+        if (! ($validated['is_internal'] ?? false)) {
             $validated['is_payroll_subject'] = false;
+            $validated['is_attendance_subject'] = false;
+            $validated['can_remote_attendance'] = false;
         }
 
         $payrollProfile = $this->syncPayrollProfileAction->sanitizeFor($request->user(), $validated);
@@ -284,8 +287,12 @@ class TechnicianController extends Controller
         ], $this->payrollMessages());
 
         // Turning the technician into an external one removes them from payroll.
-        if (array_key_exists('is_payroll_subject', $validated) && ! ($validated['is_internal'] ?? $technician->is_internal)) {
+        // External collaborators can never be saved as payroll subjects nor
+        // register attendance; only internal ones follow the payroll flow.
+        if (! ($validated['is_internal'] ?? $technician->is_internal)) {
             $validated['is_payroll_subject'] = false;
+            $validated['is_attendance_subject'] = false;
+            $validated['can_remote_attendance'] = false;
         }
 
         $payrollProfile = $this->syncPayrollProfileAction->sanitizeFor($request->user(), $validated);
@@ -377,7 +384,7 @@ class TechnicianController extends Controller
 
         $shiftRequired = $request->user()?->can('payroll.profiles.manage')
             && $isInternal
-            && $request->boolean('is_payroll_subject');
+            && ($request->boolean('is_payroll_subject') || $request->boolean('is_attendance_subject'));
 
         return [
             'employee_number' => ['sometimes', 'nullable', 'string', 'max:50'],
@@ -406,6 +413,9 @@ class TechnicianController extends Controller
     {
         return [
             'shift_id.required' => 'Selecciona un horario para el técnico sujeto a nómina.',
+            'kiosk_pin.min' => 'El PIN debe tener al menos 4 dígitos.',
+            'kiosk_pin.max' => 'El PIN no puede tener más de 12 dígitos.',
+            'kiosk_pin.regex' => 'El PIN solo puede contener números.',
         ];
     }
 

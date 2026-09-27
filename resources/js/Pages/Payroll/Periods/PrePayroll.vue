@@ -271,9 +271,23 @@ const goBack = () => {
                             <div>
                                 <p class="font-semibold text-gray-800">{{ scope.row.user_name }}</p>
                                 <p class="text-xs text-gray-500 mt-0.5">{{ subtitleOf(scope.row) }}</p>
-                                <el-tag v-if="scope.row.termination_date" type="danger" size="small" effect="plain" class="mt-1">
-                                    Baja {{ formatDate(scope.row.termination_date) }}
-                                </el-tag>
+                                <div
+                                    v-if="scope.row.attendance_tracked === false || scope.row.termination_date"
+                                    class="flex flex-wrap items-center gap-1 mt-1"
+                                >
+                                    <el-tag
+                                        v-if="scope.row.attendance_tracked === false"
+                                        type="info"
+                                        size="small"
+                                        effect="plain"
+                                        title="Exento del control de asistencia: sus días se pagan completos por su horario."
+                                    >
+                                        Exento de asistencia
+                                    </el-tag>
+                                    <el-tag v-if="scope.row.termination_date" type="danger" size="small" effect="plain">
+                                        Baja {{ formatDate(scope.row.termination_date) }}
+                                    </el-tag>
+                                </div>
                             </div>
                         </template>
                     </el-table-column>

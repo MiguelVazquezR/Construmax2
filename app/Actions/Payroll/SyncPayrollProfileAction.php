@@ -78,6 +78,12 @@ class SyncPayrollProfileAction
             $profile->can_remote_attendance = false;
         }
 
+        // Registering attendance requires being a payroll subject: without
+        // payroll there is no period where those records could be reviewed.
+        if ($profile->is_attendance_subject) {
+            $profile->is_payroll_subject = true;
+        }
+
         if ($pin !== null && $pin !== '') {
             $profile->kiosk_pin = $pin;
         }

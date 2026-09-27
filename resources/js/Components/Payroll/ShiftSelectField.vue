@@ -165,3 +165,14 @@ const mealLabel = computed(() => {
         </p>
     </div>
 </template>
+
+<style scoped>
+/* Element Plus anchors the validation error absolutely against the
+   form-item, which made it overlap the hint text below. Keeping it inside the
+   flow pushes the hint down so both stay readable. */
+:deep(.el-form-item__error) {
+    position: static;
+    width: 100%;
+    padding-top: 4px;
+}
+</style>

@@ -97,17 +97,17 @@ defineExpose({ open });
                     <el-form-item label="Prima vacacional" :error="form.errors.premium_paid">
                         <el-checkbox v-model="form.premium_paid">Prima vacacional pagada</el-checkbox>
                     </el-form-item>
-                </div>
 
-                <el-form-item v-if="form.premium_paid" label="Fecha de pago de la prima" :error="form.errors.premium_paid_at">
-                    <el-date-picker
-                        v-model="form.premium_paid_at"
-                        type="date"
-                        value-format="YYYY-MM-DD"
-                        placeholder="Seleccionar fecha"
-                        class="w-full"
-                    />
-                </el-form-item>
+                    <el-form-item v-if="form.premium_paid" label="Fecha de pago de la prima" :error="form.errors.premium_paid_at">
+                        <el-date-picker
+                            v-model="form.premium_paid_at"
+                            type="date"
+                            value-format="YYYY-MM-DD"
+                            placeholder="Seleccionar fecha"
+                            style="width: 100%"
+                        />
+                    </el-form-item>
+                </div>
 
                 <p class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Rango del periodo (aniversario a aniversario)</p>
 
@@ -118,7 +118,7 @@ defineExpose({ open });
                             type="date"
                             value-format="YYYY-MM-DD"
                             placeholder="Seleccionar"
-                            class="w-full"
+                            style="width: 100%"
                         />
                     </el-form-item>
 
@@ -128,7 +128,7 @@ defineExpose({ open });
                             type="date"
                             value-format="YYYY-MM-DD"
                             placeholder="Seleccionar"
-                            class="w-full"
+                            style="width: 100%"
                         />
                     </el-form-item>
                 </div>

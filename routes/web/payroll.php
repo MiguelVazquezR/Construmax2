@@ -91,15 +91,14 @@ Route::middleware(['auth', 'verified'])->prefix('payroll')->name('payroll.')->gr
     Route::put('/attendance-logs/{attendanceLog}', [AttendanceLogController::class, 'update'])->name('attendance-logs.update');
     Route::delete('/attendance-logs/{attendanceLog}', [AttendanceLogController::class, 'destroy'])->name('attendance-logs.destroy');
 
-    // Facial enrollment of collaborators (admins enroll; collaborators can enroll themselves)
+    // Facial enrollment of collaborators. Only payroll managers register or
+    // update faces: collaborators must not change their own face.
     Route::post('/users/{user}/faces', [FaceEnrollmentController::class, 'store'])->name('faces.store');
     Route::delete('/users/{user}/faces', [FaceEnrollmentController::class, 'destroy'])->name('faces.destroy');
-    Route::post('/my-attendance/faces', [FaceEnrollmentController::class, 'storeSelf'])->name('my-attendance.faces.store');
-    Route::delete('/my-attendance/faces', [FaceEnrollmentController::class, 'destroySelf'])->name('my-attendance.faces.destroy');
-    Route::get('/my-attendance/faces/status', [FaceEnrollmentController::class, 'status'])->name('my-attendance.faces.status');
 
     // Self-service attendance portal of a collaborator
     Route::get('/my-attendance', [MyAttendanceController::class, 'index'])->name('my-attendance.index');
+    Route::get('/my-attendance/vacation-preview', [MyAttendanceController::class, 'vacationPreview'])->name('my-attendance.vacation-preview');
     Route::post('/my-attendance/punch', [MyAttendanceController::class, 'punch'])
         ->middleware('throttle:30,1')->name('my-attendance.punch');
 

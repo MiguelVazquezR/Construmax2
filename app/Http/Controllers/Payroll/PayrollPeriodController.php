@@ -381,6 +381,8 @@ class PayrollPeriodController extends Controller
 
     /**
      * Excel report with the pre-payroll (or frozen payroll) of the period.
+     * The late discount column only travels when the payroll is configured
+     * to actually discount late arrivals (mode "minutes").
      */
     public function export(Request $request, PayrollPeriod $period, XlsxWriterService $writer)
     {
@@ -388,47 +390,68 @@ class PayrollPeriodController extends Controller
 
         [$rows] = $this->periodRows($period);
 
-        $exportRows = array_map(fn ($row) => [
-            $row['name'],
-            $row['employee_number'],
-            $row['department'],
-            $row['days_worked'],
-            $row['days_paid'],
-            $row['unpaid_days'],
-            $row['late_minutes'],
-            $row['late_discount'],
-            round($row['overtime_minutes'] / 60, 2),
-            $row['overtime_amount'],
-            $row['holiday_days'],
-            $row['holiday_amount'],
-            $row['vacation_days'],
-            $row['incapacity_days'],
-            $row['adjustments_earnings'],
-            $row['adjustments_deductions'],
-            $row['total_gross'],
-            $row['total_deductions'],
-            $row['total_net'],
-        ], $rows);
+        $lateDiscountEnabled = PayrollSetting::current()->late_discount_mode === PayrollSetting::LATE_DEDUCT_MINUTES;
 
+        $exportRows = array_map(function ($row) use ($lateDiscountEnabled) {
+            $line = [
+                $row['name'],
+                $row['employee_number'],
+                $row['department'],
+                $row['days_worked'],
+                $row['days_paid'],
+                $row['unpaid_days'],
+                $row['late_minutes'],
+            ];
+
+            if ($lateDiscountEnabled) {
+                $line[] = $row['late_discount'];
+            }
+
+            return array_merge($line, [
+                round($row['overtime_minutes'] / 60, 2),
+                $row['overtime_amount'],
+                $row['holiday_days'],
+                $row['holiday_amount'],
+                $row['vacation_days'],
+                $row['incapacity_days'],
+                $row['adjustments_earnings'],
+                $row['adjustments_deductions'],
+                $row['total_gross'],
+                $row['total_deductions'],
+                $row['total_net'],
+            ]);
+        }, $rows);
+
+        $headers = ['Colaborador', 'Número', 'Departamento', 'Días trabajados', 'Días pagados', 'Días no pagados', 'Retardos (min)'];
+        $widths = [24, 12, 18, 14, 12, 14, 12];
+
+        if ($lateDiscountEnabled) {
+            $headers[] = 'Descuento retardos';
+            $widths[] = 16;
+        }
+
+        $headers = array_merge($headers, [
+            'Horas extra', 'Importe extra', 'Días festivos', 'Importe festivo', 'Días vacaciones',
+            'Días incapacidad', 'Ajustes percepciones', 'Ajustes deducciones',
+            'Total percepciones', 'Total deducciones', 'Neto',
+        ]);
+        $widths = array_merge($widths, [12, 14, 12, 14, 14, 14, 18, 18, 16, 16, 14]);
+
+        $columnCount = count($headers);
         $sum = fn (int $index) => array_sum(array_map(fn ($row) => (float) $row[$index], $exportRows));
 
-        $footer = array_fill(0, 19, '');
+        $footer = array_fill(0, $columnCount, '');
         $footer[0] = 'Totales';
 
-        foreach (range(3, 18) as $index) {
+        foreach (range(3, $columnCount - 1) as $index) {
             $footer[$index] = round($sum($index), 2);
         }
 
         $path = $writer->generate(
             'Nómina '.$period->start_date->format('Y-m-d'),
-            [
-                'Colaborador', 'Número', 'Departamento', 'Días trabajados', 'Días pagados', 'Días no pagados',
-                'Retardos (min)', 'Descuento retardos', 'Horas extra', 'Importe extra', 'Días festivos',
-                'Importe festivo', 'Días vacaciones', 'Días incapacidad', 'Ajustes percepciones',
-                'Ajustes deducciones', 'Total percepciones', 'Total deducciones', 'Neto',
-            ],
+            $headers,
             $exportRows,
-            [24, 12, 18, 14, 12, 14, 12, 16, 12, 14, 12, 14, 14, 14, 18, 18, 16, 16, 14],
+            $widths,
             [$footer]
         );
 
@@ -460,6 +483,7 @@ class PayrollPeriodController extends Controller
                     $totals,
                     null,
                     $result['snapshot']['termination_date'],
+                    (bool) ($user->payrollProfile?->is_attendance_subject ?? true),
                 );
             }
         } else {
@@ -501,6 +525,7 @@ class PayrollPeriodController extends Controller
                     ],
                     $payslip->id,
                     $payslip->user?->payrollProfile?->termination_date?->toDateString(),
+                    (bool) ($payslip->user?->payrollProfile?->is_attendance_subject ?? true),
                 );
             }
         }
@@ -523,7 +548,7 @@ class PayrollPeriodController extends Controller
      * @param  array<string, mixed>  $totals
      * @return array<string, mixed>
      */
-    private function buildRow(int $userId, ?string $name, ?string $employeeNumber, ?string $department, ?string $position, bool $isTechnician, array $totals, ?int $payslipId, ?string $terminationDate = null): array
+    private function buildRow(int $userId, ?string $name, ?string $employeeNumber, ?string $department, ?string $position, bool $isTechnician, array $totals, ?int $payslipId, ?string $terminationDate = null, bool $attendanceTracked = true): array
     {
         return [
             'user_id' => $userId,
@@ -533,6 +558,7 @@ class PayrollPeriodController extends Controller
             'position' => $position,
             'is_technician' => $isTechnician,
             'termination_date' => $terminationDate,
+            'attendance_tracked' => $attendanceTracked,
             'days_worked' => round((float) $totals['days_worked'], 2),
             'days_paid' => round((float) $totals['days_paid'], 2),
             'unpaid_days' => round((float) $totals['unpaid_days'], 2),

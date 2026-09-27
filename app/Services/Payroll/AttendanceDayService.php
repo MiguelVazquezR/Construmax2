@@ -71,12 +71,17 @@ class AttendanceDayService
             }
         }
 
+        // Absence inference only applies to collaborators subject to the
+        // attendance control; for the others the schedule is just the
+        // reference of the days their salary pays.
+        $attendanceTracked = (bool) ($user->payrollProfile?->is_attendance_subject ?? true);
+
         return new AttendanceDaySummary(
             date: $day,
             hasSchedule: $schedule !== null,
             isWorkday: $isWorkday,
             shift: $schedule?->shift,
-            status: $this->resolveStatus($day, $schedule, $isWorkday, $punches, $holiday, $incident),
+            status: $this->resolveStatus($day, $schedule, $isWorkday, $punches, $holiday, $incident, $attendanceTracked),
             workedMinutes: $workedMinutes,
             pausedMinutes: $pausedMinutes,
             lateMinutes: $lateMinutes,
@@ -253,6 +258,7 @@ class AttendanceDayService
         Collection $punches,
         ?Holiday $holiday,
         ?Incident $incident,
+        bool $attendanceTracked,
     ): string {
         if ($incident) {
             return AttendanceDaySummary::STATUS_INCIDENT;
@@ -269,6 +275,12 @@ class AttendanceDayService
         if ($punches->isEmpty()) {
             if (! $isWorkday) {
                 return AttendanceDaySummary::STATUS_REST_DAY;
+            }
+
+            // Collaborators who are not subject to attendance are never
+            // marked absent: there is nothing for them to register.
+            if (! $attendanceTracked) {
+                return AttendanceDaySummary::STATUS_NO_RECORD;
             }
 
             // A scheduled workday without punches is only an unjustified

@@ -246,6 +246,34 @@ class PayrollCalculatorServiceTest extends TestCase
         $this->assertSame('rest_day', $days['2026-09-13']['status']);
     }
 
+    public function test_collaborators_without_attendance_keep_their_scheduled_days_paid(): void
+    {
+        // Thursday: the week is still running inside the period.
+        Carbon::setTestNow('2026-09-10 10:00:00');
+
+        $user = $this->makeEmployee('2024-01-01', 400);
+        $user->payrollProfile->update(['is_attendance_subject' => false]);
+
+        // The collaborator does not register attendance: no punches at all.
+        $result = $this->calculator->calculateFor($user, $this->period);
+        $totals = $result['totals'];
+
+        // 07, 08 and 09 have passed → paid in full. 10 (today) and 11
+        // (future) stay pending. No day becomes an unjustified absence.
+        $this->assertEqualsWithDelta(3.0, $totals['days_paid'], 0.01);
+        $this->assertEqualsWithDelta(0.0, $totals['unpaid_days'], 0.01);
+        $this->assertEqualsWithDelta(1200.0, $totals['base_amount'], 0.01);
+        $this->assertEqualsWithDelta(1200.0, $totals['total_net'], 0.01);
+
+        $days = collect($result['days'])->keyBy('date');
+
+        $this->assertSame('no_record', $days['2026-09-09']['status']);
+        $this->assertSame('Sin registro', $days['2026-09-09']['status_label']);
+        $this->assertEqualsWithDelta(1.0, $days['2026-09-09']['pay_fraction'], 0.001);
+        $this->assertEqualsWithDelta(0.0, $days['2026-09-11']['pay_fraction'], 0.001);
+        $this->assertSame('rest_day', $days['2026-09-13']['status']);
+    }
+
     public function test_vacations_are_paid_and_imss_incapacities_never_are(): void
     {
         Incident::create([

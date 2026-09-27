@@ -19,6 +19,11 @@ const props = defineProps({
 
 const emit = defineEmits(['changed']);
 
+// Collaborators who are not subject to attendance never register punches:
+// their days are paid by the schedule, so the note explains the missing
+// records before they are read as absences.
+const attendanceTracked = computed(() => props.row.attendance_tracked !== false);
+
 const statusLabels = {
     present: 'Asistió',
     absent: 'Falta injustificada',
@@ -576,6 +581,16 @@ const destroyNote = (note) => {
         <div v-loading="loading">
             <!-- Days and punches -->
             <template v-if="tab === 'days'">
+                <el-alert
+                    v-if="!attendanceTracked"
+                    type="info"
+                    :closable="false"
+                    show-icon
+                    class="!mb-4"
+                    title="Exento de asistencia"
+                    description="Este colaborador está exento del control de asistencia: sus días laborables aparecen como «Sin registro» y se pagan completos, sin marcar faltas."
+                />
+
                 <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
                     <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50 dark:bg-[#252529] px-4 py-3">
                         <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Días mostrados</p>

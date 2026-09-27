@@ -4,6 +4,7 @@ namespace Tests\Feature\Payroll;
 
 use App\Models\Incident;
 use App\Models\PayrollProfile;
+use App\Models\Technician;
 use App\Models\User;
 use App\Models\VacationRequest;
 use App\Notifications\VacationRequested;
@@ -60,6 +61,37 @@ class VacationControllerTest extends TestCase
                 ->has('requests')
                 ->has('users')
                 ->has('statuses')
+            );
+    }
+
+    public function test_the_collaborator_list_marks_technicians(): void
+    {
+        $technicianUser = User::factory()->create(['is_active' => true, 'name' => 'Tecnico Prueba']);
+
+        PayrollProfile::create([
+            'user_id' => $technicianUser->id,
+            'hire_date' => '2026-01-01',
+            'is_payroll_subject' => true,
+        ]);
+
+        Technician::create([
+            'user_id' => $technicianUser->id,
+            'phone' => '3330000000',
+            'status' => 'Activo',
+        ]);
+
+        $employeeName = $this->employee->name;
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.vacations.index'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('users', function ($users) use ($employeeName) {
+                    $list = collect($users);
+
+                    return $list->firstWhere('name', 'Tecnico Prueba')['is_technician'] === true
+                        && $list->firstWhere('name', $employeeName)['is_technician'] === false;
+                })
             );
     }
 

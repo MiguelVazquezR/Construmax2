@@ -424,6 +424,17 @@ const openPrePayroll = () => {
                                     </div>
                                 </div>
 
+                                <div v-if="!row.attendance_tracked" class="text-xs font-normal">
+                                    <el-tag
+                                        type="info"
+                                        size="small"
+                                        effect="plain"
+                                        title="Exento del control de asistencia: sus días se pagan completos por su horario."
+                                    >
+                                        Exento de asistencia
+                                    </el-tag>
+                                </div>
+
                                 <div v-if="row.termination_date" class="text-xs font-normal">
                                     <el-tag type="danger" size="small" effect="plain">
                                         Baja {{ parseDate(row.termination_date).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }) }}

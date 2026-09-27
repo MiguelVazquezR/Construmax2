@@ -5,6 +5,7 @@ namespace Tests\Feature\Payroll;
 use App\Models\FaceEnrollment;
 use App\Models\PayrollProfile;
 use App\Models\PayrollSetting;
+use App\Models\Shift;
 use App\Models\Technician;
 use App\Models\User;
 use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
@@ -56,6 +57,20 @@ class ProfilePhotoEnrollmentTest extends TestCase
         ]);
     }
 
+    private function makeShift(): Shift
+    {
+        return Shift::create([
+            'name' => 'Matutino',
+            'type' => Shift::TYPE_FIXED,
+            'start_time' => '09:00',
+            'end_time' => '18:00',
+            'meal_minutes' => 60,
+            'is_meal_paid' => false,
+            'days' => [1, 2, 3, 4, 5],
+            'is_active' => true,
+        ]);
+    }
+
     private function storePayload(array $overrides = []): array
     {
         return array_merge([
@@ -67,6 +82,7 @@ class ProfilePhotoEnrollmentTest extends TestCase
             'position' => 'Ayudante',
             'phone' => '3331234567',
             'is_attendance_subject' => true,
+            'shift_id' => $this->makeShift()->id,
         ], $overrides);
     }
 
@@ -239,7 +255,9 @@ class ProfilePhotoEnrollmentTest extends TestCase
                 'name' => 'Técnico Con Foto',
                 'email' => 'tecnico.foto@test.com',
                 'phone' => '3311112233',
+                'is_internal' => true,
                 'is_attendance_subject' => true,
+                'shift_id' => $this->makeShift()->id,
                 'photo' => UploadedFile::fake()->image('tecnico.jpg', 400, 400),
             ])
             ->assertRedirect(route('technicians.index'));

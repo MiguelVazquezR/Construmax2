@@ -137,12 +137,14 @@ class PayrollProfileTest extends TestCase
     public function test_user_update_syncs_the_payroll_profile(): void
     {
         $user = User::factory()->create(['is_active' => true]);
+        $shift = $this->makeShift();
 
         $this->actingAs($this->admin)
             ->put(route('users.update', $user), $this->updatePayload($user, [
                 'hire_date' => '2025-01-15',
                 'daily_salary' => 600,
                 'is_attendance_subject' => true,
+                'shift_id' => $shift->id,
             ]))
             ->assertRedirect(route('users.index'));
 
@@ -152,6 +154,19 @@ class PayrollProfileTest extends TestCase
         $this->assertSame('2025-01-15', $profile->hire_date->toDateString());
         $this->assertEquals(600, (float) $profile->daily_salary);
         $this->assertTrue($profile->is_attendance_subject);
+        // Registering attendance requires being a payroll subject.
+        $this->assertTrue($profile->is_payroll_subject);
+    }
+
+    public function test_user_attendance_requires_a_schedule(): void
+    {
+        $user = User::factory()->create(['is_active' => true]);
+
+        $this->actingAs($this->admin)
+            ->put(route('users.update', $user), $this->updatePayload($user, [
+                'is_attendance_subject' => true,
+            ]))
+            ->assertSessionHasErrors('shift_id');
     }
 
     public function test_user_update_saves_the_termination_date(): void
@@ -255,7 +270,7 @@ class PayrollProfileTest extends TestCase
 
     // --- Technicians ---
 
-    public function test_technician_store_creates_the_attendance_profile(): void
+    public function test_external_technician_cannot_register_attendance(): void
     {
         $this->actingAs($this->admin)
             ->post(route('technicians.store'), [
@@ -264,7 +279,32 @@ class PayrollProfileTest extends TestCase
                 'phone' => '3311112233',
                 'is_attendance_subject' => true,
                 'can_remote_attendance' => true,
+            ])
+            ->assertRedirect(route('technicians.index'));
+
+        $technician = Technician::first();
+        $profile = PayrollProfile::where('user_id', $technician->user_id)->first();
+
+        $this->assertNotNull($profile);
+        $this->assertFalse($profile->is_attendance_subject);
+        $this->assertFalse($profile->can_remote_attendance);
+        $this->assertFalse($profile->is_payroll_subject);
+    }
+
+    public function test_technician_store_creates_the_attendance_profile(): void
+    {
+        $shift = $this->makeShift();
+
+        $this->actingAs($this->admin)
+            ->post(route('technicians.store'), [
+                'name' => 'Técnico Interno',
+                'email' => 'interno-asistencia@test.com',
+                'phone' => '3311112233',
+                'is_internal' => true,
+                'is_attendance_subject' => true,
+                'can_remote_attendance' => true,
                 'kiosk_pin' => '2468',
+                'shift_id' => $shift->id,
             ])
             ->assertRedirect(route('technicians.index'));
 
@@ -275,7 +315,8 @@ class PayrollProfileTest extends TestCase
         $this->assertTrue($profile->is_attendance_subject);
         $this->assertTrue($profile->can_remote_attendance);
         $this->assertTrue(Hash::check('2468', $profile->kiosk_pin));
-        $this->assertFalse($profile->is_payroll_subject);
+        // Registering attendance requires being a payroll subject.
+        $this->assertTrue($profile->is_payroll_subject);
     }
 
     public function test_technician_update_syncs_the_attendance_profile(): void
@@ -286,6 +327,7 @@ class PayrollProfileTest extends TestCase
             'phone' => '3333333333',
             'status' => 'Activo',
         ]);
+        $shift = $this->makeShift();
 
         $this->actingAs($this->admin)
             ->put(route('technicians.update', $technician), [
@@ -293,7 +335,9 @@ class PayrollProfileTest extends TestCase
                 'email' => $user->email,
                 'phone' => '3333333333',
                 'status' => 'Activo',
+                'is_internal' => true,
                 'is_attendance_subject' => true,
+                'shift_id' => $shift->id,
                 'kiosk_pin' => '1111',
             ])
             ->assertRedirect(route('technicians.show', $technician->id));
@@ -302,6 +346,7 @@ class PayrollProfileTest extends TestCase
 
         $this->assertNotNull($profile);
         $this->assertTrue($profile->is_attendance_subject);
+        $this->assertTrue($profile->is_payroll_subject);
         $this->assertTrue(Hash::check('1111', $profile->kiosk_pin));
     }
 

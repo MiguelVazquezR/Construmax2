@@ -352,7 +352,7 @@ onBeforeUnmount(() => {
                                 : 'bg-white dark:bg-[#252529] border-gray-200 dark:border-[#2b2b2e] text-gray-600 dark:text-gray-300 hover:border-[#f26c17]/60 hover:text-[#f26c17]'"
                             @click="method = 'pin'"
                         >
-                            Con número y PIN
+                            Con PIN
                         </button>
                     </div>
 

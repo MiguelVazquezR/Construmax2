@@ -86,7 +86,9 @@ class PayrollCalculatorService
      *  - Scheduled workday without punches and without incident: unpaid day
      *    once the day has passed (an unjustified absence); today and future
      *    days remain pending (*sin registro*) and count as neither paid nor
-     *    unpaid.
+     *    unpaid. Collaborators who are not subject to attendance keep their
+     *    scheduled days paid in full: a missing record is never an absence
+     *    for them.
      *  - Holiday: paid rest day; when worked, an extra day at the configured
      *    multiplier (LFT art. 75).
      *  - Incidents: paid fraction by type (vacations and paid permissions are
@@ -211,6 +213,14 @@ class PayrollCalculatorService
 
                     $totals['late_minutes'] += $summary->lateMinutes;
                     $overtimePoolMinutes += $summary->overtimeMinutes;
+                } elseif (! ($profile?->is_attendance_subject ?? true)) {
+                    // The collaborator does not register attendance: the
+                    // scheduled day pays in full once it has passed (today
+                    // and future days stay pending) and the missing record is
+                    // never an absence.
+                    if ($cursor->lessThan(CarbonImmutable::today())) {
+                        $dayFraction += 1.0;
+                    }
                 } elseif ($summary->status === AttendanceDaySummary::STATUS_ABSENT) {
                     // The day already passed without a record: unjustified
                     // absence. Days that have not passed yet (today and

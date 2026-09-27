@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import { Clock, Money, Suitcase, User } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import ShiftSelectField from '@/Components/Payroll/ShiftSelectField.vue';
@@ -46,6 +46,16 @@ const isVisible = computed(() => canManage.value || canManageRemote.value);
 const showsSection = computed(() => isVisible.value && (props.showPayrollFields || props.internal));
 
 // --- Asistencia ---
+
+// Registering attendance requires being a payroll subject: without payroll
+// there is no period where those records could be reviewed, so turning the
+// payroll flag off also clears the attendance ones.
+watch(() => props.form.is_payroll_subject, (isPayrollSubject) => {
+    if (isPayrollSubject === false && props.form.is_attendance_subject) {
+        props.form.is_attendance_subject = false;
+        props.form.can_remote_attendance = false;
+    }
+});
 
 // The kiosk pin is digits only (4 to 12).
 const onPinInput = (value) => {
@@ -148,9 +158,16 @@ const onPinInput = (value) => {
             >
                 <div>
                     <p class="text-sm font-medium text-gray-700 dark:text-gray-200">Registra asistencia</p>
-                    <p class="text-xs text-gray-400">Puede registrar en el kiosco y en el portal Mi asistencia.</p>
+                    <p class="text-xs text-gray-400">
+                        Puede registrar en el kiosco y en el portal Mi asistencia.
+                        <template v-if="!form.is_payroll_subject">Requiere activar «Sujeto a nómina».</template>
+                    </p>
                 </div>
-                <el-switch v-model="form.is_attendance_subject" style="--el-switch-on-color: #f26c17;" />
+                <el-switch
+                    v-model="form.is_attendance_subject"
+                    :disabled="!form.is_payroll_subject"
+                    style="--el-switch-on-color: #f26c17;"
+                />
             </div>
 
             <div class="flex items-center justify-between gap-3 rounded-lg border border-gray-100 dark:border-[#2b2b2e] bg-white dark:bg-[#1e1e20] px-3 py-2.5">
@@ -170,7 +187,7 @@ const onPinInput = (value) => {
 
             <!-- PIN de kiosco -->
             <div v-if="canManage" class="rounded-lg border border-gray-100 dark:border-[#2b2b2e] bg-white dark:bg-[#1e1e20] px-3 py-2.5">
-                <el-form-item label="PIN de kiosco" prop="kiosk_pin" :error="form.errors.kiosk_pin" class="!mb-0">
+                <el-form-item label="PIN de kiosco" prop="kiosk_pin" class="!mb-1">
                     <el-input
                         v-model="form.kiosk_pin"
                         maxlength="12"
@@ -181,8 +198,11 @@ const onPinInput = (value) => {
                         @input="onPinInput"
                     />
                 </el-form-item>
+                <p v-if="form.errors.kiosk_pin" class="text-xs text-red-500 mb-1">
+                    {{ form.errors.kiosk_pin }}
+                </p>
                 <p class="text-xs text-gray-400 mt-1">
-                    Permite registrar asistencia en el kiosco con número de empleado y PIN, sin usar el rostro.
+                    Permite identificarte con tu PIN en el kiosco y en la asistencia remota, sin usar el rostro.
                     <template v-if="hasKioskPin">Escribe uno nuevo para reemplazarlo o déjalo vacío para conservar el actual.</template>
                     <template v-if="!form.is_attendance_subject">Requiere activar «Registra asistencia».</template>
                 </p>

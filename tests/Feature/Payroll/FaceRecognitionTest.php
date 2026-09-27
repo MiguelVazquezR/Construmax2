@@ -292,49 +292,20 @@ class FaceRecognitionTest extends TestCase
         );
     }
 
-    public function test_self_enrollment_requires_an_attendance_subject_profile(): void
+    public function test_collaborators_cannot_self_enroll_or_update_their_face(): void
     {
-        $user = User::factory()->create(['is_active' => true]);
-
-        $this->actingAs($user)
-            ->postJson(route('payroll.my-attendance.faces.store'), [
+        // Self-service face enrollment was removed on purpose: the payroll
+        // team is the only one allowed to register or update a face.
+        $this->actingAs($this->employee)
+            ->postJson('/payroll/my-attendance/faces', [
                 'photos' => ['data:image/jpeg;base64,/9j/AAAA'],
             ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('photos');
-    }
-
-    public function test_self_enrollment_registers_the_own_face(): void
-    {
-        $this->mock(FaceRecognitionService::class, function (MockInterface $mock) {
-            $mock->shouldReceive('isConfigured')->andReturn(true);
-            $mock->shouldReceive('collectionId')->andReturn('construmax-attendance');
-            $mock->shouldReceive('indexFace')->once()->andReturn(['face_id' => 'self-face', 'quality' => 96.5]);
-        });
+            ->assertNotFound();
 
         $this->actingAs($this->employee)
-            ->post(route('payroll.my-attendance.faces.store'), [
-                'photos' => ['data:image/jpeg;base64,/9j/DDDD'],
-            ])
-            ->assertRedirect();
+            ->deleteJson('/payroll/my-attendance/faces')
+            ->assertNotFound();
 
-        $this->assertDatabaseHas('face_enrollments', [
-            'user_id' => $this->employee->id,
-            'face_id' => 'self-face',
-            'status' => FaceEnrollment::STATUS_ACTIVE,
-            'enrolled_by' => $this->employee->id,
-        ]);
-    }
-
-    public function test_faces_status_endpoint_reports_the_provider_configuration(): void
-    {
-        $this->mock(FaceRecognitionService::class, function (MockInterface $mock) {
-            $mock->shouldReceive('isConfigured')->andReturn(true);
-        });
-
-        $this->actingAs($this->employee)
-            ->getJson(route('payroll.my-attendance.faces.status'))
-            ->assertOk()
-            ->assertJsonPath('configured', true);
+        $this->assertDatabaseCount('face_enrollments', 0);
     }
 }

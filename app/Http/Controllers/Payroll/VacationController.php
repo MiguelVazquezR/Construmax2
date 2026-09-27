@@ -60,7 +60,11 @@ class VacationController extends Controller
             'balance' => $balance,
             'periods' => $selectedUser ? $this->vacationPeriodService->payloadFor($selectedUser) : [],
             'movements' => $selectedUser ? $this->vacationService->movementsFor($selectedUser) : [],
-            'selectedUser' => $selectedUser ? ['id' => $selectedUser->id, 'name' => $selectedUser->name] : null,
+            'selectedUser' => $selectedUser ? [
+                'id' => $selectedUser->id,
+                'name' => $selectedUser->name,
+                'is_technician' => $selectedUser->technician !== null,
+            ] : null,
             'selectedUserId' => $selectedUserId,
             'filters' => [
                 'status' => $request->input('status'),
@@ -173,7 +177,13 @@ class VacationController extends Controller
             ->whereHas('payrollProfile', fn ($query) => $query->where(fn ($profile) => $profile
                 ->where('is_attendance_subject', true)
                 ->orWhere('is_payroll_subject', true)))
+            ->with('technician:id,user_id')
             ->orderBy('name')
-            ->get(['id', 'name']);
+            ->get(['id', 'name'])
+            ->map(fn (User $user) => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'is_technician' => $user->technician !== null,
+            ]);
     }
 }

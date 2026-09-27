@@ -8,14 +8,17 @@ use App\Models\PayrollAdjustment;
 use App\Models\PayrollNote;
 use App\Models\PayrollPeriod;
 use App\Models\PayrollProfile;
+use App\Models\PayrollSetting;
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Testing\TestResponse;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
+use ZipArchive;
 
 class PayrollPeriodControllerTest extends TestCase
 {
@@ -905,6 +908,23 @@ class PayrollPeriodControllerTest extends TestCase
         $this->assertSame(PayrollPeriod::STATUS_OPEN, $period->fresh()->status);
     }
 
+    public function test_period_rows_expose_whether_the_collaborator_tracks_attendance(): void
+    {
+        $period = $this->openPeriod();
+
+        // The collaborator keeps their payroll days but is not subject to the
+        // attendance control: the row exposes the flag so the UI can explain
+        // the missing records.
+        $this->employee->payrollProfile->update(['is_attendance_subject' => false]);
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.periods.show', $period))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('rows.0.attendance_tracked', false)
+            );
+    }
+
     public function test_export_downloads_the_report(): void
     {
         $period = $this->openPeriod();
@@ -912,5 +932,36 @@ class PayrollPeriodControllerTest extends TestCase
         $this->actingAs($this->admin)
             ->get(route('payroll.periods.export', $period))
             ->assertDownload('nomina_2026-09-07.xlsx');
+    }
+
+    public function test_export_shows_the_late_discount_column_only_when_discounts_are_by_minutes(): void
+    {
+        $period = $this->openPeriod();
+
+        PayrollSetting::current()->update(['late_discount_mode' => PayrollSetting::LATE_TRACK_ONLY]);
+
+        $response = $this->actingAs($this->admin)->get(route('payroll.periods.export', $period));
+
+        $response->assertOk();
+        $this->assertStringNotContainsString('Descuento retardos', $this->exportSheetContent($response));
+
+        PayrollSetting::current()->update(['late_discount_mode' => PayrollSetting::LATE_DEDUCT_MINUTES]);
+
+        $response = $this->actingAs($this->admin)->get(route('payroll.periods.export', $period));
+
+        $response->assertOk();
+        $this->assertStringContainsString('Descuento retardos', $this->exportSheetContent($response));
+    }
+
+    private function exportSheetContent(TestResponse $response): string
+    {
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($response->getFile()->getPathname()));
+        $sheet = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $zip->close();
+
+        $this->assertNotFalse($sheet);
+
+        return $sheet;
     }
 }

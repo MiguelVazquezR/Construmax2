@@ -294,11 +294,11 @@ class UserController extends Controller
      */
     private function payrollRules(Request $request): array
     {
-        // A payroll subject whose flag will actually be saved must have a
-        // schedule assigned: its daily hours feed the minute rate used by
-        // overtime and late discounts.
+        // A collaborator marked as payroll subject or with attendance enabled
+        // must have a schedule assigned: its daily hours feed the minute rate
+        // used by overtime and late discounts.
         $shiftRequired = $request->user()?->can('payroll.profiles.manage')
-            && $request->boolean('is_payroll_subject');
+            && ($request->boolean('is_payroll_subject') || $request->boolean('is_attendance_subject'));
 
         return [
             'employee_number' => ['nullable', 'string', 'max:50'],
@@ -327,6 +327,9 @@ class UserController extends Controller
     {
         return [
             'shift_id.required' => 'Selecciona un horario para el colaborador sujeto a nómina.',
+            'kiosk_pin.min' => 'El PIN debe tener al menos 4 dígitos.',
+            'kiosk_pin.max' => 'El PIN no puede tener más de 12 dígitos.',
+            'kiosk_pin.regex' => 'El PIN solo puede contener números.',
         ];
     }
 

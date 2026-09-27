@@ -261,7 +261,12 @@ const initialsOf = (name) => {
 
                         <div class="p-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
                             <el-select v-model="filters.user_id" filterable clearable placeholder="Colaborador" @change="applyFilters">
-                                <el-option v-for="user in userOptions" :key="user.id" :label="user.name" :value="user.id" />
+                                <el-option v-for="user in userOptions" :key="user.id" :label="user.name" :value="user.id">
+                                    <div class="flex items-center justify-between gap-3">
+                                        <span>{{ user.name }}</span>
+                                        <el-tag v-if="user.is_technician" size="small" type="info" effect="plain">Técnico</el-tag>
+                                    </div>
+                                </el-option>
                             </el-select>
 
                             <el-select v-model="filters.status" clearable placeholder="Estatus" @change="applyFilters">
@@ -379,7 +384,12 @@ const initialsOf = (name) => {
                                 class="max-w-md"
                                 @change="selectBalanceUser"
                             >
-                                <el-option v-for="user in userOptions" :key="user.id" :label="user.name" :value="user.id" />
+                                <el-option v-for="user in userOptions" :key="user.id" :label="user.name" :value="user.id">
+                                    <div class="flex items-center justify-between gap-3">
+                                        <span>{{ user.name }}</span>
+                                        <el-tag v-if="user.is_technician" size="small" type="info" effect="plain">Técnico</el-tag>
+                                    </div>
+                                </el-option>
                             </el-select>
 
                             <template v-if="balance">
@@ -590,7 +600,12 @@ const initialsOf = (name) => {
             <el-form :model="requestForm" label-position="top" size="default">
                 <el-form-item label="Colaborador" required :error="requestForm.errors.user_id">
                     <el-select v-model="requestForm.user_id" filterable placeholder="Seleccionar" class="w-full">
-                        <el-option v-for="user in users" :key="user.id" :label="user.name" :value="user.id" />
+                        <el-option v-for="user in users" :key="user.id" :label="user.name" :value="user.id">
+                            <div class="flex items-center justify-between gap-3">
+                                <span>{{ user.name }}</span>
+                                <el-tag v-if="user.is_technician" size="small" type="info" effect="plain">Técnico</el-tag>
+                            </div>
+                        </el-option>
                     </el-select>
                 </el-form-item>
 

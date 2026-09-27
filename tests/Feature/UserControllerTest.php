@@ -351,6 +351,7 @@ class UserControllerTest extends TestCase
             ->assertRedirect()
             ->assertSessionHas('success');
 
-        $this->assertDatabaseMissing('users', ['id' => $user->id]);
+        // Users are soft deleted so their payroll history stays auditable.
+        $this->assertSoftDeleted('users', ['id' => $user->id]);
     }
 }

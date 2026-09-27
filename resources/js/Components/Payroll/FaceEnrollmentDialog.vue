@@ -21,10 +21,6 @@ const props = defineProps({
         type: Number,
         default: 0,
     },
-    selfService: {
-        type: Boolean,
-        default: false,
-    },
 });
 
 const emit = defineEmits(['update:modelValue', 'saved']);
@@ -107,19 +103,14 @@ const submit = () => {
         return;
     }
 
-    form.post(
-        props.selfService
-            ? route('payroll.my-attendance.faces.store')
-            : route('payroll.faces.store', props.user.id),
-        {
-            preserveScroll: true,
-            preserveState: true,
-            onSuccess: () => {
-                visible.value = false;
-                emit('saved');
-            },
-        }
-    );
+    form.post(route('payroll.faces.store', props.user.id), {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            visible.value = false;
+            emit('saved');
+        },
+    });
 };
 
 const removeFaces = () => {
@@ -135,21 +126,16 @@ const removeFaces = () => {
         .then(() => {
             deleting.value = true;
 
-            router.delete(
-                props.selfService
-                    ? route('payroll.my-attendance.faces.destroy')
-                    : route('payroll.faces.destroy', props.user.id),
-                {
-                    preserveScroll: true,
-                    onSuccess: () => {
-                        visible.value = false;
-                        emit('saved');
-                    },
-                    onFinish: () => {
-                        deleting.value = false;
-                    },
-                }
-            );
+            router.delete(route('payroll.faces.destroy', props.user.id), {
+                preserveScroll: true,
+                onSuccess: () => {
+                    visible.value = false;
+                    emit('saved');
+                },
+                onFinish: () => {
+                    deleting.value = false;
+                },
+            });
         })
         .catch(() => {});
 };
