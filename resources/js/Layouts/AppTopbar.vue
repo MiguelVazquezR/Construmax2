@@ -111,6 +111,13 @@ const handleCommand = (command) => {
             <!-- Notification Bell -->
             <NotificationBell />
 
+            <!-- Icono Tutoriales -->
+            <el-tooltip effect="dark" content="Tutoriales" placement="bottom">
+                <Link :href="route('tutorials.index')" class="flex items-center justify-center w-10 h-10 rounded-full hover:bg-gray-100 dark:hover:bg-[#27272a] transition-colors group">
+                    <el-icon :size="20" class="text-gray-500 dark:text-gray-400 group-hover:text-primary transition-colors"><VideoPlay /></el-icon>
+                </Link>
+            </el-tooltip>
+
             <!-- Toggle Dark/Light Mode -->
             <el-tooltip :content="isDark ? 'Cambiar a modo día' : 'Cambiar a modo noche'" placement="bottom">
                 <el-button

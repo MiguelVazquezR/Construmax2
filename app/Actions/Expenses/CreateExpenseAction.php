@@ -16,11 +16,12 @@ class CreateExpenseAction
      */
     public function execute(array $data): Expense
     {
-        $isCommission = !empty($data['budget_id']) && (bool) ($data['is_commission'] ?? false);
+        $isCommission = ! empty($data['budget_id']) && (bool) ($data['is_commission'] ?? false);
 
         $expense = Expense::create([
             'expense_category_id' => $data['expense_category_id'] ?? null,
             'budget_id' => $data['budget_id'] ?? null,
+            'payroll_period_id' => $data['payroll_period_id'] ?? null,
             'is_commission' => $isCommission,
             'concept' => $data['concept'],
             'reference' => $data['reference'] ?? null,
@@ -32,10 +33,11 @@ class CreateExpenseAction
             'payment_method' => $data['payment_method'] ?? null,
             'status' => $data['status'],
             'paid_at' => $data['status'] === Expense::STATUS_PAID ? now() : null,
-            'created_by' => auth()->id(),
+            // System-generated expenses (payroll close) have no acting user.
+            'created_by' => array_key_exists('created_by', $data) ? $data['created_by'] : auth()->id(),
         ]);
 
-        if (!empty($data['receipts'])) {
+        if (! empty($data['receipts'])) {
             $this->receiptService->attachMany($expense, $data['receipts']);
         }
 
