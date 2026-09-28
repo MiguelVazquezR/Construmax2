@@ -66,7 +66,7 @@ POST   /users/bulk-delete          users.bulk-destroy
 | Daily salary | Payroll basis. The daily hours are no longer typed: they follow the assigned schedule (see below) |
 | Subject to payroll / records attendance | `is_payroll_subject`, `is_attendance_subject` |
 | Remote attendance | `can_remote_attendance` — requires `payroll.remote-attendance.manage`; other fields require `payroll.profiles.manage` (enforced by `SyncPayrollProfileAction::sanitizeFor`) |
-| Assigned schedule | `shift_id` — the schedule selector lives in the *Nómina* card (where «Horas por día» used to be), required while the collaborator is subject to payroll, with an info icon that opens a summary popover (worked days, schedules and meal time). Saved through `AssignUserShiftAction`: creates/updates the individual fixed assignment starting on the hire date and keeps `daily_hours` in sync with the schedule. Only applied with `payroll.profiles.manage` |
+| Assigned schedule | `shift_id` — the schedule selector lives in the *Nómina* card (where «Horas por día» used to be), required while the collaborator is subject to payroll, with an info icon that opens a summary popover (worked days, schedules and meal time). Saved through `AssignUserShiftAction`: creates or updates the individual fixed assignment starting on the hire date, removes it when the selector is cleared (falling back to the department assignment, if any), and keeps `daily_hours` in sync with the schedule. Only applied with `payroll.profiles.manage` |
 | Kiosk PIN | Digits only (4 to 12) in the *Asistencia* card; requires «Registra asistencia». Stored hashed — an empty value keeps the current pin and `has_kiosk_pin` is exposed as a boolean flag |
 
 ### User show page

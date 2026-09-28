@@ -229,9 +229,9 @@ const submit = () => {
                             <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Similitud mínima para aceptar la identificación; más alto es más estricto.</p>
                         </el-form-item>
 
-                        <el-form-item label="Respaldo con número de empleado y PIN en kiosco" prop="kiosk_pin_fallback_enabled" :error="form.errors.kiosk_pin_fallback_enabled">
+                        <el-form-item label="Respaldo con PIN en kiosco" prop="kiosk_pin_fallback_enabled" :error="form.errors.kiosk_pin_fallback_enabled">
                             <el-switch v-model="form.kiosk_pin_fallback_enabled" style="--el-switch-on-color: #f26c17;" />
-                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-3">Muestra la opción de registrar con número de empleado y PIN como alternativa al rostro.</p>
+                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-3">Muestra la opción de registrar con PIN como alternativa al rostro.</p>
                         </el-form-item>
 
                         <el-form-item label="Colección de rostros en Rekognition" prop="rekognition_collection_id" :error="form.errors.rekognition_collection_id">

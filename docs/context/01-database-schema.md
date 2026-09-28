@@ -461,7 +461,7 @@ Digital "Acta de recepción" signed by branch managers.
 
 ## Domain: Payroll & HR (Recursos Humanos)
 
-Created by migrations `2026_09_19_000001` … `000015` (see `docs/context/16-module-payroll.md` for business rules).
+Created by the consolidated migration `2026_09_19_000001_create_payroll_module_tables` (see `docs/context/16-module-payroll.md` for business rules).
 
 ### `payroll_settings` (singleton)
 | Column | Type | Notes |
@@ -485,7 +485,7 @@ Created by migrations `2026_09_19_000001` … `000015` (see `docs/context/16-mod
 | `updated_by` | FK → users.id | nullable |
 
 ### `payroll_profiles`
-One per user. `employee_number` (unique, auto `EMP-####`), `hire_date`, `termination_date`, `daily_salary`, `daily_hours` (kept in sync from the assigned schedule by `AssignUserShiftAction`; no longer typed in the forms), `is_payroll_subject`, `is_attendance_subject`, `can_remote_attendance`, `kiosk_pin` (bcrypt) + `kiosk_pin_lookup` (HMAC fingerprint for the kiosk search; migration `2026_09_22_000001`), `notes`.
+One per user. `employee_number` (unique, auto `EMP-####`), `hire_date`, `termination_date`, `daily_salary`, `daily_hours` (kept in sync from the assigned schedule by `AssignUserShiftAction`; no longer typed in the forms), `is_payroll_subject`, `is_attendance_subject`, `can_remote_attendance`, `kiosk_pin` (bcrypt) + `kiosk_pin_lookup` (HMAC fingerprint for the kiosk search), `notes`.
 
 ### `attendance_devices`
 Authorized kiosk devices: `name`, `location`, `token_hash` (sha256, unique), registered by/at, `last_seen_at`/`last_seen_ip`/`user_agent`, `is_active`, revoked by/at.
@@ -512,7 +512,7 @@ Sparse per user+date: `late_ignored`, `notes`, `updated_by` (unique user_id + da
 `user_id`, `start_date`, `end_date`, `days`, `status` (pending/approved/rejected/cancelled), `reason`, `requested_by`, `reviewed_by`, `reviewed_at`, `review_notes`.
 
 ### `payroll_periods`
-`type`, `start_date`, `end_date`, `status` (open/closed), `closed_at`, `closed_by` (null = automatic), `reopened_at` (migration `2026_09_22_000002`: a period reopened by hand is never closed automatically again), `total_gross`, `total_deductions`, `total_net`, `expense_id`, `notes`. Periods are weekly (Monday–Sunday) and no two rows can ever share dates.
+`type`, `start_date`, `end_date`, `status` (open/closed), `closed_at`, `closed_by` (null = automatic), `reopened_at` (a period reopened by hand is never closed automatically again), `total_gross`, `total_deductions`, `total_net`, `expense_id`, `notes`. Periods are weekly (Monday–Sunday) and no two rows can ever share dates.
 
 ### `payroll_adjustments`
 `payroll_period_id`, `user_id`, `type` (earning/deduction), `concept`, `amount`, `notes`, `created_by`.

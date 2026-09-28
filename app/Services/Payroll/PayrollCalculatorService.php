@@ -102,6 +102,11 @@ class PayrollCalculatorService
      *  - Worked rest days: every worked minute is overtime, and the same
      *    minutes travel in the day payload, so the period detail reconciles
      *    with the weekly pool shown as the collaborator total.
+     *  - Rest days may also be paid: when the assigned shift turns on
+     *    `pays_rest_days`, the rest days of the week pay in proportion to the
+     *    days with pay of the week; the amount gets its own "Día(s) de
+     *    descanso" concept and the worked minutes of those days still pay as
+     *    overtime on top.
      *
      * @return array{
      *     snapshot: array<string, mixed>,
@@ -129,6 +134,13 @@ class PayrollCalculatorService
         $days = [];
         $overtimePoolMinutes = 0.0;
 
+        // Weekly rest day support: scheduled days inside the employment
+        // window, the paid fraction earned on them, and the rest days that
+        // the assigned shift marks as paid in the same window.
+        $scheduledWindowDays = 0;
+        $creditedWorkdays = 0.0;
+        $paidRestDates = [];
+
         $totals = [
             'days_worked' => 0.0,
             'days_paid' => 0.0,
@@ -143,6 +155,8 @@ class PayrollCalculatorService
             'vacation_days' => 0.0,
             'incapacity_days' => 0.0,
             'incapacity_amount' => 0.0,
+            'rest_day_days' => 0.0,
+            'rest_day_amount' => 0.0,
             'adjustments_earnings' => 0.0,
             'adjustments_deductions' => 0.0,
         ];
@@ -240,6 +254,15 @@ class PayrollCalculatorService
                 }
             }
 
+            if ($countableWorkday) {
+                $scheduledWindowDays++;
+                $creditedWorkdays += $dayFraction;
+            }
+
+            if ($summary->status === AttendanceDaySummary::STATUS_REST_DAY && $summary->shift?->pays_rest_days) {
+                $paidRestDates[] = $cursor->toDateString();
+            }
+
             $totals['days_paid'] += $dayFraction;
 
             $days[] = [
@@ -265,6 +288,33 @@ class PayrollCalculatorService
             ];
 
             $cursor = $cursor->addDay();
+        }
+
+        // Paid rest days: when the assigned shift marks them as paid, the rest
+        // days of the week pay in proportion to the days with pay (worked
+        // days, vacations, paid permissions and holidays count; unjustified
+        // absences reduce the amount). Holidays pay through their own rule
+        // and are never counted here, so they do not double pay with a rest
+        // day.
+        $paidRestDays = count($paidRestDates);
+
+        if ($paidRestDays > 0 && $scheduledWindowDays > 0) {
+            $ratio = min(1.0, $creditedWorkdays / $scheduledWindowDays);
+            $restDays = $paidRestDays * $ratio;
+
+            $totals['rest_day_days'] = round($restDays, 4);
+            $totals['rest_day_amount'] = round($restDays * $dailySalary, 2);
+            $totals['days_paid'] += $totals['rest_day_days'];
+
+            // The day detail reflects the paid share of each rest day so the
+            // rows keep adding up to the total of payable days.
+            $share = $restDays / $paidRestDays;
+
+            foreach ($days as $index => $day) {
+                if ($day['status'] === AttendanceDaySummary::STATUS_REST_DAY && in_array($day['date'], $paidRestDates, true)) {
+                    $days[$index]['pay_fraction'] = round($day['pay_fraction'] + $share, 4);
+                }
+            }
         }
 
         // Overtime is paid at the normal rate: the business rule is a single
@@ -332,15 +382,31 @@ class PayrollCalculatorService
         $lines = [];
         $sort = 0;
 
+        // Attendance days (worked days, holidays and incidents) without the
+        // paid rest days, which get their own line below.
+        $attendanceDays = round($totals['days_paid'] - $totals['rest_day_days'], 2);
+
         $lines[] = [
             'concept' => 'Sueldo',
             'type' => 'earning',
-            'quantity' => round($totals['days_paid'], 2),
+            'quantity' => $attendanceDays,
             'unit_rate' => round($dailySalary, 2),
-            'amount' => round($totals['days_paid'] * $dailySalary, 2),
+            'amount' => round($attendanceDays * $dailySalary, 2),
             'source' => 'attendance',
             'sort_order' => $sort += 10,
         ];
+
+        if ($totals['rest_day_days'] > 0) {
+            $lines[] = [
+                'concept' => 'Día(s) de descanso',
+                'type' => 'earning',
+                'quantity' => round($totals['rest_day_days'], 2),
+                'unit_rate' => round($dailySalary, 2),
+                'amount' => round($totals['rest_day_amount'], 2),
+                'source' => 'rest_day',
+                'sort_order' => $sort += 10,
+            ];
+        }
 
         if ($totals['overtime_double_minutes'] > 0) {
             $lines[] = [

@@ -53,10 +53,38 @@ class ShiftControllerTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('Payroll/Shifts/Index')
                 ->has('shifts', 1)
+                ->has('shifts.0.pays_rest_days')
                 ->has('assignments')
                 ->has('users')
                 ->has('weekDays')
+                ->has('globalLateToleranceMinutes')
                 ->has('shiftTypeDescriptions', 3)
+            );
+    }
+
+    public function test_index_includes_the_assignees_with_a_technician_flag(): void
+    {
+        $shift = Shift::create($this->shiftPayload());
+
+        $technicianUser = User::factory()->create(['is_active' => true, 'name' => 'Técnica Prueba']);
+        $technicianUser->technician()->create([]);
+
+        ShiftAssignment::create([
+            'user_id' => $technicianUser->id,
+            'type' => ShiftAssignment::TYPE_FIXED,
+            'shift_id' => $shift->id,
+            'start_date' => '2026-09-01',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('payroll.shifts.index'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('assignments', 1)
+                ->where('assignments.0.user.name', 'Técnica Prueba')
+                ->has('assignments.0.user.technician')
+                ->where('assignments.0.is_active', true)
             );
     }
 
@@ -82,6 +110,7 @@ class ShiftControllerTest extends TestCase
         $this->assertSame('Turno matutino', $shift->name);
         $this->assertSame([1, 2, 3, 4, 5], $shift->days);
         $this->assertSame(480, $shift->expectedDailyMinutes());
+        $this->assertFalse($shift->pays_rest_days);
     }
 
     public function test_store_validates_required_fields(): void
@@ -120,6 +149,23 @@ class ShiftControllerTest extends TestCase
 
         $this->assertSame('Turno vespertino', $shift->name);
         $this->assertSame('14:00', substr((string) $shift->start_time, 0, 5));
+    }
+
+    public function test_the_paid_rest_days_toggle_is_saved_and_can_be_turned_off(): void
+    {
+        $this->actingAs($this->admin)
+            ->post(route('payroll.shifts.store'), $this->shiftPayload(['pays_rest_days' => true]))
+            ->assertRedirect();
+
+        $shift = Shift::first();
+
+        $this->assertTrue($shift->pays_rest_days);
+
+        $this->actingAs($this->admin)
+            ->put(route('payroll.shifts.update', $shift), $this->shiftPayload(['pays_rest_days' => false]))
+            ->assertRedirect();
+
+        $this->assertFalse($shift->fresh()->pays_rest_days);
     }
 
     public function test_destroy_deletes_an_unused_shift(): void

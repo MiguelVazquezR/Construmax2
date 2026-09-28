@@ -37,9 +37,9 @@ class StoreShiftAssignmentRequest extends FormRequest
         return [
             'user_id.required_without' => 'Selecciona un colaborador o escribe un departamento.',
             'department.required_without' => 'Selecciona un colaborador o escribe un departamento.',
-            'shift_id.required_if' => 'Selecciona el turno a asignar.',
-            'rotation.required_if' => 'Agrega al menos dos turnos a la rotación.',
-            'rotation.min' => 'La rotación debe incluir al menos dos turnos.',
+            'shift_id.required_if' => 'Selecciona el horario a asignar.',
+            'rotation.required_if' => 'Agrega al menos dos horarios a la rotación.',
+            'rotation.min' => 'La rotación debe incluir al menos dos horarios.',
             'start_date.required' => 'Indica la fecha de inicio de la asignación.',
             'end_date.after_or_equal' => 'La fecha final no puede ser anterior a la inicial.',
         ];

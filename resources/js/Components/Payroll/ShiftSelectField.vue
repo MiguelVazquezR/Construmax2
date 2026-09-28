@@ -150,12 +150,15 @@ const mealLabel = computed(() => {
 
                             <p class="text-xs text-gray-400">Días: {{ workedDaysLabel }}</p>
                             <p class="text-xs text-gray-400">Comida: {{ mealLabel }}</p>
+                            <p class="text-xs text-gray-400">
+                                Días de descanso: {{ selectedShift.pays_rest_days ? 'pagados' : 'no pagados' }}
+                            </p>
                         </div>
                     </el-popover>
                 </span>
             </template>
 
-            <el-select v-model="form.shift_id" filterable placeholder="Sin horario asignado" class="w-full">
+            <el-select v-model="form.shift_id" filterable clearable placeholder="Sin horario asignado" class="w-full">
                 <el-option v-for="shift in shifts" :key="shift.id" :label="shift.name" :value="shift.id" />
             </el-select>
         </el-form-item>

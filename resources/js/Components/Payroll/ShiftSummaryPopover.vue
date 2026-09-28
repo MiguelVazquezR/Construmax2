@@ -122,6 +122,9 @@ const mealLabel = computed(() => {
 
             <p class="text-xs text-gray-400">Días: {{ workedDaysLabel }}</p>
             <p class="text-xs text-gray-400">Comida: {{ mealLabel }}</p>
+            <p class="text-xs text-gray-400">
+                Días de descanso: {{ shift.pays_rest_days ? 'pagados' : 'no pagados' }}
+            </p>
         </div>
     </el-popover>
 </template>

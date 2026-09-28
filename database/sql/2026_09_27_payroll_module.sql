@@ -1,11 +1,11 @@
 -- =====================================================================
 -- Construmax2 ERP — Módulo de Recursos Humanos y Nómina
 -- Script de entrega para phpMyAdmin (MySQL 8)
--- Fecha: 2026-09-19 · Migraciones: 2026_09_19_000001 a 2026_09_19_000015
+-- Fecha: 2026-09-27 · Migración consolidada: 2026_09_19_000001_create_payroll_module_tables
 --
 -- Uso: importar este archivo en la base de datos (phpMyAdmin > Importar).
 -- Contenido:
---   1. Estructura de las 16 tablas del módulo (DROP + CREATE)
+--   1. Estructura de las 19 tablas del módulo (DROP + CREATE)
 --   2. Alteraciones sobre la tabla `expenses`
 --   3. Permisos del módulo (categoría "Nómina")
 --   4. Datos iniciales (categoría de gasto "Nómina" y configuración singleton)
@@ -52,6 +52,8 @@ CREATE TABLE `payroll_settings` (
   `holiday_worked_extra_multiplier` decimal(4,2) NOT NULL DEFAULT '2.00',
   `vacation_min_days_to_request` decimal(5,2) NOT NULL DEFAULT '1.00',
   `vacation_carryover_months` smallint unsigned NOT NULL DEFAULT '18',
+  `vacation_premium_notice_enabled` tinyint(1) NOT NULL DEFAULT '1',
+  `vacation_premium_notice_mode` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'once',
   `incapacity_paid` tinyint(1) NOT NULL DEFAULT '0',
   `incapacity_pay_percentage` smallint unsigned NOT NULL DEFAULT '60',
   `default_daily_hours` decimal(5,2) NOT NULL DEFAULT '8.00',
@@ -83,14 +85,16 @@ CREATE TABLE `payroll_profiles` (
   `is_attendance_subject` tinyint(1) NOT NULL DEFAULT '0',
   `can_remote_attendance` tinyint(1) NOT NULL DEFAULT '0',
   `kiosk_pin` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `kiosk_pin_lookup` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `notes` text COLLATE utf8mb4_unicode_ci,
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `payroll_profiles_user_id_unique` (`user_id`),
   UNIQUE KEY `payroll_profiles_employee_number_unique` (`employee_number`),
+  KEY `payroll_profiles_kiosk_pin_lookup_index` (`kiosk_pin_lookup`),
   CONSTRAINT `payroll_profiles_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `attendance_devices`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -117,7 +121,7 @@ CREATE TABLE `attendance_devices` (
   KEY `attendance_devices_revoked_by_foreign` (`revoked_by`),
   CONSTRAINT `attendance_devices_registered_by_foreign` FOREIGN KEY (`registered_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `attendance_devices_revoked_by_foreign` FOREIGN KEY (`revoked_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `attendance_logs`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -148,7 +152,7 @@ CREATE TABLE `attendance_logs` (
   CONSTRAINT `attendance_logs_attendance_device_id_foreign` FOREIGN KEY (`attendance_device_id`) REFERENCES `attendance_devices` (`id`) ON DELETE SET NULL,
   CONSTRAINT `attendance_logs_edited_by_foreign` FOREIGN KEY (`edited_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `attendance_logs_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `attendance_day_overrides`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -180,7 +184,9 @@ CREATE TABLE `shifts` (
   `end_time` time DEFAULT NULL,
   `meal_minutes` smallint unsigned NOT NULL DEFAULT '60',
   `is_meal_paid` tinyint(1) NOT NULL DEFAULT '0',
+  `pays_rest_days` tinyint(1) NOT NULL DEFAULT '0',
   `days` json NOT NULL,
+  `day_schedules` json DEFAULT NULL,
   `required_daily_hours` decimal(5,2) DEFAULT NULL,
   `late_tolerance_minutes` smallint unsigned DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
@@ -188,7 +194,7 @@ CREATE TABLE `shifts` (
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `shift_assignments`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -212,7 +218,7 @@ CREATE TABLE `shift_assignments` (
   KEY `shift_assignments_department_start_date_index` (`department`,`start_date`),
   CONSTRAINT `shift_assignments_shift_id_foreign` FOREIGN KEY (`shift_id`) REFERENCES `shifts` (`id`) ON DELETE SET NULL,
   CONSTRAINT `shift_assignments_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `holidays`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -231,6 +237,77 @@ CREATE TABLE `holidays` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `holidays_date_unique` (`date`),
   KEY `holidays_year_index` (`year`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `vacation_requests`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `vacation_requests` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` bigint unsigned NOT NULL,
+  `start_date` date NOT NULL,
+  `end_date` date NOT NULL,
+  `days` decimal(6,2) NOT NULL,
+  `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  `reason` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `requested_by` bigint unsigned DEFAULT NULL,
+  `reviewed_by` bigint unsigned DEFAULT NULL,
+  `reviewed_at` timestamp NULL DEFAULT NULL,
+  `review_notes` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `vacation_requests_requested_by_foreign` (`requested_by`),
+  KEY `vacation_requests_reviewed_by_foreign` (`reviewed_by`),
+  KEY `vacation_requests_user_id_start_date_index` (`user_id`,`start_date`),
+  CONSTRAINT `vacation_requests_requested_by_foreign` FOREIGN KEY (`requested_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `vacation_requests_reviewed_by_foreign` FOREIGN KEY (`reviewed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `vacation_requests_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `vacation_adjustments`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `vacation_adjustments` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` bigint unsigned NOT NULL,
+  `type` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `days` decimal(5,2) NOT NULL,
+  `reason` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_by` bigint unsigned DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `vacation_adjustments_created_by_foreign` (`created_by`),
+  KEY `vacation_adjustments_user_id_created_at_index` (`user_id`,`created_at`),
+  CONSTRAINT `vacation_adjustments_created_by_foreign` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `vacation_adjustments_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `vacation_periods`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `vacation_periods` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` bigint unsigned NOT NULL,
+  `year_number` smallint unsigned NOT NULL,
+  `start_date` date NOT NULL,
+  `end_date` date NOT NULL,
+  `entitled_days` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `accrued_days` decimal(6,2) NOT NULL DEFAULT '0.00',
+  `taken_days` decimal(6,2) NOT NULL DEFAULT '0.00',
+  `is_customized` tinyint(1) NOT NULL DEFAULT '0',
+  `premium_paid_at` date DEFAULT NULL,
+  `premium_notified_at` timestamp NULL DEFAULT NULL,
+  `created_by` bigint unsigned DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `vacation_periods_user_id_year_number_unique` (`user_id`,`year_number`),
+  KEY `vacation_periods_created_by_foreign` (`created_by`),
+  CONSTRAINT `vacation_periods_created_by_foreign` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `vacation_periods_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `incidents`;
@@ -263,32 +340,6 @@ CREATE TABLE `incidents` (
   CONSTRAINT `incidents_vacation_request_id_foreign` FOREIGN KEY (`vacation_request_id`) REFERENCES `vacation_requests` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `vacation_requests`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `vacation_requests` (
-  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `user_id` bigint unsigned NOT NULL,
-  `start_date` date NOT NULL,
-  `end_date` date NOT NULL,
-  `days` decimal(6,2) NOT NULL,
-  `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
-  `reason` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `requested_by` bigint unsigned DEFAULT NULL,
-  `reviewed_by` bigint unsigned DEFAULT NULL,
-  `reviewed_at` timestamp NULL DEFAULT NULL,
-  `review_notes` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `created_at` timestamp NULL DEFAULT NULL,
-  `updated_at` timestamp NULL DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  KEY `vacation_requests_requested_by_foreign` (`requested_by`),
-  KEY `vacation_requests_reviewed_by_foreign` (`reviewed_by`),
-  KEY `vacation_requests_user_id_start_date_index` (`user_id`,`start_date`),
-  CONSTRAINT `vacation_requests_requested_by_foreign` FOREIGN KEY (`requested_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
-  CONSTRAINT `vacation_requests_reviewed_by_foreign` FOREIGN KEY (`reviewed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
-  CONSTRAINT `vacation_requests_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `payroll_periods`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
@@ -299,6 +350,7 @@ CREATE TABLE `payroll_periods` (
   `end_date` date NOT NULL,
   `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'open',
   `closed_at` timestamp NULL DEFAULT NULL,
+  `reopened_at` timestamp NULL DEFAULT NULL,
   `closed_by` bigint unsigned DEFAULT NULL,
   `total_gross` decimal(12,2) DEFAULT NULL,
   `total_deductions` decimal(12,2) DEFAULT NULL,
@@ -448,6 +500,26 @@ CREATE TABLE `face_enrollments` (
   CONSTRAINT `face_enrollments_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `payroll_notes`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `payroll_notes` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `payroll_period_id` bigint unsigned NOT NULL,
+  `user_id` bigint unsigned NOT NULL,
+  `body` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `created_by` bigint unsigned DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `payroll_notes_user_id_foreign` (`user_id`),
+  KEY `payroll_notes_created_by_foreign` (`created_by`),
+  KEY `payroll_notes_payroll_period_id_user_id_index` (`payroll_period_id`,`user_id`),
+  CONSTRAINT `payroll_notes_created_by_foreign` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `payroll_notes_payroll_period_id_foreign` FOREIGN KEY (`payroll_period_id`) REFERENCES `payroll_periods` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `payroll_notes_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
@@ -482,7 +554,7 @@ INSERT IGNORE INTO `permissions` (`name`, `guard_name`, `category`, `description
 ('payroll.profiles.manage', 'web', 'Nómina', 'Editar los datos de nómina y asistencia de los colaboradores', NOW(), NOW()),
 ('payroll.remote-attendance.manage', 'web', 'Nómina', 'Activar o desactivar la asistencia remota de colaboradores y técnicos', NOW(), NOW()),
 ('payroll.devices.manage', 'web', 'Nómina', 'Gestionar los dispositivos autorizados del kiosco de asistencia', NOW(), NOW()),
-('payroll.shifts.manage', 'web', 'Nómina', 'Gestionar turnos, horarios y sus asignaciones', NOW(), NOW()),
+('payroll.shifts.manage', 'web', 'Nómina', 'Gestionar los horarios del personal y sus asignaciones', NOW(), NOW()),
 ('payroll.incidents.manage', 'web', 'Nómina', 'Registrar y administrar incidencias de asistencia', NOW(), NOW()),
 ('payroll.vacations.manage', 'web', 'Nómina', 'Ver y administrar el módulo de vacaciones', NOW(), NOW()),
 ('payroll.vacations.approve', 'web', 'Nómina', 'Aprobar o rechazar solicitudes de vacaciones', NOW(), NOW()),
@@ -503,8 +575,15 @@ SELECT 'Nómina', 1, 0, NOW(), NOW()
 WHERE NOT EXISTS (SELECT 1 FROM `expense_categories` WHERE `name` = 'Nómina');
 
 -- Configuración singleton del módulo (los valores por defecto aplican;
--- `PayrollSetting::current()` también la crea automáticamente si falta)
-INSERT IGNORE INTO `payroll_settings` (`id`, `created_at`, `updated_at`) VALUES (1, NOW(), NOW());
+-- `PayrollSetting::current()` también la crea automáticamente si falta).
+-- Se asigna la categoría de gasto "Nómina" para el gasto espejo de los
+-- periodos, igual que lo hace la migración.
+INSERT IGNORE INTO `payroll_settings` (`id`, `payroll_expense_category_id`, `created_at`, `updated_at`)
+SELECT 1, (SELECT `id` FROM `expense_categories` WHERE `name` = 'Nómina' LIMIT 1), NOW(), NOW();
+
+UPDATE `payroll_settings`
+SET `payroll_expense_category_id` = (SELECT `id` FROM `expense_categories` WHERE `name` = 'Nómina' LIMIT 1)
+WHERE `id` = 1 AND `payroll_expense_category_id` IS NULL;
 
 SET FOREIGN_KEY_CHECKS = 1;
 

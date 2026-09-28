@@ -73,15 +73,43 @@ class AssignUserShiftActionTest extends TestCase
         $this->assertDatabaseCount('shift_assignments', 1);
     }
 
-    public function test_it_ignores_missing_or_unknown_shifts(): void
+    public function test_it_ignores_unknown_shifts(): void
     {
         $user = User::factory()->create(['is_active' => true]);
 
-        $action = app(AssignUserShiftAction::class);
-
-        $this->assertNull($action->execute($user, null));
-        $this->assertNull($action->execute($user, 999));
+        $this->assertNull(app(AssignUserShiftAction::class)->execute($user, 999));
         $this->assertDatabaseCount('shift_assignments', 0);
+    }
+
+    public function test_an_empty_selection_from_the_form_removes_the_individual_assignment(): void
+    {
+        Permission::create([
+            'name' => 'payroll.profiles.manage',
+            'guard_name' => 'web',
+            'category' => 'Nómina',
+            'description' => 'Manage payroll profiles',
+        ]);
+
+        $admin = User::factory()->create(['is_active' => true]);
+        $admin->givePermissionTo('payroll.profiles.manage');
+
+        $user = User::factory()->create(['is_active' => true]);
+        $shift = $this->makeShift('Matutino');
+
+        $assignment = ShiftAssignment::create([
+            'user_id' => $user->id,
+            'type' => ShiftAssignment::TYPE_FIXED,
+            'shift_id' => $shift->id,
+            'start_date' => '2026-09-01',
+            'is_active' => true,
+        ]);
+
+        $request = Request::create('/', 'POST');
+        $request->setUserResolver(fn () => $admin);
+
+        // The schedule selector of the form was submitted empty.
+        $this->assertNull(app(AssignUserShiftAction::class)->executeFromForm($request, $user, ['shift_id' => null]));
+        $this->assertDatabaseMissing('shift_assignments', ['id' => $assignment->id]);
     }
 
     public function test_assigning_a_shift_keeps_the_profile_daily_hours_in_sync(): void

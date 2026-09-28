@@ -377,7 +377,7 @@ class PermissionSeeder extends Seeder
             [
                 'name' => 'payroll.shifts.manage',
                 'category' => 'Nómina',
-                'description' => 'Gestionar turnos, horarios y sus asignaciones',
+                'description' => 'Gestionar los horarios del personal y sus asignaciones',
             ],
             [
                 'name' => 'payroll.incidents.manage',

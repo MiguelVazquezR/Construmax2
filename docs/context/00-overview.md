@@ -56,7 +56,7 @@ Construmax2/
 │       ├── Payroll/      # AttendanceDayService, ScheduleResolverService, VacationService, PayrollCalculatorService, PayrollPeriodService, FaceRecognition/*
 │       └── Notifications/# NotificationService
 ├── config/               # Standard Laravel + Spatie + Jetstream + Sanctum
-├── database/migrations/  # 43 migration files
+├── database/migrations/  # 28 migration files (the payroll module is consolidated into one)
 ├── resources/js/
 │   ├── Pages/            # Inertia page components (one folder per module)
 │   ├── Components/       # Reusable UI (shared + per-module subfolders)

@@ -83,7 +83,16 @@ const dayTagType = (day) => {
     }[day.status] || 'info';
 };
 
-const dayStatusLabel = (day) => day.status_label || statusLabels[day.status] || day.status;
+const dayStatusLabel = (day) => {
+    const label = day.status_label || statusLabels[day.status] || day.status;
+
+    // Paid rest days say so, so the payment of the day is visible in the detail.
+    if (day.status === 'rest_day' && Number(day.pay_fraction) > 0) {
+        return `${label} · pagado`;
+    }
+
+    return label;
+};
 
 // Days without a single punch (absences, vacations, holidays, rest days...)
 // collapse into one full-width status pill while keeping the date, the shift
@@ -773,14 +782,14 @@ const destroyNote = (note) => {
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Turno" min-width="220">
+                    <el-table-column label="Horario" min-width="220">
                         <template #default="scope">
                             <span v-if="scope.row.shift" class="text-gray-700 dark:text-gray-200">{{ scope.row.shift }}</span>
-                            <span v-else class="text-gray-400">Sin turno asignado</span>
+                            <span v-else class="text-gray-400">Sin horario asignado</span>
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Horario" min-width="180" align="center">
+                    <el-table-column label="Entrada y salida" min-width="180" align="center">
                         <template #default="scope">
                             <template v-if="scope.row.flexible">{{ hours(scope.row.expected_minutes) }} h flexibles</template>
                             <template v-else-if="scope.row.start">{{ scope.row.start }} – {{ scope.row.end }}</template>

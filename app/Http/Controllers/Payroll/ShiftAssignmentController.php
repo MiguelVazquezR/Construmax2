@@ -8,13 +8,19 @@ use App\Models\ShiftAssignment;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
+/**
+ * Legacy endpoints of the shift assignments panel, retired from the shifts
+ * screen (assignments are now managed from the user and technician forms
+ * through AssignUserShiftAction). They stay available for a future re-enable
+ * of the panel.
+ */
 class ShiftAssignmentController extends Controller
 {
     public function store(StoreShiftAssignmentRequest $request): RedirectResponse
     {
         ShiftAssignment::create($request->validated());
 
-        return back()->with('success', 'Asignación de turno registrada.');
+        return back()->with('success', 'Asignación de horario registrada.');
     }
 
     public function destroy(Request $request, ShiftAssignment $assignment): RedirectResponse

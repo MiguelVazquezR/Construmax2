@@ -63,6 +63,7 @@ class StoreShiftRequest extends FormRequest
             'end_time' => ['nullable', 'required_if:type,fixed', 'date_format:H:i,H:i:s'],
             'meal_minutes' => ['required', 'integer', 'min:0', 'max:480'],
             'is_meal_paid' => ['sometimes', 'boolean'],
+            'pays_rest_days' => ['sometimes', 'boolean'],
 
             'days' => ['nullable', 'array', 'min:1', 'required_unless:type,per_day'],
             'days.*' => ['integer', 'between:1,7'],
@@ -83,13 +84,13 @@ class StoreShiftRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'name.required' => 'El nombre del turno es obligatorio.',
-            'start_time.required_if' => 'Indica la hora de entrada del turno fijo.',
-            'end_time.required_if' => 'Indica la hora de salida del turno fijo.',
+            'name.required' => 'El nombre del horario es obligatorio.',
+            'start_time.required_if' => 'Indica la hora de entrada del horario fijo.',
+            'end_time.required_if' => 'Indica la hora de salida del horario fijo.',
             'days.required_unless' => 'Selecciona al menos un día de la semana.',
             'days.min' => 'Selecciona al menos un día de la semana.',
             'day_schedules.required_if' => 'Configura al menos un día de trabajo con su horario.',
-            'required_daily_hours.required_if' => 'Indica las horas diarias requeridas del turno flexible.',
+            'required_daily_hours.required_if' => 'Indica las horas diarias requeridas del horario flexible.',
         ];
     }
 }

@@ -9,10 +9,10 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 
 /**
- * Assigns (or replaces) the individual shift of a collaborator from the user
- * or technician form. It only touches the individual fixed assignment; the
- * department assignments keep working as a fallback. It also keeps the payroll
- * profile's daily hours aligned with the assigned schedule.
+ * Assigns, replaces or removes the individual shift of a collaborator from the
+ * user or technician form. It only touches the individual fixed assignment;
+ * the department assignments keep working as a fallback. It also keeps the
+ * payroll profile's daily hours aligned with the assigned schedule.
  */
 class AssignUserShiftAction
 {
@@ -33,9 +33,16 @@ class AssignUserShiftAction
 
     public function execute(User $user, ?int $shiftId): ?ShiftAssignment
     {
-        $shift = $shiftId !== null && $shiftId > 0
-            ? Shift::query()->find($shiftId)
-            : null;
+        // Empty selection: the collaborator keeps no individual shift, so the
+        // current fixed assignment is removed and the department assignment
+        // (if any) applies again.
+        if ($shiftId === null) {
+            ShiftAssignment::currentFor($user)?->delete();
+
+            return null;
+        }
+
+        $shift = $shiftId > 0 ? Shift::query()->find($shiftId) : null;
 
         if (! $shift) {
             return null;

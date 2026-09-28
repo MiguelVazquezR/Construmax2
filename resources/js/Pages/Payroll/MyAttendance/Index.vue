@@ -105,9 +105,9 @@ const dateLabel = computed(() =>
 
 const workState = computed(() => {
     if (props.today?.is_paused) return { label: 'En descanso', type: 'warning' };
-    if (props.today?.is_working) return { label: 'En turno', type: 'success' };
+    if (props.today?.is_working) return { label: 'Dentro de horario', type: 'success' };
     if (props.today?.status === 'present') return { label: 'Jornada terminada', type: 'info' };
-    return { label: 'Fuera de turno', type: 'info' };
+    return { label: 'Fuera de horario', type: 'info' };
 });
 
 const suggestedNextLabel = computed(() =>
@@ -461,7 +461,7 @@ onBeforeUnmount(() => {
                                         <div class="flex flex-wrap items-center justify-center gap-2 mt-4">
                                             <el-tag :type="workState.type" effect="dark" class="rounded-full">{{ workState.label }}</el-tag>
                                             <el-tag v-if="today?.shift_name" type="info" effect="plain" class="rounded-full">
-                                                Turno: {{ today.shift_name }}
+                                                Horario: {{ today.shift_name }}
                                             </el-tag>
                                         </div>
 

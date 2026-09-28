@@ -116,6 +116,14 @@ class PayrollCalculatorServiceTest extends TestCase
         }
     }
 
+    /**
+     * Turns on the paid rest days toggle of the schedule used by the tests.
+     */
+    private function makeShiftPayRestDays(): void
+    {
+        Shift::where('name', 'Matutino')->first()->update(['pays_rest_days' => true]);
+    }
+
     public function test_regular_week_pays_the_five_worked_days(): void
     {
         $this->workWeek($this->user);
@@ -178,6 +186,101 @@ class PayrollCalculatorServiceTest extends TestCase
             $totals['overtime_double_minutes'] + $totals['overtime_triple_minutes'],
             (int) collect($result['days'])->sum('overtime_minutes')
         );
+    }
+
+    public function test_rest_days_pay_only_when_the_shift_turns_the_toggle_on(): void
+    {
+        $this->workWeek($this->user);
+
+        // Rest days are not paid by default: the shift keeps the toggle off.
+        $totals = $this->calculator->calculateFor($this->user, $this->period)['totals'];
+
+        $this->assertEqualsWithDelta(5.0, $totals['days_paid'], 0.001);
+        $this->assertEqualsWithDelta(0.0, $totals['rest_day_days'], 0.001);
+
+        // With the toggle on, saturday and sunday join the payable days of
+        // the week (proportional rule: the whole week was worked).
+        $this->makeShiftPayRestDays();
+
+        $result = $this->calculator->calculateFor($this->user, $this->period);
+        $totals = $result['totals'];
+
+        $this->assertEqualsWithDelta(7.0, $totals['days_paid'], 0.001);
+        $this->assertEqualsWithDelta(2.0, $totals['rest_day_days'], 0.001);
+        $this->assertEqualsWithDelta(800.0, $totals['rest_day_amount'], 0.01);
+        $this->assertEqualsWithDelta(2800.0, $totals['total_net'], 0.01);
+
+        $lines = collect($result['lines']);
+
+        // The receipt splits the attendance days from the paid rest days.
+        $this->assertEqualsWithDelta(5.0, $lines->firstWhere('source', 'attendance')['quantity'], 0.01);
+        $this->assertSame('Día(s) de descanso', $lines->firstWhere('source', 'rest_day')['concept']);
+    }
+
+    public function test_paid_rest_days_shrink_with_unjustified_absences(): void
+    {
+        $this->makeShiftPayRestDays();
+
+        foreach (['2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10'] as $date) {
+            $this->regularDay($this->user, $date);
+        }
+
+        $totals = $this->calculator->calculateFor($this->user, $this->period)['totals'];
+
+        // 4 of the 5 scheduled days: the two weekend days pay 2 * (4/5) = 1.6.
+        $this->assertEqualsWithDelta(5.6, $totals['days_paid'], 0.001);
+        $this->assertEqualsWithDelta(1.6, $totals['rest_day_days'], 0.001);
+        $this->assertEqualsWithDelta(640.0, $totals['rest_day_amount'], 0.01);
+    }
+
+    public function test_vacations_count_as_paid_days_for_the_rest_day_payment(): void
+    {
+        $this->makeShiftPayRestDays();
+
+        foreach (['2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10'] as $date) {
+            $this->regularDay($this->user, $date);
+        }
+
+        Incident::create([
+            'user_id' => $this->user->id,
+            'type' => Incident::TYPE_VACATION,
+            'start_date' => '2026-09-11',
+            'end_date' => '2026-09-11',
+            'days' => 1,
+            'status' => Incident::STATUS_APPROVED,
+        ]);
+
+        $totals = $this->calculator->calculateFor($this->user, $this->period)['totals'];
+
+        // The vacation day counts as paid: the weekend keeps paying whole.
+        $this->assertEqualsWithDelta(7.0, $totals['days_paid'], 0.001);
+        $this->assertEqualsWithDelta(2.0, $totals['rest_day_days'], 0.001);
+    }
+
+    public function test_a_worked_rest_day_pays_the_day_plus_its_overtime(): void
+    {
+        $this->makeShiftPayRestDays();
+
+        $this->workWeek($this->user);
+
+        // Saturday (rest day) worked 09:00 → 13:00.
+        $this->punch($this->user, AttendanceLog::TYPE_CHECK_IN, '2026-09-12 09:00:00');
+        $this->punch($this->user, AttendanceLog::TYPE_CHECK_OUT, '2026-09-12 13:00:00');
+
+        $result = $this->calculator->calculateFor($this->user, $this->period);
+        $totals = $result['totals'];
+
+        $this->assertEqualsWithDelta(2.0, $totals['rest_day_days'], 0.001);
+        $this->assertSame(240, $totals['overtime_double_minutes']);
+        $this->assertEqualsWithDelta(200.0, $totals['overtime_amount'], 0.01);
+        $this->assertEqualsWithDelta(3000.0, $totals['total_net'], 0.01);
+
+        // The day detail adds up: the worked saturday carries its share of
+        // the paid rest days and its overtime minutes.
+        $saturday = collect($result['days'])->firstWhere('date', '2026-09-12');
+
+        $this->assertEqualsWithDelta(1.0, $saturday['pay_fraction'], 0.001);
+        $this->assertSame(240, $saturday['overtime_minutes']);
     }
 
     public function test_late_minutes_are_discounted_only_when_configured(): void
