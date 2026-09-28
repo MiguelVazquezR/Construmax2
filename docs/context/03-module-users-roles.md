@@ -44,16 +44,39 @@ POST   /users/bulk-delete          users.bulk-destroy
 | `index` | Lists users (excludes super-admin #1 and users with a `Technician` record), paginated, searchable by name/email, loads employee + roles |
 | `store` | Creates User + Employee + syncs Spatie roles in a DB transaction |
 | `update` | Updates User name/email/password (optional), upserts Employee, syncs roles |
+| `show` | Loads employee, `payrollProfile`, roles and seller tickets; also sends the `faceEnrollment` props (active face count + provider `configured`) used by the payroll tab and the `vacation` props (live balance, manual movements and latest requests) shown in the *Información general* tab |
 | `destroy` | Nullifies/cleans foreign keys in `ticket_tasks` (set null), deletes `calendars`, `calendar_participants`, `technician_payments`, `field_work_schedules` rows, reassigns `budgets.user_id` to admin (#1), then deletes user |
 | `bulkDestroy` | Same FK cleanup as `destroy` but for multiple IDs at once via `POST /users/bulk-delete` with `{ ids: [...] }` payload. Excludes super-admin (#1) |
-| `toggleStatus` | Toggles `users.is_active` — soft enable/disable |
+| `toggleStatus` | Dismisses or reactivates a user (`users.is_active`). **Dismissing asks for the termination date** (`termination_date`, optional in the API and defaulted to today) which is stored in the payroll profile so the collaborator leaves the payroll from that date on; it is rejected when earlier than the hire date. Reactivating clears the termination date so the collaborator returns to the payroll. Requires `users.toggle-status` and the super-admin (#1) cannot be dismissed |
 
 ### User creation form fields
-`name`, `email`, `password`, `roles[]` (multi-select), `department` (select), `position`, `phone`
+`name`, `email`, `password`, `roles[]` (multi-select), `department` (select), `position`, `phone` + the optional **payroll section** and the **profile photo** (see below).
+
+### Profile photo
+`Users/Create.vue` and `Users/Edit.vue` upload the collaborator portrait (`photo`, jpg/jpeg/png/webp, max 4 MB) through the shared `resources/js/Components/Forms/PhotoUploader.vue` component (same UI used by the technician form; validates image type and size client-side, 4 MB for users / 2 MB for technicians). The image is optimized (GD) and stored as the Jetstream profile photo (`users.profile_photo_path`, exposed as `profile_photo_url` across the whole UI). When the facial recognition is active (`face_recognition_enabled` + AWS credentials) and the collaborator records attendance, the same photo is indexed in the Rekognition collection as the kiosk face reference through `EnrollProfilePhotoAction`: the new photo replaces the previous references only after a successful face detection, and a photo without a detectable face leaves them untouched (the flash message reports the outcome).
+
+### Payroll & attendance section (shared component)
+`resources/js/Components/Payroll/PayrollProfileFields.vue` renders the payroll profile captured from the Users form:
+
+| Field | Notes |
+|-------|-------|
+| Hire date | Drives vacation seasons and accrual |
+| Termination date | Optional dismissal date (must be `after_or_equal` the hire date). The collaborator stays in the payroll up to and including that day and disappears from the periods that start after it |
+| Employee number | Auto `EMP-####` when left empty in create |
+| Daily salary | Payroll basis. The daily hours are no longer typed: they follow the assigned schedule (see below) |
+| Subject to payroll / records attendance | `is_payroll_subject`, `is_attendance_subject` |
+| Remote attendance | `can_remote_attendance` — requires `payroll.remote-attendance.manage`; other fields require `payroll.profiles.manage` (enforced by `SyncPayrollProfileAction::sanitizeFor`) |
+| Assigned schedule | `shift_id` — the schedule selector lives in the *Nómina* card (where «Horas por día» used to be), required while the collaborator is subject to payroll, with an info icon that opens a summary popover (worked days, schedules and meal time). Saved through `AssignUserShiftAction`: creates or updates the individual fixed assignment starting on the hire date, removes it when the selector is cleared (falling back to the department assignment, if any), and keeps `daily_hours` in sync with the schedule. Only applied with `payroll.profiles.manage` |
+| Kiosk PIN | Digits only (4 to 12) in the *Asistencia* card; requires «Registra asistencia». Stored hashed — an empty value keeps the current pin and `has_kiosk_pin` is exposed as a boolean flag |
 
 ### User show page
 - Hero card: avatar, name, email, roles, department
-- Tabs: General (employee info), Tickets (assigned as seller)
+- Tabs: General (employee info + **Vacaciones** card), Tickets (assigned as seller), **Nómina y asistencia** (payroll profile summary, kiosk PIN state, facial enrollment card with "Registrar / actualizar rostro" via `FaceEnrollmentDialog` when the user has `payroll.faces.manage` and records attendance)
+- The *Vacaciones* card (visible when the collaborator has a payroll profile or manual movements) shows the available / taken / pending / manual-adjustment days, the latest requests, the manual movements with their author and an expandable season breakdown (entitlement, accrual, expiry). With `payroll.vacations.manage` it offers **Saldo inicial**, **Agregar días** and **Ajustar días** (shared `VacationAdjustmentDialog`): each movement stores days, reason and author, never expires, is consumed after the LFT seasons and can be deleted in place (the balance recalculates live)
+- Header actions: **Editar usuario** and **Dar de baja / Reactivar** (permission-gated, same dialog as the list)
+
+### Dismissing a user
+`resources/js/Components/Users/UserStatusDialog.vue` (shared by the list and the detail page) asks for the **fecha de baja** and calls `PUT /users/{user}/toggle-status`. For an inactive user it only confirms the reactivation. The date drives three things: the collaborator stays in the payroll up to and including that day, disappears from the periods starting after it, and cannot register attendance after it.
 
 ---
 
@@ -103,11 +126,11 @@ All permissions use kebab-case: `create service-orders`, `edit invoices`, `delet
 - Only shows users **without** a `Technician` record (technicians are managed separately)
 
 ### `Users/Create.vue` / `Users/Edit.vue`
-- Form: name, email, password, roles (multi-select), department, position, phone
+- Form: name, email, password, roles (multi-select), department, position, phone, profile photo (avatar preview, replaces on upload) + the payroll section when the acting user can manage it
 - Element Plus validation
 
 ### `Users/Show.vue`
-- Profile view with tabs: General, Tickets
+- Profile view with tabs: General (with the collaborator vacations card), Tickets and (when available) Nómina y asistencia with the facial enrollment card
 
 ### `RolePermissions/Index.vue`
 - Single page with two sections:
@@ -124,6 +147,7 @@ All permissions use kebab-case: `create service-orders`, `edit invoices`, `delet
 - **Calendar** (`10`): Users participate in calendar events
 - **Deposits** (`11`): `created_by` and `approved_by` reference users
 - **Notifications** (`13`): `NotificationSetting` is per-user
+- **Payroll & HR** (`16`): `User::payrollProfile()` (1:1), attendance logs, payslips, faces; the sidebar *Mi asistencia* entry is gated by the shared `attendance_portal` prop (user records attendance)
 
 ---
 

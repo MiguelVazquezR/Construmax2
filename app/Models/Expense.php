@@ -17,15 +17,21 @@ class Expense extends Model implements HasMedia
     // --- Statuses ---
 
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_PAID = 'paid';
+
     public const STATUS_CANCELLED = 'cancelled';
 
     // --- Payment methods ---
 
     public const PAYMENT_METHOD_CASH = 'cash';
+
     public const PAYMENT_METHOD_TRANSFER = 'transfer';
+
     public const PAYMENT_METHOD_CARD = 'card';
+
     public const PAYMENT_METHOD_CHECK = 'check';
+
     public const PAYMENT_METHOD_OTHER = 'other';
 
     protected $fillable = [
@@ -35,6 +41,7 @@ class Expense extends Model implements HasMedia
         'budget_id',
         'budget_concept_id',
         'deposit_id',
+        'payroll_period_id',
         'concept',
         'reference',
         'notes',
@@ -97,6 +104,11 @@ class Expense extends Model implements HasMedia
     public function deposit(): BelongsTo
     {
         return $this->belongsTo(Deposit::class);
+    }
+
+    public function payrollPeriod(): BelongsTo
+    {
+        return $this->belongsTo(PayrollPeriod::class);
     }
 
     public function creator(): BelongsTo
@@ -175,7 +187,7 @@ class Expense extends Model implements HasMedia
 
     public function scopeWithStatus(Builder $query, ?string $status): Builder
     {
-        if (!$status || $status === 'all') {
+        if (! $status || $status === 'all') {
             return $query;
         }
 
@@ -184,7 +196,7 @@ class Expense extends Model implements HasMedia
 
     public function scopeInCategory(Builder $query, mixed $categoryId): Builder
     {
-        if (!$categoryId) {
+        if (! $categoryId) {
             return $query;
         }
 
@@ -221,7 +233,7 @@ class Expense extends Model implements HasMedia
 
     public function scopeWithPaymentMethod(Builder $query, ?string $method): Builder
     {
-        if (!$method || $method === 'all') {
+        if (! $method || $method === 'all') {
             return $query;
         }
 
@@ -230,7 +242,7 @@ class Expense extends Model implements HasMedia
 
     public function scopeForBudget(Builder $query, mixed $budgetId): Builder
     {
-        if (!$budgetId) {
+        if (! $budgetId) {
             return $query;
         }
 
@@ -238,7 +250,7 @@ class Expense extends Model implements HasMedia
     }
 
     /**
-     * Filter by expense type: general (no budget), budget, commission or deposit.
+     * Filter by expense type: general (no budget), budget, commission, deposit or payroll.
      */
     public function scopeOfType(Builder $query, ?string $type): Builder
     {
@@ -247,6 +259,7 @@ class Expense extends Model implements HasMedia
             'budget' => $query->whereNotNull('budget_id'),
             'commission' => $query->where('is_commission', true),
             'deposit' => $query->whereNotNull('deposit_id'),
+            'payroll' => $query->whereNotNull('payroll_period_id'),
             default => $query,
         };
     }
@@ -297,7 +310,7 @@ class Expense extends Model implements HasMedia
         $number = (int) static::query()->max('id') + 1;
 
         do {
-            $folio = 'GAS-' . str_pad((string) $number, 4, '0', STR_PAD_LEFT);
+            $folio = 'GAS-'.str_pad((string) $number, 4, '0', STR_PAD_LEFT);
             $number++;
         } while (static::query()->where('folio', $folio)->exists());
 

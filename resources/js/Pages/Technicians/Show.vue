@@ -17,7 +17,8 @@ import {
     InfoFilled,
     CircleCheck,
     List,
-    Money
+    Money,
+    Suitcase
 } from '@element-plus/icons-vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
@@ -27,6 +28,7 @@ import HistoryTab from './Partials/HistoryTab.vue';
 import DocumentsTab from './Partials/DocumentsTab.vue';
 import PaymentsTab from './Partials/PaymentsTab.vue'; // Nuevo componente
 import BankAccountsTab from './Partials/BankAccountsTab.vue';
+import ShiftSummaryPopover from '@/Components/Payroll/ShiftSummaryPopover.vue';
 
 const { can } = usePermissions();
 
@@ -34,6 +36,7 @@ const props = defineProps({
     technician: Object,
     tickets: Array,
     payments: Array, // Recibimos los pagos
+    currentShift: Object,
     kpis: Object
 });
 
@@ -54,6 +57,33 @@ const formatCurrency = (value) => {
         currency: 'MXN' 
     }).format(value || 0);
 };
+
+// --- Nómina y asistencia (pestaña Perfil) ---
+
+const SHIFT_TYPE_LABELS = {
+    fixed: 'Fijo',
+    flexible: 'Flexible',
+    per_day: 'Por día',
+};
+
+const shiftTagType = (type) => (type === 'per_day' ? 'success' : (type === 'fixed' ? 'primary' : 'warning'));
+
+// Dates arrive as ISO strings ("2026-01-15T00:00:00.000000Z"): take the date part
+// before parsing so the local timezone never shifts the day.
+const formatDate = (value) => {
+    if (! value) return '-';
+
+    const raw = String(value).substring(0, 10);
+    const [year, month, day] = raw.split('-').map(Number);
+
+    if (! year || ! month || ! day) return '-';
+
+    const monthLabel = new Date(year, month - 1, day).toLocaleDateString('es-MX', { month: 'short' });
+
+    return `${String(day).padStart(2, '0')} ${monthLabel}, ${year}`;
+};
+
+const showPayrollSection = computed(() => can('payroll.profiles.manage') || Boolean(props.technician.user?.payroll_profile));
 
 // URL de Google Maps basada en la ubicación registrada
 const googleMapsUrl = computed(() => {
@@ -285,6 +315,105 @@ const getWhatsappUrl = (phone) => {
                 <el-tabs v-model="activeTab">
                     <el-tab-pane label="Perfil 360°" name="profile">
                         <div class="px-6"> <ProfileTab :technician="technician" /> </div>
+
+                        <!-- NÓMINA Y ASISTENCIA -->
+                        <div v-if="showPayrollSection" class="px-6 pb-6">
+                            <div class="border-t border-gray-100 dark:border-[#2b2b2e] pt-6">
+                                <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                                    <p class="flex items-center gap-2 text-xs uppercase tracking-wider text-gray-400 font-bold">
+                                        <el-icon><Suitcase /></el-icon> Nómina y asistencia
+                                    </p>
+                                    <el-tag v-if="technician.user.payroll_profile?.termination_date" type="danger" size="small" effect="light">
+                                        Baja {{ formatDate(technician.user.payroll_profile.termination_date) }}
+                                    </el-tag>
+                                </div>
+
+                                <template v-if="technician.user.payroll_profile">
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Número de empleado</p>
+                                            <p class="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100 font-mono">{{ technician.user.payroll_profile.employee_number || 'Sin asignar' }}</p>
+                                        </div>
+
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Fecha de ingreso</p>
+                                            <p class="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{{ formatDate(technician.user.payroll_profile.hire_date) }}</p>
+                                        </div>
+
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Horario</p>
+                                                <ShiftSummaryPopover v-if="currentShift" :shift="currentShift" />
+                                            </div>
+                                            <div v-if="currentShift" class="mt-1 flex flex-wrap items-center gap-2">
+                                                <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{{ currentShift.name }}</p>
+                                                <el-tag size="small" effect="plain" :type="shiftTagType(currentShift.type)">
+                                                    {{ SHIFT_TYPE_LABELS[currentShift.type] || currentShift.type }}
+                                                </el-tag>
+                                            </div>
+                                            <p v-else class="mt-1 text-sm text-gray-400">Sin horario asignado</p>
+                                        </div>
+
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Sueldo diario</p>
+                                            <p class="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{{ technician.user.payroll_profile.daily_salary ? formatCurrency(technician.user.payroll_profile.daily_salary) : 'No asignado' }}</p>
+                                        </div>
+
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Horas por día</p>
+                                            <p class="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{{ technician.user.payroll_profile.daily_hours ? `${Number(technician.user.payroll_profile.daily_hours)} h` : 'No asignado' }}</p>
+                                        </div>
+
+                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
+                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">PIN de kiosco</p>
+                                            <el-tag class="mt-1" :type="technician.user.payroll_profile.has_kiosk_pin ? 'success' : 'info'" size="small" effect="light">
+                                                {{ technician.user.payroll_profile.has_kiosk_pin ? 'Configurado' : 'Sin configurar' }}
+                                            </el-tag>
+                                        </div>
+                                    </div>
+
+                                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                                        <div class="flex items-center justify-between gap-3 rounded-xl border border-gray-100 dark:border-[#2b2b2e] px-4 py-3">
+                                            <div>
+                                                <p class="text-sm font-medium text-gray-700 dark:text-gray-200">Sujeto a nómina</p>
+                                                <p class="text-xs text-gray-400">Aparece en los periodos de nómina.</p>
+                                            </div>
+                                            <el-tag :type="technician.user.payroll_profile.is_payroll_subject ? 'success' : 'info'" size="small" effect="light">
+                                                {{ technician.user.payroll_profile.is_payroll_subject ? 'Sí' : 'No' }}
+                                            </el-tag>
+                                        </div>
+
+                                        <div class="flex items-center justify-between gap-3 rounded-xl border border-gray-100 dark:border-[#2b2b2e] px-4 py-3">
+                                            <div>
+                                                <p class="text-sm font-medium text-gray-700 dark:text-gray-200">Registra asistencia</p>
+                                                <p class="text-xs text-gray-400">Usa el kiosco y su portal de asistencia.</p>
+                                            </div>
+                                            <el-tag :type="technician.user.payroll_profile.is_attendance_subject ? 'success' : 'info'" size="small" effect="light">
+                                                {{ technician.user.payroll_profile.is_attendance_subject ? 'Sí' : 'No' }}
+                                            </el-tag>
+                                        </div>
+
+                                        <div class="flex items-center justify-between gap-3 rounded-xl border border-gray-100 dark:border-[#2b2b2e] px-4 py-3">
+                                            <div>
+                                                <p class="text-sm font-medium text-gray-700 dark:text-gray-200">Asistencia remota</p>
+                                                <p class="text-xs text-gray-400">Puede registrar desde su celular.</p>
+                                            </div>
+                                            <el-tag :type="technician.user.payroll_profile.can_remote_attendance ? 'success' : 'info'" size="small" effect="light">
+                                                {{ technician.user.payroll_profile.can_remote_attendance ? 'Habilitada' : 'Deshabilitada' }}
+                                            </el-tag>
+                                        </div>
+                                    </div>
+                                </template>
+
+                                <div v-else class="text-center py-8 bg-gray-50 dark:bg-[#252529]/50 rounded-xl border border-dashed border-gray-200 dark:border-[#2b2b2e]">
+                                    <el-empty description="Sin perfil de nómina" :image-size="80">
+                                        <template #default>
+                                            <p class="text-sm text-gray-500">Edita el técnico para capturar sus datos de nómina y asistencia.</p>
+                                        </template>
+                                    </el-empty>
+                                </div>
+                            </div>
+                        </div>
                     </el-tab-pane>
 
                     <el-tab-pane label="Historial operativo" name="history">

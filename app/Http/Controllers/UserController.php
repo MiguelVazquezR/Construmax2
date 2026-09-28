@@ -2,17 +2,44 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Payroll\AssignUserShiftAction;
+use App\Actions\Payroll\EnrollProfilePhotoAction;
+use App\Actions\Payroll\SyncPayrollProfileAction;
+use App\Models\FaceEnrollment;
+use App\Models\PayrollSetting;
+use App\Models\Shift;
+use App\Models\ShiftAssignment;
 use App\Models\User;
-use Spatie\Permission\Models\Role; // Importar modelo Role
-use Illuminate\Http\Request;
+use App\Models\VacationRequest;
+use App\Services\Media\ImageOptimizerService;
+use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
+use App\Services\Payroll\ScheduleResolverService;
+use App\Services\Payroll\VacationPeriodService;
+use App\Services\Payroll\VacationService;
+use Carbon\CarbonImmutable;
+use Illuminate\Http\Request; // Importar modelo Role
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
+use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
 {
-     public function index(Request $request)
+    public function __construct(
+        private readonly SyncPayrollProfileAction $syncPayrollProfileAction,
+        private readonly FaceRecognitionService $faceRecognition,
+        private readonly EnrollProfilePhotoAction $enrollProfilePhotoAction,
+        private readonly ImageOptimizerService $imageOptimizer,
+        private readonly VacationService $vacationService,
+        private readonly VacationPeriodService $vacationPeriodService,
+        private readonly AssignUserShiftAction $assignUserShiftAction,
+        private readonly ScheduleResolverService $scheduleResolver,
+    ) {}
+
+    public function index(Request $request)
     {
         $perPage = $request->input('perPage', 10);
 
@@ -33,6 +60,9 @@ class UserController extends Controller
         // Enviamos los roles disponibles a la vista
         return Inertia::render('Users/Create', [
             'roles' => Role::all(),
+            'faceRecognitionEnabled' => $this->faceRecognitionEnabled(),
+            'shifts' => Shift::optionList(),
+            'currentShiftId' => null,
         ]);
     }
 
@@ -46,9 +76,14 @@ class UserController extends Controller
             'department' => 'required|string|max:255',
             'position' => 'required|string|max:255',
             'phone' => 'required|string|max:20',
-        ]);
+            'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+            ...$this->payrollRules($request),
+        ], $this->payrollMessages());
 
-        DB::transaction(function () use ($validated) {
+        // Only the fields the acting user is allowed to change (permissions aware)
+        $payrollProfile = $this->syncPayrollProfileAction->sanitizeFor($request->user(), $validated);
+
+        $photoStatus = DB::transaction(function () use ($validated, $payrollProfile, $request) {
             $user = User::create([
                 'name' => $validated['name'],
                 'email' => $validated['email'],
@@ -64,32 +99,52 @@ class UserController extends Controller
                 'position' => $validated['position'],
                 'phone' => $validated['phone'],
             ]);
+
+            $this->syncPayrollProfileAction->execute($user, $payrollProfile);
+
+            $this->assignUserShiftAction->executeFromForm($request, $user, $validated);
+
+            return $request->hasFile('photo')
+                ? $this->applyProfilePhoto($user, $request->file('photo'), $request->user())
+                : null;
         });
 
-        return redirect()->route('users.index')->with('success', 'Usuario creado y roles asignados correctamente.');
+        return redirect()->route('users.index')
+            ->with('success', $this->userSavedMessage('Usuario creado y roles asignados correctamente.', $photoStatus));
     }
 
-    public function show(User $user)
+    public function show(Request $request, User $user)
     {
         $user->load([
             'employee',
+            'payrollProfile',
             'roles',
             'ticketsAsSeller' => function ($query) {
                 $query->orderBy('id', 'desc')
-                      ->with('branch');
+                    ->with('branch');
             },
         ]);
 
         return Inertia::render('Users/Show', [
             'user' => $user,
+            'faceEnrollment' => [
+                'activeCount' => FaceEnrollment::where('user_id', $user->id)->where('status', FaceEnrollment::STATUS_ACTIVE)->count(),
+                'configured' => $this->faceRecognition->isConfigured(),
+            ],
+            'vacation' => $this->vacationPayload($request, $user),
+            // Effective shift today (individual, department or rotation).
+            'currentShift' => $this->scheduleResolver->resolveFor($user, CarbonImmutable::today())?->shift,
         ]);
     }
 
     public function edit(User $user)
     {
         return Inertia::render('Users/Edit', [
-            'user' => $user->load(['employee', 'roles']),
+            'user' => $user->load(['employee', 'payrollProfile', 'roles']),
             'roles' => Role::all(), // Enviamos roles para la edición
+            'faceRecognitionEnabled' => $this->faceRecognitionEnabled(),
+            'shifts' => Shift::optionList(),
+            'currentShiftId' => ShiftAssignment::currentFor($user)?->shift_id,
         ]);
     }
 
@@ -97,21 +152,26 @@ class UserController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users,email,' . $user->id,
+            'email' => 'required|string|email|max:255|unique:users,email,'.$user->id,
             'password' => ['nullable', Rules\Password::defaults()],
             'roles' => 'required|array|min:1', // Roles requeridos en edición también
             'department' => 'required|string|max:255',
             'position' => 'required|string|max:255',
             'phone' => 'required|string|max:20',
-        ]);
+            'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+            ...$this->payrollRules($request),
+        ], $this->payrollMessages());
 
-        DB::transaction(function () use ($validated, $user) {
+        // Only the fields the acting user is allowed to change (permissions aware)
+        $payrollProfile = $this->syncPayrollProfileAction->sanitizeFor($request->user(), $validated);
+
+        $photoStatus = DB::transaction(function () use ($validated, $user, $payrollProfile, $request) {
             $userData = [
                 'name' => $validated['name'],
                 'email' => $validated['email'],
             ];
 
-            if (!empty($validated['password'])) {
+            if (! empty($validated['password'])) {
                 $userData['password'] = Hash::make($validated['password']);
             }
 
@@ -128,9 +188,149 @@ class UserController extends Controller
                     'phone' => $validated['phone'],
                 ]
             );
+
+            $this->syncPayrollProfileAction->execute($user, $payrollProfile);
+
+            $this->assignUserShiftAction->executeFromForm($request, $user, $validated);
+
+            return $request->hasFile('photo')
+                ? $this->applyProfilePhoto($user, $request->file('photo'), $request->user())
+                : null;
         });
 
-        return redirect()->route('users.index')->with('success', 'Usuario actualizado exitosamente.');
+        return redirect()->route('users.index')
+            ->with('success', $this->userSavedMessage('Usuario actualizado exitosamente.', $photoStatus));
+    }
+
+    /**
+     * Store the uploaded profile photo and, when the facial recognition is
+     * active, index it as the face reference used by the attendance kiosk.
+     */
+    private function applyProfilePhoto(User $user, UploadedFile $photo, ?User $actor): string
+    {
+        $optimizedPath = $this->imageOptimizer->optimize($photo);
+
+        $status = $this->enrollProfilePhotoAction->execute($user, $optimizedPath, $actor);
+
+        $user->updateProfilePhoto(new UploadedFile(
+            $optimizedPath,
+            $photo->getClientOriginalName(),
+            $photo->getMimeType(),
+            null,
+            true
+        ));
+
+        return $status;
+    }
+
+    /**
+     * Append the facial enrollment outcome to the saved message when relevant.
+     */
+    private function userSavedMessage(string $baseMessage, ?string $photoStatus): string
+    {
+        return match ($photoStatus) {
+            EnrollProfilePhotoAction::RESULT_ENROLLED => $baseMessage.' La foto se registró como referencia facial.',
+            EnrollProfilePhotoAction::RESULT_FAILED => $baseMessage.' No se pudo detectar el rostro en la foto: regístralo desde la ficha del usuario.',
+            default => $baseMessage,
+        };
+    }
+
+    private function faceRecognitionEnabled(): bool
+    {
+        return (bool) PayrollSetting::current()->face_recognition_enabled && $this->faceRecognition->isConfigured();
+    }
+
+    /**
+     * Vacation information of the collaborator shown in the "Información
+     * general" tab: the live balance, the stored periods (with their premium
+     * status), the movements ledger and the latest requests.
+     */
+    private function vacationPayload(Request $request, User $user): array
+    {
+        $requests = VacationRequest::query()
+            ->forUser($user->id)
+            ->with(['reviewer:id,name', 'requestedBy:id,name'])
+            ->orderByDesc('start_date')
+            ->orderByDesc('id')
+            ->limit(10)
+            ->get()
+            ->map(fn (VacationRequest $vacationRequest) => [
+                'id' => $vacationRequest->id,
+                'start_date' => $vacationRequest->start_date?->toDateString(),
+                'end_date' => $vacationRequest->end_date?->toDateString(),
+                'days' => (float) $vacationRequest->days,
+                'status' => $vacationRequest->status,
+                'status_label' => $vacationRequest->statusLabel(),
+                'reason' => $vacationRequest->reason,
+                'review_notes' => $vacationRequest->review_notes,
+                'reviewer_name' => $vacationRequest->reviewer?->name,
+                'requested_by_name' => $vacationRequest->requestedBy?->name,
+                'requested_at' => $vacationRequest->created_at?->toDateString(),
+            ])
+            ->values()
+            ->all();
+
+        $balance = $this->vacationService->balanceFor($user);
+
+        // Keep the stored periods (and their premiums) in sync before showing
+        // them next to the calculated seasons.
+        $this->vacationPeriodService->syncFor($user, $balance['seasons']);
+
+        return [
+            'can_manage' => $request->user()->can('payroll.vacations.manage'),
+            'can_view_module' => $request->user()->can('payroll.vacations.manage')
+                || $request->user()->can('payroll.vacations.approve'),
+            'balance' => $balance,
+            'periods' => $this->vacationPeriodService->payloadFor($user),
+            'movements' => $this->vacationService->movementsFor($user),
+            'requests' => $requests,
+        ];
+    }
+
+    /**
+     * Optional payroll and attendance fields edited from the user form.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    private function payrollRules(Request $request): array
+    {
+        // A collaborator marked as payroll subject or with attendance enabled
+        // must have a schedule assigned: its daily hours feed the minute rate
+        // used by overtime and late discounts.
+        $shiftRequired = $request->user()?->can('payroll.profiles.manage')
+            && ($request->boolean('is_payroll_subject') || $request->boolean('is_attendance_subject'));
+
+        return [
+            'employee_number' => ['nullable', 'string', 'max:50'],
+            'hire_date' => ['nullable', 'date'],
+            'termination_date' => ['nullable', 'date', 'after_or_equal:hire_date'],
+            'daily_salary' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
+            'daily_hours' => ['nullable', 'numeric', 'min:1', 'max:24'],
+            'is_payroll_subject' => ['sometimes', 'boolean'],
+            'is_attendance_subject' => ['sometimes', 'boolean'],
+            'can_remote_attendance' => ['sometimes', 'boolean'],
+            'kiosk_pin' => ['nullable', 'string', 'min:4', 'max:12', 'regex:/^[0-9]+$/'],
+            'shift_id' => [
+                $shiftRequired ? 'required' : 'nullable',
+                'integer',
+                'exists:shifts,id',
+            ],
+        ];
+    }
+
+    /**
+     * Custom messages of the optional payroll fields.
+     *
+     * @return array<string, string>
+     */
+    private function payrollMessages(): array
+    {
+        return [
+            'shift_id.required' => 'Selecciona un horario para el colaborador sujeto a nómina.',
+            'kiosk_pin.min' => 'El PIN debe tener al menos 4 dígitos.',
+            'kiosk_pin.max' => 'El PIN no puede tener más de 12 dígitos.',
+            'kiosk_pin.regex' => 'El PIN solo puede contener números.',
+        ];
     }
 
     /**
@@ -165,13 +365,14 @@ class UserController extends Controller
         $this->nullifyUserReferences([$user->id]);
 
         $user->delete();
+
         return back()->with('success', 'Usuario eliminado correctamente.');
     }
 
     public function bulkDestroy(Request $request)
     {
         $validated = $request->validate([
-            'ids'   => ['required', 'array', 'min:1'],
+            'ids' => ['required', 'array', 'min:1'],
             'ids.*' => ['integer', 'exists:users,id'],
         ]);
 
@@ -186,14 +387,51 @@ class UserController extends Controller
 
         User::whereIn('id', $ids)->delete();
 
-        return back()->with('success', count($ids) . ' usuarios eliminados correctamente.');
+        return back()->with('success', count($ids).' usuarios eliminados correctamente.');
     }
 
-    public function toggleStatus(User $user)
+    /**
+     * Dismiss or reactivate a user. Dismissing stores the termination date in
+     * the payroll profile so the collaborator leaves the payroll from that date
+     * on; reactivating clears it so they come back.
+     */
+    public function toggleStatus(Request $request, User $user)
     {
-        $user->is_active = !$user->is_active;
+        if (! $request->user()->can('users.toggle-status')) {
+            abort(403);
+        }
+
+        if ($user->id === 1) {
+            return back()->with('error', 'No se puede dar de baja al super administrador.');
+        }
+
+        if (! $user->is_active) {
+            $user->is_active = true;
+            $user->save();
+            $user->payrollProfile?->update(['termination_date' => null]);
+
+            return back()->with('success', 'Usuario activado. Se eliminó su fecha de baja.');
+        }
+
+        $validated = $request->validate([
+            'termination_date' => ['nullable', 'date'],
+        ]);
+
+        $terminationDate = CarbonImmutable::parse($validated['termination_date'] ?? now()->toDateString())->toDateString();
+        $profile = $user->payrollProfile;
+
+        if ($profile?->hire_date && $terminationDate < $profile->hire_date->toDateString()) {
+            throw ValidationException::withMessages([
+                'termination_date' => 'La fecha de baja no puede ser anterior a la fecha de ingreso ('.$profile->hire_date->format('d/m/Y').').',
+            ]);
+        }
+
+        $user->is_active = false;
         $user->save();
-        $message = $user->is_active ? 'Usuario activado.' : 'Usuario dado de baja.';
-        return back()->with('success', $message);
+        $profile?->update(['termination_date' => $terminationDate]);
+
+        return back()->with('success', $profile
+            ? 'Usuario dado de baja el '.$profile->termination_date->format('d/m/Y').'. Ya no aparecerá en los periodos de nómina posteriores.'
+            : 'Usuario dado de baja.');
     }
 }

@@ -10,6 +10,10 @@ const props = defineProps({
     availableSpecialties: {
         type: Array,
         default: () => []
+    },
+    shifts: {
+        type: Array,
+        default: () => []
     }
 });
 
@@ -50,7 +54,17 @@ const form = useForm({
     // Interno
     internal_notes: '',
     rating_avg: 0,
-    
+
+    // Nómina y asistencia (opcional, según permisos)
+    employee_number: '',
+    hire_date: null,
+    is_payroll_subject: false,
+    daily_salary: null,
+    is_attendance_subject: false,
+    can_remote_attendance: false,
+    kiosk_pin: '',
+    shift_id: null,
+
     // Archivos
     tax_file: null,
 });
@@ -62,11 +76,23 @@ const rules = reactive({
         { type: 'email', message: 'Formato de correo inválido', trigger: 'blur' }
     ],
     phone: [{ required: true, message: 'Teléfono principal requerido', trigger: 'blur' }],
+    shift_id: [
+        {
+            validator: (rule, value, callback) => {
+                if (form.is_payroll_subject && ! value) {
+                    callback(new Error('Selecciona un horario para el técnico sujeto a nómina.'));
+                } else {
+                    callback();
+                }
+            },
+            trigger: 'change',
+        },
+    ],
 });
 
 const handlePhotoChange = (file) => {
-    form.photo = file.raw;
-    photoPreview.value = URL.createObjectURL(file.raw);
+    form.photo = file;
+    photoPreview.value = URL.createObjectURL(file);
 };
 
 const handleTaxFileChange = (file) => {
@@ -136,6 +162,7 @@ const submit = () => {
                     :photo-preview="photoPreview"
                     :is-edit="false"
                     :available-specialties="availableSpecialties"
+                    :shifts="shifts"
                     @photo-change="handlePhotoChange"
                     @tax-file-change="handleTaxFileChange"
                     @tax-file-remove="handleTaxFileRemove"

@@ -61,6 +61,11 @@ class User extends Authenticatable
         return $this->hasOne(Technician::class);
     }
 
+    public function payrollProfile(): HasOne
+    {
+        return $this->hasOne(PayrollProfile::class);
+    }
+
     public function ticketsAsSeller(): HasMany
     {
         return $this->hasMany(Ticket::class, 'seller_id');

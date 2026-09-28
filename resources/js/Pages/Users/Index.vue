@@ -4,6 +4,7 @@ import { router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { debounce } from 'lodash';
 import { ElMessageBox, ElMessage } from 'element-plus';
+import UserStatusDialog from '@/Components/Users/UserStatusDialog.vue';
 import { usePermissions } from '@/Composables/usePermissions';
 
 const { can } = usePermissions();
@@ -16,6 +17,7 @@ const props = defineProps({
 const search = ref(props.filters.search || '');
 const perPage = ref(parseInt(props.filters.perPage) || 10);
 const selectedIds = ref([]);
+const statusDialog = ref(null);
 
 // Check if all rows on the current page are selected
 const allSelected = computed({
@@ -58,30 +60,7 @@ const handleRowClick = (row) => {
 };
 
 const confirmToggleStatus = (user) => {
-    const action = user.is_active ? 'dar de baja' : 'reactivar';
-    const type = user.is_active ? 'warning' : 'info';
-    
-    ElMessageBox.confirm(
-        `¿Estás seguro de que deseas ${action} al usuario ${user.name}?`,
-        'Confirmar acción',
-        {
-            confirmButtonText: 'Sí, continuar',
-            cancelButtonText: 'Cancelar',
-            type: type,
-        }
-    )
-    .then(() => {
-        router.put(route('users.toggle-status', user.id), {}, {
-            preserveScroll: true,
-            onSuccess: () => {
-                ElMessage({
-                    type: 'success',
-                    message: `Usuario ${user.is_active ? 'desactivado' : 'activado'} correctamente`,
-                });
-            }
-        });
-    })
-    .catch(() => {});
+    statusDialog.value?.toggle(user);
 };
 
 const deleteUser = (user) => {
@@ -324,6 +303,8 @@ watch(search, (val) => {
                 </div>
             </div>
         </div>
+
+        <UserStatusDialog ref="statusDialog" />
     </AppLayout>
 </template>
 
