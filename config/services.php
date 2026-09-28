@@ -28,6 +28,17 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'aws' => [
+        // Used by the payroll attendance kiosk (AWS Rekognition face search).
+        'key' => env('AWS_ACCESS_KEY_ID'),
+        'secret' => env('AWS_SECRET_ACCESS_KEY'),
+        'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+        'rekognition_collection' => env(
+            'PAYROLL_REKOGNITION_COLLECTION',
+            env('AWS_REKOGNITION_COLLECTION_ID', 'construmax-attendance')
+        ),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

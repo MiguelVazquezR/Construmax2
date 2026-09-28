@@ -1,0 +1,568 @@
+<?php
+
+namespace Tests\Feature\Payroll;
+
+use App\Models\AttendanceLog;
+use App\Models\Holiday;
+use App\Models\Incident;
+use App\Models\PayrollAdjustment;
+use App\Models\PayrollPeriod;
+use App\Models\PayrollProfile;
+use App\Models\PayrollSetting;
+use App\Models\Shift;
+use App\Models\ShiftAssignment;
+use App\Models\User;
+use App\Services\Payroll\PayrollCalculatorService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Tests\TestCase;
+
+class PayrollCalculatorServiceTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private PayrollCalculatorService $calculator;
+
+    private PayrollPeriod $period;
+
+    private User $user;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->calculator = app(PayrollCalculatorService::class);
+
+        // Monday to Sunday week, fully in the past relative to the suite clock.
+        $this->period = PayrollPeriod::create([
+            'type' => PayrollPeriod::TYPE_WEEKLY,
+            'start_date' => '2026-09-07',
+            'end_date' => '2026-09-13',
+            'status' => PayrollPeriod::STATUS_OPEN,
+        ]);
+
+        $this->user = $this->makeEmployee('2024-01-01', 400);
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
+
+    private function makeEmployee(string $hireDate, float $salary, bool $withSchedule = true): User
+    {
+        $user = User::factory()->create(['is_active' => true]);
+
+        PayrollProfile::create([
+            'user_id' => $user->id,
+            'hire_date' => $hireDate,
+            'daily_salary' => $salary,
+            'daily_hours' => 8,
+            'is_payroll_subject' => true,
+            'is_attendance_subject' => true,
+        ]);
+
+        if ($withSchedule) {
+            $shift = Shift::create([
+                'name' => 'Matutino',
+                'type' => 'fixed',
+                'start_time' => '08:00',
+                'end_time' => '17:00',
+                'meal_minutes' => 60,
+                'days' => [1, 2, 3, 4, 5],
+                'is_active' => true,
+            ]);
+
+            ShiftAssignment::create([
+                'user_id' => $user->id,
+                'type' => ShiftAssignment::TYPE_FIXED,
+                'shift_id' => $shift->id,
+                'start_date' => '2026-09-01',
+                'is_active' => true,
+            ]);
+        }
+
+        return $user;
+    }
+
+    private function punch(User $user, string $type, string $datetime): void
+    {
+        AttendanceLog::create([
+            'user_id' => $user->id,
+            'type' => $type,
+            'punched_at' => $datetime,
+            'source' => AttendanceLog::SOURCE_KIOSK,
+            'identifier_method' => AttendanceLog::IDENTIFIER_PIN,
+        ]);
+    }
+
+    /**
+     * Regular day: 08:00 → 17:00 with an unpaid lunch from 13:00 to 14:00.
+     */
+    private function regularDay(User $user, string $date): void
+    {
+        $this->punch($user, AttendanceLog::TYPE_CHECK_IN, $date.' 08:00:00');
+        $this->punch($user, AttendanceLog::TYPE_LUNCH_START, $date.' 13:00:00');
+        $this->punch($user, AttendanceLog::TYPE_LUNCH_END, $date.' 14:00:00');
+        $this->punch($user, AttendanceLog::TYPE_CHECK_OUT, $date.' 17:00:00');
+    }
+
+    private function workWeek(User $user): void
+    {
+        foreach (['2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10', '2026-09-11'] as $date) {
+            $this->regularDay($user, $date);
+        }
+    }
+
+    /**
+     * Turns on the paid rest days toggle of the schedule used by the tests.
+     */
+    private function makeShiftPayRestDays(): void
+    {
+        Shift::where('name', 'Matutino')->first()->update(['pays_rest_days' => true]);
+    }
+
+    public function test_regular_week_pays_the_five_worked_days(): void
+    {
+        $this->workWeek($this->user);
+
+        $result = $this->calculator->calculateFor($this->user, $this->period);
+        $totals = $result['totals'];
+
+        $this->assertEqualsWithDelta(5.0, $totals['days_paid'], 0.01);
+        $this->assertEqualsWithDelta(2000.0, $totals['base_amount'], 0.01);
+        $this->assertEqualsWithDelta(0, $totals['overtime_amount'], 0.01);
+        $this->assertEqualsWithDelta(0, $totals['late_discount'], 0.01);
+        $this->assertEqualsWithDelta(2000.0, $totals['total_net'], 0.01);
+    }
+
+    public function test_overtime_is_paid_at_the_normal_rate(): void
+    {
+        // One worked day with 3 extra hours (8:00 → 20:00 minus 1h lunch).
+        $this->punch($this->user, AttendanceLog::TYPE_CHECK_IN, '2026-09-07 08:00:00');
+        $this->punch($this->user, AttendanceLog::TYPE_LUNCH_START, '2026-09-07 13:00:00');
+        $this->punch($this->user, AttendanceLog::TYPE_LUNCH_END, '2026-09-07 14:00:00');
+        $this->punch($this->user, AttendanceLog::TYPE_CHECK_OUT, '2026-09-07 20:00:00');
+
+        $result = $this->calculator->calculateFor($this->user, $this->period);
+        $totals = $result['totals'];
+
+        // 180 overtime minutes at the normal rate (no double/triple split);
+        // the minutes are stored in the double column for compatibility.
+        $this->assertSame(180, $totals['overtime_double_minutes']);
+        $this->assertSame(0, $totals['overtime_triple_minutes']);
+
+        // Minute rate = 400 / 480; 180 * rate = 150.
+        $this->assertEqualsWithDelta(150.0, $totals['overtime_amount'], 0.01);
+
+        // The receipt carries a single "Tiempo extra" line.
+        $overtimeLines = collect($result['lines'])->where('source', 'overtime')->values();
+        $this->assertCount(1, $overtimeLines);
+        $this->assertSame('Tiempo extra', $overtimeLines[0]['concept']);
+        $this->assertEqualsWithDelta(150.0, $overtimeLines[0]['amount'], 0.01);
+    }
+
+    public function test_a_worked_rest_day_counts_every_minute_as_overtime(): void
+    {
+        // Saturday (rest day of the monday-friday shift), worked 09:00 → 13:00.
+        $this->punch($this->user, AttendanceLog::TYPE_CHECK_IN, '2026-09-12 09:00:00');
+        $this->punch($this->user, AttendanceLog::TYPE_CHECK_OUT, '2026-09-12 13:00:00');
+
+        $result = $this->calculator->calculateFor($this->user, $this->period);
+        $totals = $result['totals'];
+
+        // 240 minutes at the normal rate (stored in the double column).
+        $this->assertSame(240, $totals['overtime_double_minutes']);
+        $this->assertSame(0, $totals['overtime_triple_minutes']);
+
+        $days = collect($result['days'])->keyBy('date');
+
+        // The day exposes its minutes as overtime, so the per-day detail adds
+        // up to the period total shown in the collaborator summary.
+        $this->assertSame(240, $days['2026-09-12']['overtime_minutes']);
+        $this->assertSame(
+            $totals['overtime_double_minutes'] + $totals['overtime_triple_minutes'],
+            (int) collect($result['days'])->sum('overtime_minutes')
+        );
+    }
+
+    public function test_rest_days_pay_only_when_the_shift_turns_the_toggle_on(): void
+    {
+        $this->workWeek($this->user);
+
+        // Rest days are not paid by default: the shift keeps the toggle off.
+        $totals = $this->calculator->calculateFor($this->user, $this->period)['totals'];
+
+        $this->assertEqualsWithDelta(5.0, $totals['days_paid'], 0.001);
+        $this->assertEqualsWithDelta(0.0, $totals['rest_day_days'], 0.001);
+
+        // With the toggle on, saturday and sunday join the payable days of
+        // the week (proportional rule: the whole week was worked).
+        $this->makeShiftPayRestDays();
+
+        $result = $this->calculator->calculateFor($this->user, $this->period);
+        $totals = $result['totals'];
+
+        $this->assertEqualsWithDelta(7.0, $totals['days_paid'], 0.001);
+        $this->assertEqualsWithDelta(2.0, $totals['rest_day_days'], 0.001);
+        $this->assertEqualsWithDelta(800.0, $totals['rest_day_amount'], 0.01);
+        $this->assertEqualsWithDelta(2800.0, $totals['total_net'], 0.01);
+
+        $lines = collect($result['lines']);
+
+        // The receipt splits the attendance days from the paid rest days.
+        $this->assertEqualsWithDelta(5.0, $lines->firstWhere('source', 'attendance')['quantity'], 0.01);
+        $this->assertSame('Día(s) de descanso', $lines->firstWhere('source', 'rest_day')['concept']);
+    }
+
+    public function test_paid_rest_days_shrink_with_unjustified_absences(): void
+    {
+        $this->makeShiftPayRestDays();
+
+        foreach (['2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10'] as $date) {
+            $this->regularDay($this->user, $date);
+        }
+
+        $totals = $this->calculator->calculateFor($this->user, $this->period)['totals'];
+
+        // 4 of the 5 scheduled days: the two weekend days pay 2 * (4/5) = 1.6.
+        $this->assertEqualsWithDelta(5.6, $totals['days_paid'], 0.001);
+        $this->assertEqualsWithDelta(1.6, $totals['rest_day_days'], 0.001);
+        $this->assertEqualsWithDelta(640.0, $totals['rest_day_amount'], 0.01);
+    }
+
+    public function test_vacations_count_as_paid_days_for_the_rest_day_payment(): void
+    {
+        $this->makeShiftPayRestDays();
+
+        foreach (['2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10'] as $date) {
+            $this->regularDay($this->user, $date);
+        }
+
+        Incident::create([
+            'user_id' => $this->user->id,
+            'type' => Incident::TYPE_VACATION,
+            'start_date' => '2026-09-11',
+            'end_date' => '2026-09-11',
+            'days' => 1,
+            'status' => Incident::STATUS_APPROVED,
+        ]);
+
+        $totals = $this->calculator->calculateFor($this->user, $this->period)['totals'];
+
+        // The vacation day counts as paid: the weekend keeps paying whole.
+        $this->assertEqualsWithDelta(7.0, $totals['days_paid'], 0.001);
+        $this->assertEqualsWithDelta(2.0, $totals['rest_day_days'], 0.001);
+    }
+
+    public function test_a_worked_rest_day_pays_the_day_plus_its_overtime(): void
+    {
+        $this->makeShiftPayRestDays();
+
+        $this->workWeek($this->user);
+
+        // Saturday (rest day) worked 09:00 → 13:00.
+        $this->punch($this->user, AttendanceLog::TYPE_CHECK_IN, '2026-09-12 09:00:00');
+        $this->punch($this->user, AttendanceLog::TYPE_CHECK_OUT, '2026-09-12 13:00:00');
+
+        $result = $this->calculator->calculateFor($this->user, $this->period);
+        $totals = $result['totals'];
+
+        $this->assertEqualsWithDelta(2.0, $totals['rest_day_days'], 0.001);
+        $this->assertSame(240, $totals['overtime_double_minutes']);
+        $this->assertEqualsWithDelta(200.0, $totals['overtime_amount'], 0.01);
+        $this->assertEqualsWithDelta(3000.0, $totals['total_net'], 0.01);
+
+        // The day detail adds up: the worked saturday carries its share of
+        // the paid rest days and its overtime minutes.
+        $saturday = collect($result['days'])->firstWhere('date', '2026-09-12');
+
+        $this->assertEqualsWithDelta(1.0, $saturday['pay_fraction'], 0.001);
+        $this->assertSame(240, $saturday['overtime_minutes']);
+    }
+
+    public function test_late_minutes_are_discounted_only_when_configured(): void
+    {
+        $this->punch($this->user, AttendanceLog::TYPE_CHECK_IN, '2026-09-07 08:30:00');
+        $this->punch($this->user, AttendanceLog::TYPE_LUNCH_START, '2026-09-07 13:00:00');
+        $this->punch($this->user, AttendanceLog::TYPE_LUNCH_END, '2026-09-07 14:00:00');
+        $this->punch($this->user, AttendanceLog::TYPE_CHECK_OUT, '2026-09-07 17:30:00');
+
+        $settings = PayrollSetting::current();
+        $settings->update(['late_discount_mode' => PayrollSetting::LATE_TRACK_ONLY]);
+
+        $totals = $this->calculator->calculateFor($this->user, $this->period)['totals'];
+
+        $this->assertSame(30, $totals['late_minutes']);
+        $this->assertEqualsWithDelta(0, $totals['late_discount'], 0.01);
+
+        $settings->update(['late_discount_mode' => PayrollSetting::LATE_DEDUCT_MINUTES]);
+
+        $totals = $this->calculator->calculateFor($this->user, $this->period)['totals'];
+
+        // 30 minutes * (400 / 480).
+        $this->assertEqualsWithDelta(25.0, $totals['late_discount'], 0.01);
+        $this->assertEqualsWithDelta(375.0, $totals['total_net'], 0.01);
+    }
+
+    public function test_a_missing_day_is_not_paid(): void
+    {
+        foreach (['2026-09-07', '2026-09-09', '2026-09-10', '2026-09-11'] as $date) {
+            $this->regularDay($this->user, $date);
+        }
+
+        $totals = $this->calculator->calculateFor($this->user, $this->period)['totals'];
+
+        $this->assertEqualsWithDelta(4.0, $totals['days_paid'], 0.01);
+        $this->assertEqualsWithDelta(1.0, $totals['unpaid_days'], 0.01);
+        $this->assertEqualsWithDelta(1600.0, $totals['base_amount'], 0.01);
+    }
+
+    public function test_a_workday_only_becomes_an_absence_once_the_day_has_passed(): void
+    {
+        // Thursday: the week is still running inside the period.
+        Carbon::setTestNow('2026-09-10 10:00:00');
+
+        $this->regularDay($this->user, '2026-09-07');
+        $this->regularDay($this->user, '2026-09-08');
+
+        // 09 is gone without a record → unjustified absence. 10 (today) and
+        // 11 (future) are still waiting for a record → pending days that
+        // count neither as paid nor as unpaid.
+        $result = $this->calculator->calculateFor($this->user, $this->period);
+        $totals = $result['totals'];
+
+        $this->assertEqualsWithDelta(2.0, $totals['days_paid'], 0.01);
+        $this->assertEqualsWithDelta(1.0, $totals['unpaid_days'], 0.01);
+        $this->assertEqualsWithDelta(800.0, $totals['base_amount'], 0.01);
+
+        $days = collect($result['days'])->keyBy('date');
+
+        $this->assertSame('absent', $days['2026-09-09']['status']);
+        $this->assertSame('Falta injustificada', $days['2026-09-09']['status_label']);
+        $this->assertSame('no_record', $days['2026-09-10']['status']);
+        $this->assertSame('Sin registro', $days['2026-09-10']['status_label']);
+        $this->assertSame('no_record', $days['2026-09-11']['status']);
+        $this->assertSame('rest_day', $days['2026-09-12']['status']);
+        $this->assertSame('rest_day', $days['2026-09-13']['status']);
+    }
+
+    public function test_collaborators_without_attendance_keep_their_scheduled_days_paid(): void
+    {
+        // Thursday: the week is still running inside the period.
+        Carbon::setTestNow('2026-09-10 10:00:00');
+
+        $user = $this->makeEmployee('2024-01-01', 400);
+        $user->payrollProfile->update(['is_attendance_subject' => false]);
+
+        // The collaborator does not register attendance: no punches at all.
+        $result = $this->calculator->calculateFor($user, $this->period);
+        $totals = $result['totals'];
+
+        // 07, 08 and 09 have passed → paid in full. 10 (today) and 11
+        // (future) stay pending. No day becomes an unjustified absence.
+        $this->assertEqualsWithDelta(3.0, $totals['days_paid'], 0.01);
+        $this->assertEqualsWithDelta(0.0, $totals['unpaid_days'], 0.01);
+        $this->assertEqualsWithDelta(1200.0, $totals['base_amount'], 0.01);
+        $this->assertEqualsWithDelta(1200.0, $totals['total_net'], 0.01);
+
+        $days = collect($result['days'])->keyBy('date');
+
+        $this->assertSame('no_record', $days['2026-09-09']['status']);
+        $this->assertSame('Sin registro', $days['2026-09-09']['status_label']);
+        $this->assertEqualsWithDelta(1.0, $days['2026-09-09']['pay_fraction'], 0.001);
+        $this->assertEqualsWithDelta(0.0, $days['2026-09-11']['pay_fraction'], 0.001);
+        $this->assertSame('rest_day', $days['2026-09-13']['status']);
+    }
+
+    public function test_vacations_are_paid_and_imss_incapacities_never_are(): void
+    {
+        Incident::create([
+            'user_id' => $this->user->id,
+            'type' => Incident::TYPE_MEDICAL_LEAVE,
+            'start_date' => '2026-09-07',
+            'end_date' => '2026-09-07',
+            'days' => 1,
+            'is_paid' => true, // Even an explicit override is ignored: the IMSS covers it.
+            'status' => Incident::STATUS_APPROVED,
+        ]);
+
+        Incident::create([
+            'user_id' => $this->user->id,
+            'type' => Incident::TYPE_WORK_INCAPACITY,
+            'start_date' => '2026-09-08',
+            'end_date' => '2026-09-08',
+            'days' => 1,
+            'status' => Incident::STATUS_APPROVED,
+        ]);
+
+        Incident::create([
+            'user_id' => $this->user->id,
+            'type' => Incident::TYPE_VACATION,
+            'start_date' => '2026-09-09',
+            'end_date' => '2026-09-11',
+            'days' => 3,
+            'status' => Incident::STATUS_APPROVED,
+        ]);
+
+        $totals = $this->calculator->calculateFor($this->user, $this->period)['totals'];
+
+        // Only the vacations pay: 3 days.
+        $this->assertEqualsWithDelta(3.0, $totals['days_paid'], 0.01);
+        $this->assertEqualsWithDelta(3.0, $totals['vacation_days'], 0.01);
+
+        // The two incapacity days are counted for reference but never paid.
+        $this->assertEqualsWithDelta(2.0, $totals['incapacity_days'], 0.01);
+        $this->assertEqualsWithDelta(0.0, $totals['incapacity_amount'], 0.01);
+        $this->assertEqualsWithDelta(2.0, $totals['unpaid_days'], 0.01);
+    }
+
+    public function test_incidents_count_as_paid_days_without_an_assigned_schedule(): void
+    {
+        $other = $this->makeEmployee('2024-01-01', 400, withSchedule: false);
+
+        Incident::create([
+            'user_id' => $other->id,
+            'type' => Incident::TYPE_VACATION,
+            'start_date' => '2026-09-08',
+            'end_date' => '2026-09-09',
+            'days' => 2,
+            'status' => Incident::STATUS_APPROVED,
+        ]);
+
+        Incident::create([
+            'user_id' => $other->id,
+            'type' => Incident::TYPE_ABSENCE_UNJUSTIFIED,
+            'start_date' => '2026-09-10',
+            'end_date' => '2026-09-10',
+            'days' => 1,
+            'status' => Incident::STATUS_APPROVED,
+        ]);
+
+        $result = $this->calculator->calculateFor($other, $this->period);
+        $totals = $result['totals'];
+
+        // The two vacation days pay; the unjustified absence does not.
+        $this->assertEqualsWithDelta(2.0, $totals['days_paid'], 0.01);
+        $this->assertEqualsWithDelta(2.0, $totals['vacation_days'], 0.01);
+        $this->assertEqualsWithDelta(1.0, $totals['unpaid_days'], 0.01);
+        $this->assertEqualsWithDelta(800.0, $totals['base_amount'], 0.01);
+    }
+
+    public function test_a_worked_holiday_gets_the_extra_day(): void
+    {
+        Holiday::create([
+            'date' => '2026-09-09',
+            'name' => 'Descanso obligatorio de prueba',
+            'year' => 2026,
+        ]);
+
+        foreach (['2026-09-07', '2026-09-08', '2026-09-10', '2026-09-11'] as $date) {
+            $this->regularDay($this->user, $date);
+        }
+
+        $this->regularDay($this->user, '2026-09-09');
+
+        $totals = $this->calculator->calculateFor($this->user, $this->period)['totals'];
+
+        $this->assertEqualsWithDelta(5.0, $totals['days_paid'], 0.01);
+        $this->assertEqualsWithDelta(1.0, $totals['holiday_days'], 0.01);
+        $this->assertEqualsWithDelta(800.0, $totals['holiday_amount'], 0.01);
+        $this->assertEqualsWithDelta(2800.0, $totals['total_gross'], 0.01);
+        $this->assertEqualsWithDelta(0, $totals['overtime_amount'], 0.01);
+    }
+
+    public function test_adjustments_are_included_in_the_totals(): void
+    {
+        $this->workWeek($this->user);
+
+        PayrollAdjustment::create([
+            'payroll_period_id' => $this->period->id,
+            'user_id' => $this->user->id,
+            'type' => PayrollAdjustment::TYPE_EARNING,
+            'concept' => 'Bono de productividad',
+            'amount' => 500,
+        ]);
+
+        PayrollAdjustment::create([
+            'payroll_period_id' => $this->period->id,
+            'user_id' => $this->user->id,
+            'type' => PayrollAdjustment::TYPE_DEDUCTION,
+            'concept' => 'Préstamo',
+            'amount' => 150,
+        ]);
+
+        $totals = $this->calculator->calculateFor($this->user, $this->period)['totals'];
+
+        $this->assertEqualsWithDelta(2500.0, $totals['total_gross'], 0.01);
+        $this->assertEqualsWithDelta(150.0, $totals['total_deductions'], 0.01);
+        $this->assertEqualsWithDelta(2350.0, $totals['total_net'], 0.01);
+    }
+
+    public function test_days_without_a_schedule_pay_the_worked_fraction(): void
+    {
+        $other = $this->makeEmployee('2024-01-01', 400, withSchedule: false);
+
+        $this->punch($other, AttendanceLog::TYPE_CHECK_IN, '2026-09-07 09:00:00');
+        $this->punch($other, AttendanceLog::TYPE_CHECK_OUT, '2026-09-07 13:00:00');
+
+        $totals = $this->calculator->calculateFor($other, $this->period)['totals'];
+
+        $this->assertEqualsWithDelta(0.5, $totals['days_worked'], 0.01);
+        $this->assertEqualsWithDelta(0.5, $totals['days_paid'], 0.01);
+        $this->assertEqualsWithDelta(200.0, $totals['total_net'], 0.01);
+        $this->assertEqualsWithDelta(0, $totals['overtime_amount'], 0.01);
+    }
+
+    public function test_payslip_lines_are_built_for_the_regular_week(): void
+    {
+        $this->workWeek($this->user);
+
+        $result = $this->calculator->calculateFor($this->user, $this->period);
+        $lines = $result['lines'];
+
+        $this->assertCount(1, $lines);
+        $this->assertSame('Sueldo', $lines[0]['concept']);
+        $this->assertSame('earning', $lines[0]['type']);
+        $this->assertEqualsWithDelta(2000.0, (float) $lines[0]['amount'], 0.01);
+    }
+
+    // --- Employment window (hire / termination dates) ---
+
+    public function test_payroll_subjects_depend_on_the_reference_date(): void
+    {
+        $this->user->payrollProfile->update(['termination_date' => '2026-09-10']);
+
+        // Inside the employment window (up to and including the termination date).
+        $this->assertCount(1, $this->calculator->payrollSubjects('2026-09-07'));
+        $this->assertCount(1, $this->calculator->payrollSubjects('2026-09-10'));
+
+        // After the termination date the collaborator leaves the payroll.
+        $this->assertCount(0, $this->calculator->payrollSubjects('2026-09-11'));
+    }
+
+    public function test_payroll_subjects_respect_the_hire_date(): void
+    {
+        $this->user->payrollProfile->update(['hire_date' => '2026-10-01']);
+
+        $this->assertCount(0, $this->calculator->payrollSubjects('2026-09-07'));
+        $this->assertCount(1, $this->calculator->payrollSubjects('2026-10-01'));
+    }
+
+    public function test_days_after_the_termination_date_are_not_calculated(): void
+    {
+        $this->user->payrollProfile->update(['termination_date' => '2026-09-09']);
+
+        $result = $this->calculator->calculateFor($this->user, $this->period);
+
+        $this->assertSame(
+            ['2026-09-07', '2026-09-08', '2026-09-09'],
+            array_column($result['days'], 'date')
+        );
+
+        // Only the days inside the employment window can be unpaid.
+        $this->assertSame(3.0, (float) $result['totals']['unpaid_days']);
+    }
+}

@@ -11,6 +11,14 @@ const props = defineProps({
     availableSpecialties: {
         type: Array,
         default: () => []
+    },
+    shifts: {
+        type: Array,
+        default: () => []
+    },
+    currentShiftId: {
+        type: Number,
+        default: null
     }
 });
 
@@ -22,6 +30,15 @@ const photoPreview = ref(
         ? props.technician.user.profile_photo_url 
         : null
 );
+
+// El perfil de nómina llega cargado dentro de la relación del usuario.
+const profile = props.technician.user?.payroll_profile || {};
+
+const toNumber = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? null : parsed;
+};
 
 // Inicializar form con datos existentes
 const form = useForm({
@@ -60,7 +77,17 @@ const form = useForm({
     // Interno
     internal_notes: props.technician.internal_notes || '',
     rating_avg: Number(props.technician.rating_avg) || 0,
-    
+
+    // Nómina y asistencia (opcional, según permisos)
+    employee_number: profile.employee_number || '',
+    hire_date: profile.hire_date ? String(profile.hire_date).substring(0, 10) : null,
+    is_payroll_subject: Boolean(profile.is_payroll_subject),
+    daily_salary: toNumber(profile.daily_salary),
+    is_attendance_subject: Boolean(profile.is_attendance_subject),
+    can_remote_attendance: Boolean(profile.can_remote_attendance),
+    kiosk_pin: '', // Empty keeps the current pin.
+    shift_id: props.currentShiftId ?? null,
+
     // Archivos 
     tax_file: null,
 });
@@ -73,23 +100,23 @@ const rules = reactive({
     ],
     phone: [{ required: true, message: 'Teléfono principal requerido', trigger: 'blur' }],
     status: [{ required: true, message: 'El estatus es requerido', trigger: 'change' }],
+    shift_id: [
+        {
+            validator: (rule, value, callback) => {
+                if (form.is_payroll_subject && ! value) {
+                    callback(new Error('Selecciona un horario para el técnico sujeto a nómina.'));
+                } else {
+                    callback();
+                }
+            },
+            trigger: 'change',
+        },
+    ],
 });
 
 const handlePhotoChange = (file) => {
-    const isImage = file.raw.type.startsWith('image/');
-    const isLt2M = file.size / 1024 / 1024 < 2;
-
-    if (!isImage) {
-        ElMessage.error('El archivo debe ser una imagen');
-        return false;
-    }
-    if (!isLt2M) {
-        ElMessage.error('La imagen no debe exceder 2MB');
-        return false;
-    }
-
-    form.photo = file.raw;
-    photoPreview.value = URL.createObjectURL(file.raw);
+    form.photo = file;
+    photoPreview.value = URL.createObjectURL(file);
 };
 
 const handleTaxFileChange = (file) => {
@@ -160,6 +187,7 @@ const submit = () => {
                     :is-edit="true"
                     :technician="technician"
                     :available-specialties="availableSpecialties"
+                    :shifts="shifts"
                     @photo-change="handlePhotoChange"
                     @tax-file-change="handleTaxFileChange"
                     @tax-file-remove="handleTaxFileRemove"

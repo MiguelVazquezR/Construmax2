@@ -7,7 +7,7 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import SupportModal from '@/Components/SupportModal.vue';
 // Iconos
 import {  
-    Money, Document 
+    Money, Suitcase, Collection
 } from '@element-plus/icons-vue';
 
 defineProps({
@@ -17,6 +17,10 @@ defineProps({
 const { can } = usePermissions();
 const showSupportModal = ref(false);
 const route = window.route; // Acceso directo al helper route de Ziggy
+const page = usePage();
+
+// Portal de asistencia del colaborador (asistencia remota, vacaciones y recibos)
+const attendancePortal = computed(() => page.props.attendance_portal === true);
 
 // Lógica para determinar qué menú está activo (incluyendo sub-rutas)
 const activeMenu = computed(() => {
@@ -30,17 +34,10 @@ const activeMenu = computed(() => {
     // Presupuestos
     if (route().current('budgets.*')) return 'budgets.index';
 
-    // Deposits
+    // Cobranza (depósitos, control de gastos y facturación)
     if (route().current('deposits.*')) return 'deposits.index';
-
-    // Invoices
-    if (route().current('invoices.*')) return 'invoices.index';
-
-    // Control de gastos
     if (route().current('expenses.*')) return 'expenses.index';
-
-        // Tutoriales
-        if (route().current('tutorials.*')) return 'tutorials.index';
+    if (route().current('invoices.*')) return 'invoices.index';
 
     // Costos especiales
     if (route().current('special-costs.*')) return 'special-costs.index';
@@ -54,6 +51,9 @@ const activeMenu = computed(() => {
     if (route().current('users.*')) return 'users.index';
     if (route().current('technicians.*')) return 'technicians.index';
     if (route().current('config.roles-permissions.*')) return 'config.roles-permissions.index';
+
+    // Recursos Humanos (nómina y asistencia)
+    if (route().current('payroll.*')) return route().current();
 
     // Default
     return route().current();
@@ -154,42 +154,62 @@ const activeMenu = computed(() => {
                    </el-menu-item>
                </Link>
 
-                <Link v-if="can('invoices.index')" :href="route('invoices.index')">
-                    <el-menu-item class="!bg-dark" index="invoices.index">
-                        <el-icon><Document/></el-icon>
-                        <template #title><span>Facturación</span></template>
-                    </el-menu-item>
-                </Link>
+                <!-- Cobranza (depósitos, control de gastos y facturación) -->
+                <el-sub-menu index="cobranza"
+                    v-if="can('deposits.index') || can('expenses.index') || can('invoices.index')">
+                    <template #title>
+                        <el-icon><Collection /></el-icon>
+                        <span>Cobranza</span>
+                    </template>
 
-                <!-- Depósitos -->
-                <Link v-if="can('deposits.index')" :href="route('deposits.index')">
-                    <el-menu-item class="!bg-dark" index="deposits.index">
-                       <el-icon><Coin /></el-icon>
-                        <template #title><span>Depósitos</span></template>
-                    </el-menu-item>
-                </Link>
+                    <Link v-if="can('deposits.index')" :href="route('deposits.index')">
+                        <el-menu-item class="!bg-dark" index="deposits.index">Depósitos</el-menu-item>
+                    </Link>
 
-                <!-- Control de gastos -->
-                <Link v-if="can('expenses.index')" :href="route('expenses.index')">
-                    <el-menu-item class="!bg-dark" index="expenses.index">
-                        <el-icon><Wallet /></el-icon>
-                        <template #title><span>Control de gastos</span></template>
-                    </el-menu-item>
-                </Link>
+                    <Link v-if="can('expenses.index')" :href="route('expenses.index')">
+                        <el-menu-item class="!bg-dark" index="expenses.index">Control de gastos</el-menu-item>
+                    </Link>
 
-                <!-- Tutoriales -->
-                <Link :href="route('tutorials.index')">
-                    <el-menu-item class="!bg-dark" index="tutorials.index">
-                        <el-icon><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                                stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                                <path stroke-linecap="round" stroke-linejoin="round"
-                                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                <path stroke-linecap="round" stroke-linejoin="round"
-                                    d="M15.91 11.672a.375.375 0 010 .656l-5.603 3.113a.375.375 0 01-.557-.328V8.887c0-.286.307-.466.557-.327l5.603 3.112z" />
-                            </svg></el-icon>
-                        <template #title><span>Tutoriales</span></template>
-                    </el-menu-item>
-                </Link>
+                    <Link v-if="can('invoices.index')" :href="route('invoices.index')">
+                        <el-menu-item class="!bg-dark" index="invoices.index">Facturación</el-menu-item>
+                    </Link>
+                </el-sub-menu>
+
+                <!-- Recursos Humanos (nómina y asistencia) -->
+                <el-sub-menu index="payroll" v-if="attendancePortal || can('payroll.settings.manage') || can('payroll.devices.manage') || can('payroll.shifts.manage') || can('payroll.holidays.manage') || can('payroll.vacations.manage') || can('payroll.periods.index')">
+                    <template #title>
+                        <el-icon><Suitcase /></el-icon>
+                        <span>Recursos Humanos</span>
+                    </template>
+
+                    <Link v-if="attendancePortal" :href="route('payroll.my-attendance.index')">
+                        <el-menu-item class="!bg-dark" index="payroll.my-attendance.index">Mi asistencia</el-menu-item>
+                    </Link>
+
+                    <Link v-if="can('payroll.periods.index')" :href="route('payroll.periods.index')">
+                        <el-menu-item class="!bg-dark" index="payroll.periods.index">Periodos de nómina</el-menu-item>
+                    </Link>
+
+                    <Link v-if="can('payroll.vacations.manage') || can('payroll.vacations.approve')" :href="route('payroll.vacations.index')">
+                        <el-menu-item class="!bg-dark" index="payroll.vacations.index">Vacaciones</el-menu-item>
+                    </Link>
+
+                    <Link v-if="can('payroll.shifts.manage')" :href="route('payroll.shifts.index')">
+                        <el-menu-item class="!bg-dark" index="payroll.shifts.index">Horarios del personal</el-menu-item>
+                    </Link>
+
+                    <Link v-if="can('payroll.holidays.manage')" :href="route('payroll.holidays.index')">
+                        <el-menu-item class="!bg-dark" index="payroll.holidays.index">Días festivos</el-menu-item>
+                    </Link>
+
+                    <Link v-if="can('payroll.devices.manage')" :href="route('payroll.devices.index')">
+                        <el-menu-item class="!bg-dark" index="payroll.devices.index">Dispositivos de asistencia</el-menu-item>
+                    </Link>
+
+                    <Link v-if="can('payroll.settings.manage')" :href="route('payroll.settings.edit')">
+                        <el-menu-item class="!bg-dark" index="payroll.settings.edit">Configuración de nómina</el-menu-item>
+                    </Link>
+                </el-sub-menu>
 
                 <!-- Módulo Configuración -->
                 <el-sub-menu index="settings" v-if="can('users.index') || can('roles.index')">
