@@ -70,11 +70,15 @@ All data is computed server-side in `TicketAnalyticsController@index` and passed
 ## Tutorials (`Tutorials/Index.vue`)
 
 ### What it is
-A hardcoded array of 8 video tutorial entries displayed as a card grid. Each card shows a thumbnail, title, description, and duration badge. Clicking opens a modal with an embedded video player.
+A card grid of video tutorials stored in the `tutorials` table. Each card shows a thumbnail, title, description, and duration badge. Clicking opens a modal with an embedded video player.
 
-### Video data
-- Stored in `TutorialController@index` as a PHP array (not from database)
-- Includes: `title`, `description`, `duration`, `filename`, `thumbnail`
+### Managing tutorials (CRUD)
+- Users with the granular permissions see an "Agregar tutorial" button (`tutorials.create`) and an actions menu on every card — edit (`tutorials.edit`) and delete (`tutorials.delete`); the dialog lives in `Tutorials/Partials/TutorialFormDialog.vue`.
+- `TutorialController` (`store` / `update` / `destroy`) receives `video` (required on create, optional on update — replacing it removes the previous file) and `thumbnail` (optional, removable with `remove_thumbnail`).
+- Uploads go to the `public` disk under `tutorials/videos/` and `tutorials/thumbnails/` (thumbnails optimized with `ImageOptimizerService`) and are served through the `/storage/{path}` route. Legacy entries keep their `/videos/*` deployment paths, which are never deleted by the app.
+- Updates are sent as POST with `_method=PUT` method spoofing (Inertia multipart gotcha).
+- The payload checks that the physical files exist (`Tutorial::videoAvailable()` / `thumbnailAvailable()`): missing thumbnails are not exposed (`thumbnail_url` null, so the browser never requests them) and cards whose video file is missing show a "Video no disponible" badge and a warning instead of opening a broken player. Legacy `/videos/*` entries stay clean when the deployment files are absent.
+- The original 8 tutorials are seeded by the `2026_10_02_000001_create_tutorials_table` migration; the permissions (`tutorials.create` / `tutorials.edit` / `tutorials.delete`) are defined in `PermissionSeeder` (category "Tutoriales").
 
 ---
 
@@ -94,6 +98,6 @@ A hardcoded array of 8 video tutorial entries displayed as a card grid. Each car
 
 - **Main dashboard KPIs are real-time computed** — may become slow with large datasets. No caching layer.
 - **Analytics data is all computed in `TicketAnalyticsController`** — heavy method with multiple private helpers. Consider extracting to a dedicated AnalyticsService.
-- **Tutorials are hardcoded** — to add/change videos, edit `TutorialController@index` directly. No admin UI.
+- **Tutorials are database-backed** (`tutorials` table, CRUD with video/thumbnail uploads gated by `tutorials.create` / `tutorials.edit` / `tutorials.delete`). Legacy videos still point to `/videos/*` paths on the deployment folder.
 - **ECharts Mexico map** requires the Mexico GeoJSON to be loaded client-side; check `RegionDistribution.vue` for the map registration logic.
 - **Currency toggle** in analytics is client-side only — data is pre-computed in both currencies by the controller.

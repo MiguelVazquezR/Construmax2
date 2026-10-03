@@ -109,7 +109,7 @@ Construmax2/
 | 12 | Invoices | `12-module-invoices.md` | Invoice upload, tracking overdue invoices, status syncing with tickets |
 | 13 | Notifications | `13-module-notifications.md` | Event types, subscriber management, notification bell with polling, cron-triggered overdue checks |
 | 14 | Service Types | `06-module-tickets.md` | Simple CRUD for service type taxonomy used by tickets |
-| 15 | Tutorials | `04-module-dashboard.md` | Hardcoded video tutorial gallery page |
+| 15 | Tutorials | `04-module-dashboard.md` | Video tutorial gallery (DB-backed) with admin CRUD: add/edit/delete with video + thumbnail uploads (`tutorials.create` / `tutorials.edit` / `tutorials.delete`) |
 | 16 | Work Acceptance Reports | `14-module-work-acceptance-reports.md` | Digital "Acta de recepción": technician data entry, electronic signature, PDF export, locking mechanism |
 | 17 | Expenses (Control de gastos) | `15-module-expenses.md` | Expense tracking: general expenses and budget expenses (breakdown payments, extras, commissions), deposit mirroring (Realizado with voucher + commission), CRUD + quick mark-as-paid, multiple receipt uploads, categories manager modal, budget expenses panel (no approval flow) |
 | 18 | Payroll & HR (Recursos Humanos) | `16-module-payroll.md` | Facial kiosk (AWS Rekognition) with authorized devices, remote geolocated attendance, shifts (fixed/rotating/flexible), automatic lates/overtime, LFT holidays, incidents, vacations with weekly accrual, real-time pre-payroll, payable periods with automatic closing (01:00), printable payslips, mirrored period expense, collaborator portal *Mi asistencia* |
