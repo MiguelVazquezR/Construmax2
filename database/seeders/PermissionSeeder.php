@@ -424,6 +424,23 @@ class PermissionSeeder extends Seeder
                 'category' => 'Nómina',
                 'description' => 'Registrar y eliminar rostros para el reconocimiento facial',
             ],
+
+            // --- MÓDULO: TUTORIALES ---
+            [
+                'name' => 'tutorials.create',
+                'category' => 'Tutoriales',
+                'description' => 'Agregar tutoriales con su video y miniatura',
+            ],
+            [
+                'name' => 'tutorials.edit',
+                'category' => 'Tutoriales',
+                'description' => 'Editar tutoriales existentes',
+            ],
+            [
+                'name' => 'tutorials.delete',
+                'category' => 'Tutoriales',
+                'description' => 'Eliminar tutoriales del sistema',
+            ],
         ];
 
         foreach ($permissions as $permission) {
