@@ -513,8 +513,8 @@ class TicketController extends Controller
 
     /**
      * The "Por programar" status is reserved for tickets whose branch is
-     * located in the allowed region/state (Jalisco). Ensures the requested
-     * status change respects that rule.
+     * located in an allowed region/state (Jalisco, Nuevo León). Ensures the
+     * requested status change respects that rule.
      */
     private function ensureTicketCanAdoptStatus(array $data, Ticket $ticket): void
     {
@@ -526,9 +526,9 @@ class TicketController extends Controller
             ? ($data['customer_branch_id'] ? CustomerBranch::find($data['customer_branch_id']) : null)
             : $ticket->branch;
 
-        if (!$branch || !Ticket::regionMatches($branch->region, 'Jalisco')) {
+        if (!$branch || !Ticket::isSchedulingRegion($branch->region)) {
             throw ValidationException::withMessages([
-                'status' => 'Solo los tickets del estado de Jalisco pueden estar en el estatus "Por programar". Verifica que la región/estado de la sucursal esté bien escrita.',
+                'status' => 'Solo los tickets de los estados de Jalisco y Nuevo León pueden estar en el estatus "Por programar". Verifica que la región/estado de la sucursal esté bien escrita.',
             ]);
         }
     }
