@@ -2,14 +2,14 @@
  * Shared helpers for the "Por programar" ticket status.
  *
  * This status is reserved for tickets whose branch is located in one of the
- * allowed regions/states (Jalisco, Nuevo León). The comparison ignores case,
- * accents and surrounding whitespace, so "jalisco", "JALISCO" and " Jálisco "
- * all match.
+ * allowed regions/states (Jalisco, Nuevo León and Monterrey). The comparison
+ * ignores case, accents and surrounding whitespace, so "jalisco", "JALISCO"
+ * and " Jálisco " all match.
  */
 export function useSchedulingRegion() {
-    const SCHEDULING_REGIONS = ['Jalisco', 'Nuevo León'];
+    const SCHEDULING_REGIONS = ['Jalisco', 'Nuevo León', 'Monterrey'];
 
-    const schedulingRegionMessage = 'Solo los tickets de los estados de Jalisco y Nuevo León pueden estar en el estatus "Por programar". Verifica que la región/estado de la sucursal esté bien escrita.';
+    const schedulingRegionMessage = 'Solo los tickets de los estados de Jalisco, Nuevo León y Monterrey pueden estar en el estatus "Por programar". Verifica que la región/estado de la sucursal esté bien escrita.';
 
     const normalizeRegion = (region) =>
         (region || '')
