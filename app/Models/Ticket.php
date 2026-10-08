@@ -248,6 +248,7 @@ class Ticket extends Model implements HasMedia
 
         return false;
     }
+    
 
     private static function normalizeRegion(?string $region): string
     {
