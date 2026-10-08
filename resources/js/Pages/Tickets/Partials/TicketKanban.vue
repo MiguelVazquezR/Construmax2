@@ -111,7 +111,7 @@ const onDrop = async (e, targetStatus) => {
         return;
     }
 
-    // "Por programar" solo está disponible para tickets de las regiones/estados permitidos (Jalisco, Nuevo León)
+    // "Por programar" solo está disponible para tickets de las regiones/estados permitidos
     if (targetStatus === 'Por programar' && !isTicketInSchedulingRegion(ticket)) {
         ElMessage.warning(schedulingRegionMessage);
         draggedItem.value = null;

@@ -84,7 +84,7 @@ async function handleStatusChange(newStatus) {
         }
     }
 
-    // "Por programar" solo está disponible para tickets de las regiones/estados permitidos (Jalisco, Nuevo León)
+    // "Por programar" solo está disponible para tickets de las regiones/estados permitidos
     if (newStatus === 'Por programar' && !isTicketInSchedulingRegion(props.ticket)) {
         currentStatus.value = props.ticket.status;
         ElMessage.warning(schedulingRegionMessage);

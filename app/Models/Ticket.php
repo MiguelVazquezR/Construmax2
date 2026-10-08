@@ -21,9 +21,9 @@ class Ticket extends Model implements HasMedia
     use InteractsWithMedia;
 
     /**
-     * Regions/states whose tickets are allowed to adopt the "Por programar" status.
+     * Branch regions/states allowed to adopt the "Por programar" status.
      */
-    public const SCHEDULING_REGIONS = ['Jalisco', 'Nuevo León'];
+    public const SCHEDULING_REGIONS = ['Jalisco', 'Nuevo León', 'Monterrey'];
 
     /**
      * Boot the model and register status change notifications.
@@ -232,21 +232,6 @@ class Ticket extends Model implements HasMedia
     public static function regionMatches(?string $branchRegion, string $expectedRegion): bool
     {
         return self::normalizeRegion($branchRegion) === self::normalizeRegion($expectedRegion);
-    }
-
-    /**
-     * Check whether a branch region is one of the regions allowed to adopt
-     * the "Por programar" status.
-     */
-    public static function isSchedulingRegion(?string $branchRegion): bool
-    {
-        foreach (self::SCHEDULING_REGIONS as $region) {
-            if (self::regionMatches($branchRegion, $region)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static function normalizeRegion(?string $region): string

@@ -175,10 +175,26 @@ class TicketControllerTest extends TestCase
         ]);
     }
 
-    public function test_update_status_blocks_por_programar_for_non_scheduling_region_tickets(): void
+    public function test_update_status_allows_por_programar_for_monterrey_tickets(): void
     {
         $customer = Customer::factory()->create();
-        $branch = CustomerBranch::factory()->create(['customer_id' => $customer->id, 'region' => 'Ciudad de México']);
+        $branch = CustomerBranch::factory()->create(['customer_id' => $customer->id, 'region' => 'Monterrey']);
+        $ticket = Ticket::factory()->create(['status' => 'Borrador', 'customer_branch_id' => $branch->id]);
+
+        $this->actingAs($this->user)
+            ->put(route('tickets.update-status', $ticket), ['status' => 'Por programar'])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket->id,
+            'status' => 'Por programar',
+        ]);
+    }
+
+    public function test_update_status_blocks_por_programar_for_disallowed_region_tickets(): void
+    {
+        $customer = Customer::factory()->create();
+        $branch = CustomerBranch::factory()->create(['customer_id' => $customer->id, 'region' => 'Querétaro']);
         $ticket = Ticket::factory()->create(['status' => 'Borrador', 'customer_branch_id' => $branch->id]);
 
         $this->actingAs($this->user)
