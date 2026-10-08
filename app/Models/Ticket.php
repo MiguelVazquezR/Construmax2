@@ -234,6 +234,22 @@ class Ticket extends Model implements HasMedia
         return self::normalizeRegion($branchRegion) === self::normalizeRegion($expectedRegion);
     }
 
+    /**
+     * Check whether a branch region is one of the regions/states allowed to
+     * adopt the "Por programar" status (see self::SCHEDULING_REGIONS).
+     */
+    public static function isSchedulingRegion(?string $branchRegion): bool
+    {
+        foreach (self::SCHEDULING_REGIONS as $region) {
+            if (self::regionMatches($branchRegion, $region)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+    
+
     private static function normalizeRegion(?string $region): string
     {
         return Str::lower(Str::ascii(trim((string) $region)));
