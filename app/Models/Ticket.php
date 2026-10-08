@@ -21,6 +21,11 @@ class Ticket extends Model implements HasMedia
     use InteractsWithMedia;
 
     /**
+     * Branch regions/states allowed to adopt the "Por programar" status.
+     */
+    public const SCHEDULING_REGIONS = ['Jalisco', 'Nuevo León', 'Monterrey'];
+
+    /**
      * Boot the model and register status change notifications.
      */
     protected static function booted(): void

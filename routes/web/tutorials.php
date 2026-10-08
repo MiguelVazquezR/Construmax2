@@ -10,5 +10,8 @@ Route::middleware([
 ])->group(function () {
 
     Route::get('/tutorials', [TutorialController::class, 'index'])->name('tutorials.index');
+    Route::post('/tutorials', [TutorialController::class, 'store'])->name('tutorials.store');
+    Route::put('/tutorials/{tutorial}', [TutorialController::class, 'update'])->name('tutorials.update');
+    Route::delete('/tutorials/{tutorial}', [TutorialController::class, 'destroy'])->name('tutorials.destroy');
 
 });

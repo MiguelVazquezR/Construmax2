@@ -13,7 +13,12 @@
         </script>
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
-        <title inertia>{{ config('app.name', 'Laravel') }}</title>
+        <title inertia>{{ config('app.name', 'Construmax') }}</title>
+
+        <!-- Server-side app name so client-rendered titles match the deployment -->
+        <script>
+            window.appName = @json(config('app.name', 'Construmax'));
+        </script>
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
