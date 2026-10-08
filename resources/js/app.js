@@ -14,7 +14,7 @@ import 'element-plus/theme-chalk/dark/css-vars.css'; // Importar tema oscuro
 // 1. Importar librería de íconos
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
-const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+const appName = window.appName || import.meta.env.VITE_APP_NAME || 'Construmax';
 
 createInertiaApp({
     title: (title) => `${title} - ${appName}`,
