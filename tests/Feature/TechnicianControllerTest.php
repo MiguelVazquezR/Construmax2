@@ -6,6 +6,7 @@ use App\Models\PayrollProfile;
 use App\Models\Technician;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class TechnicianControllerTest extends TestCase
@@ -43,6 +44,7 @@ class TechnicianControllerTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('Technicians/Create')
                 ->has('availableSpecialties')
+                ->has('roles')
             );
     }
 
@@ -69,6 +71,72 @@ class TechnicianControllerTest extends TestCase
         $this->assertDatabaseHas('technicians', ['phone' => '8112345678']);
     }
 
+    public function test_store_creates_an_active_internal_technician_with_assigned_roles(): void
+    {
+        $role = Role::create(['name' => 'technician', 'guard_name' => 'web']);
+
+        $this->actingAs($this->user)
+            ->post(route('technicians.store'), [
+                'name' => 'Internal Technician',
+                'email' => 'internal.tech@test.com',
+                'phone' => '8112345678',
+                'password' => 'SecurePass123!',
+                'is_internal' => true,
+                'roles' => [$role->name],
+            ])
+            ->assertRedirect(route('technicians.index'));
+
+        $internalUser = User::where('email', 'internal.tech@test.com')->firstOrFail();
+
+        $this->assertTrue($internalUser->is_active);
+        $this->assertTrue($internalUser->hasRole($role));
+        $this->assertTrue((bool) $internalUser->technician->is_internal);
+        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('SecurePass123!', $internalUser->password));
+    }
+
+    public function test_store_requires_email_and_role_for_internal_technicians(): void
+    {
+        $this->actingAs($this->user)
+            ->post(route('technicians.store'), [
+                'name' => 'Internal Technician',
+                'phone' => '8112345678',
+                'is_internal' => true,
+            ])
+            ->assertSessionHasErrors(['email', 'password', 'roles']);
+    }
+
+    public function test_external_technicians_cannot_log_in_even_if_active(): void
+    {
+        $externalUser = User::factory()->externalTechnician()->create([
+            'email' => 'external.tech@test.com',
+            'password' => bcrypt('password'),
+            'is_active' => true,
+        ]);
+
+        $this->post(route('login'), [
+            'email' => $externalUser->email,
+            'password' => 'password',
+        ]);
+
+        $this->assertGuest();
+    }
+
+    public function test_active_internal_technicians_can_log_in(): void
+    {
+        $internalUser = User::factory()->internalTechnician()->create([
+            'email' => 'internal.tech@test.com',
+            'password' => bcrypt('password'),
+            'is_active' => true,
+        ]);
+
+        $this->post(route('login'), [
+            'email' => $internalUser->email,
+            'password' => 'password',
+        ]);
+
+        $this->assertAuthenticatedAs($internalUser);
+    }
+
     public function test_store_requires_name_and_phone(): void
     {
         $this->actingAs($this->user)
@@ -80,7 +148,7 @@ class TechnicianControllerTest extends TestCase
 
     public function test_show_displays_technician(): void
     {
-        $techUser = User::factory()->asTechnician()->create();
+        $techUser = User::factory()->externalTechnician()->create();
 
         $this->actingAs($this->user)
             ->get(route('technicians.show', $techUser->technician))
@@ -102,6 +170,7 @@ class TechnicianControllerTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('Technicians/Edit')
                 ->has('technician')
+                ->has('roles')
             );
     }
 
@@ -109,7 +178,7 @@ class TechnicianControllerTest extends TestCase
 
     public function test_update_modifies_technician(): void
     {
-        $techUser = User::factory()->asTechnician()->create();
+        $techUser = User::factory()->externalTechnician()->create();
         $technician = $techUser->technician;
 
         $this->actingAs($this->user)
@@ -129,6 +198,73 @@ class TechnicianControllerTest extends TestCase
             'id' => $technician->id,
             'phone' => '8198765432',
         ]);
+    }
+
+    public function test_update_assigns_roles_and_activates_a_technician_changed_to_internal(): void
+    {
+        $role = Role::create(['name' => 'technician', 'guard_name' => 'web']);
+        $techUser = User::factory()->externalTechnician()->create(['is_active' => false]);
+        $technician = $techUser->technician;
+
+        $this->actingAs($this->user)
+            ->put(route('technicians.update', $technician), [
+                'name' => $techUser->name,
+                'email' => $techUser->email,
+                'phone' => $technician->phone,
+                'status' => 'Activo',
+                'is_internal' => true,
+                'password' => 'SecurePass123!',
+                'roles' => [$role->name],
+            ])
+            ->assertRedirect(route('technicians.show', $technician->id));
+
+        $this->assertTrue($techUser->fresh()->is_active);
+        $this->assertTrue($techUser->fresh()->hasRole($role));
+        $this->assertTrue((bool) $technician->fresh()->is_internal);
+    }
+
+    public function test_update_activates_a_previously_disabled_internal_technician_who_is_not_dismissed(): void
+    {
+        $role = Role::create(['name' => 'technician', 'guard_name' => 'web']);
+        $techUser = User::factory()->internalTechnician()->create(['is_active' => false]);
+        $technician = $techUser->technician;
+        $technician->update(['status' => 'Activo']);
+
+        $this->actingAs($this->user)
+            ->put(route('technicians.update', $technician), [
+                'name' => $techUser->name,
+                'email' => $techUser->email,
+                'phone' => $technician->phone,
+                'status' => 'Activo',
+                'is_internal' => true,
+                'password' => 'SecurePass123!',
+                'roles' => [$role->name],
+            ])
+            ->assertRedirect(route('technicians.show', $technician->id));
+
+        $this->assertTrue($techUser->fresh()->is_active);
+    }
+
+    public function test_changing_a_technician_to_external_removes_roles_and_login_access(): void
+    {
+        $role = Role::create(['name' => 'technician', 'guard_name' => 'web']);
+        $techUser = User::factory()->internalTechnician()->create();
+        $techUser->assignRole($role);
+        $technician = $techUser->technician;
+
+        $this->actingAs($this->user)
+            ->put(route('technicians.update', $technician), [
+                'name' => $techUser->name,
+                'email' => $techUser->email,
+                'phone' => $technician->phone,
+                'status' => 'Activo',
+                'is_internal' => false,
+            ])
+            ->assertRedirect(route('technicians.show', $technician->id));
+
+        $this->assertFalse($techUser->fresh()->is_active);
+        $this->assertFalse($techUser->fresh()->hasRole($role));
+        $this->assertFalse((bool) $technician->fresh()->is_internal);
     }
 
     // --- updateStatus ---

@@ -43,8 +43,10 @@ PUT    /technicians/{technician}/bank-accounts/{account}/favorite  technicians.b
 ## Data model
 
 ### Technician
-- `user_id`: FK to users (each technician has a User record for auth/login)
+- `user_id`: FK to users (each technician has a User record)
 - `is_internal`: boolean — internal employees vs external contractors
+- Only active internal technicians can authenticate; external technicians are rejected even if their user account is active
+- Internal technicians need an email, an assigned role, and a password to sign in; the technician form sets these on create/edit
 - `level`: `Encargado` (lead) or `Auxiliar/Ayudante` (assistant)
 - `specialties`: JSON array — 20 predefined options (electric, plumbing, HVAC, drywall, painting, waterproofing, masonry, welding, glass/aluminum, networking, locksmith, cleaning, carpentry, tile/flooring, gardening, fumigation, CCTV, domotics, elevator maintenance)
 - `status`: Activo, Inactivo, En revisión, Vetado
@@ -65,16 +67,16 @@ PUT    /technicians/{technician}/bank-accounts/{account}/favorite  technicians.b
 | Method | What it does |
 |--------|-------------|
 | `index` | Card grid with search, specialty, state, is_internal filters; returns JSON for AJAX or Inertia page |
-| `store` | Creates User + Technician in a transaction; photo optimization; optional tax file upload |
-| `update` | Updates User + Technician; handles photo and tax file replacement |
-| `quickStore` | Quick-create from ticket form: name + phone only, returns JSON |
+| `store` | Creates User + Technician in a transaction; internal technicians get an active account with email, password, and roles; photo optimization; optional tax file upload |
+| `update` | Updates User + Technician; internal status controls login access and roles; handles photo and tax file replacement |
+| `quickStore` | Quick-create from ticket form: name + phone only, returns JSON; complete internal login credentials from the full technician form |
 | `show` | Profile with ticket history, payments, KPIs (total tickets, completion rate, earnings) |
 | `updateStatus` | Changes status (Activo, Inactivo, En revisión, Vetado) |
 | `updateRating` | Updates `rating_avg` |
 | `storeBankAccount` | Adds bank account (first one auto-favorited) |
 | `setFavoriteBankAccount` | Sets one account as favorite, unfavoriting others |
 | `destroy` | **External technicians:** status "Eliminado" + soft-delete of the user (they move to the *Eliminados* tab). **Internal technicians:** asks for a `termination_date`, saves it in their payroll profile, deactivates the user (`is_active = false`) and sets status "Inactivo" — they keep their record, stay in the payroll until that date and can be reactivated |
-| `restore` | Reactivates a dismissed technician (trashed or not): restores/deactivates the user, clears the payroll `termination_date` so they return to the payroll, and sets status "Activo" |
+| `restore` | Reactivates a dismissed technician (trashed or not): restores the user, enables login only for internal technicians, clears the payroll `termination_date` so they return to the payroll, and sets status "Activo" |
 
 ---
 
@@ -88,6 +90,7 @@ PUT    /technicians/{technician}/bank-accounts/{account}/favorite  technicians.b
 
 ### `TechnicianForm.vue` (core)
 - User basics: name, email, phone, photo
+- Internal technicians additionally require a login password and at least one role; password updates are optional while editing an existing internal technician
 - Geolocation: state, city, colony, zip, coverage radius
 - Specialties: multi-select with 20 presets + custom
 - Level: Encargado or Auxiliar/Ayudante
