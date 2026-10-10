@@ -35,6 +35,10 @@ const props = defineProps({
         type: Array,
         default: () => []
     },
+    roles: {
+        type: Array,
+        default: () => []
+    },
     shifts: {
         type: Array,
         default: () => []
@@ -48,6 +52,8 @@ defineEmits(['photo-change', 'tax-file-change', 'tax-file-remove']);
 // "Nómina y asistencia" section is hidden for them).
 watch(() => props.form.is_internal, (isInternal) => {
     if (! isInternal) {
+        props.form.roles = [];
+        props.form.password = '';
         props.form.is_payroll_subject = false;
         props.form.is_attendance_subject = false;
         props.form.can_remote_attendance = false;
@@ -185,8 +191,40 @@ const mexicoStates = [
                             <el-input v-model="form.name" placeholder="Ej. Juan Pérez López" />
                         </el-form-item>
 
-                        <el-form-item label="Correo electrónico" prop="email">
+                        <el-form-item :label="form.is_internal ? 'Correo electrónico' : 'Correo electrónico (opcional)'" prop="email">
                             <el-input v-model="form.email" placeholder="contacto@tecnico.com" />
+                        </el-form-item>
+
+                        <el-form-item
+                            v-if="form.is_internal"
+                            :label="isEdit && technician?.is_internal ? 'Contraseña (opcional)' : 'Contraseña de acceso'"
+                            prop="password"
+                        >
+                            <el-input
+                                v-model="form.password"
+                                type="password"
+                                show-password
+                                autocomplete="new-password"
+                                placeholder="Mínimo 8 caracteres"
+                            />
+                        </el-form-item>
+
+                        <el-form-item v-if="form.is_internal" label="Rol de usuario" prop="roles">
+                            <el-select
+                                v-model="form.roles"
+                                multiple
+                                placeholder="Seleccionar roles"
+                                class="w-full"
+                                collapse-tags
+                                collapse-tags-tooltip
+                            >
+                                <el-option
+                                    v-for="role in roles"
+                                    :key="role.id"
+                                    :label="role.name"
+                                    :value="role.name"
+                                />
+                            </el-select>
                         </el-form-item>
 
                         <el-form-item label="Teléfono principal (móvil)" prop="phone">

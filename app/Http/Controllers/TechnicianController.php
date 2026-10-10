@@ -20,9 +20,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rules;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
+use Spatie\Permission\Models\Role;
 
 class TechnicianController extends Controller
 {
@@ -84,6 +86,7 @@ class TechnicianController extends Controller
         // Pasamos las especialidades también al formulario de creación si lo necesitas
         return Inertia::render('Technicians/Create', [
             'availableSpecialties' => TechnicianSpecialty::active()->orderBy('name')->pluck('name'),
+            'roles' => Role::query()->where('guard_name', 'web')->orderBy('name')->get(),
             'shifts' => Shift::optionList(),
             'currentShiftId' => null,
         ]);
@@ -91,10 +94,17 @@ class TechnicianController extends Controller
 
     public function store(Request $request)
     {
+        $isInternal = $request->boolean('is_internal');
+
         // CAMBIO: Dejamos como "required" solo name y phone (como en el quickStore)
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'nullable|email|max:255|unique:users',
+            'email' => [Rule::requiredIf($isInternal), 'nullable', 'email', 'max:255', 'unique:users'],
+            'password' => $isInternal
+                ? ['required', Rules\Password::defaults()]
+                : ['nullable', Rules\Password::defaults()],
+            'roles' => $isInternal ? ['required', 'array', 'min:1'] : ['nullable', 'array'],
+            'roles.*' => ['string', Rule::exists('roles', 'name')->where('guard_name', 'web')],
             'photo' => 'nullable|image|max:2048',
             'phone' => 'required|string|max:20',
             'secondary_phone' => 'nullable|string|max:20',
@@ -129,12 +139,14 @@ class TechnicianController extends Controller
 
         $payrollProfile = $this->syncPayrollProfileAction->sanitizeFor($request->user(), $validated);
 
-        DB::transaction(function () use ($validated, $request, $payrollProfile) {
+        DB::transaction(function () use ($validated, $request, $payrollProfile, $isInternal) {
             $user = User::create([
                 'name' => $validated['name'],
                 'email' => $validated['email'] ?? null, // CORRECCIÓN: Agregar ?? null
-                'password' => Hash::make(Str::random(12)),
-                'is_active' => false,
+                'password' => $isInternal
+                    ? Hash::make($validated['password'])
+                    : Hash::make(Str::random(12)),
+                'is_active' => $isInternal,
             ]);
 
             $optimizedPhotoPath = $request->hasFile('photo')
@@ -155,7 +167,7 @@ class TechnicianController extends Controller
                 'user_id' => $user->id,
                 'phone' => $validated['phone'],
                 'secondary_phone' => $validated['secondary_phone'] ?? null, // CORRECCIONES
-                'is_internal' => $validated['is_internal'] ?? false,
+                'is_internal' => $isInternal,
                 'state' => $validated['state'] ?? null,
                 'city' => $validated['city'] ?? null,
                 'colony' => $validated['colony'] ?? null,
@@ -172,6 +184,8 @@ class TechnicianController extends Controller
                 'internal_notes' => $validated['internal_notes'] ?? null,
                 'rating_avg' => $validated['rating_avg'] ?? 0,
             ]);
+
+            $user->syncRoles($isInternal ? $validated['roles'] : []);
 
             $this->syncPayrollProfileAction->execute($technician->user, $payrollProfile);
 
@@ -250,8 +264,9 @@ class TechnicianController extends Controller
     public function edit(Technician $technician)
     {
         return Inertia::render('Technicians/Edit', [
-            'technician' => $technician->load(['user.payrollProfile', 'bankAccounts.media']),
+            'technician' => $technician->load(['user.payrollProfile', 'user.roles', 'bankAccounts.media']),
             'availableSpecialties' => TechnicianSpecialty::active()->orderBy('name')->pluck('name'),
+            'roles' => Role::query()->where('guard_name', 'web')->orderBy('name')->get(),
             'shifts' => Shift::optionList(),
             'currentShiftId' => ShiftAssignment::currentFor($technician->user)?->shift_id,
         ]);
@@ -259,9 +274,20 @@ class TechnicianController extends Controller
 
     public function update(Request $request, Technician $technician)
     {
+        $isInternal = $request->has('is_internal')
+            ? $request->boolean('is_internal')
+            : (bool) $technician->is_internal;
+        $passwordRequired = $isInternal && ! $technician->is_internal;
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => ['nullable', 'email', Rule::unique('users')->ignore($technician->user_id)],
+            'email' => [Rule::requiredIf($isInternal), 'nullable', 'email', Rule::unique('users')->ignore($technician->user_id)],
+            'password' => [
+                $passwordRequired ? 'required' : 'nullable',
+                Rules\Password::defaults(),
+            ],
+            'roles' => $isInternal ? ['required', 'array', 'min:1'] : ['nullable', 'array'],
+            'roles.*' => ['string', Rule::exists('roles', 'name')->where('guard_name', 'web')],
             'photo' => 'nullable|image|max:2048',
             'phone' => 'required|string|max:20',
             'secondary_phone' => 'nullable|string|max:20',
@@ -289,7 +315,7 @@ class TechnicianController extends Controller
         // Turning the technician into an external one removes them from payroll.
         // External collaborators can never be saved as payroll subjects nor
         // register attendance; only internal ones follow the payroll flow.
-        if (! ($validated['is_internal'] ?? $technician->is_internal)) {
+        if (! $isInternal) {
             $validated['is_payroll_subject'] = false;
             $validated['is_attendance_subject'] = false;
             $validated['can_remote_attendance'] = false;
@@ -297,11 +323,20 @@ class TechnicianController extends Controller
 
         $payrollProfile = $this->syncPayrollProfileAction->sanitizeFor($request->user(), $validated);
 
-        DB::transaction(function () use ($validated, $request, $technician, $payrollProfile) {
-            $technician->user->update([
+        DB::transaction(function () use ($validated, $request, $technician, $payrollProfile, $isInternal) {
+            $userData = [
                 'name' => $validated['name'],
                 'email' => $validated['email'] ?? null,
-            ]);
+                'is_active' => $isInternal
+                    ? (! $technician->is_internal || $technician->user->is_active || $technician->status !== 'Inactivo')
+                    : false,
+            ];
+
+            if ($isInternal && ! empty($validated['password'])) {
+                $userData['password'] = Hash::make($validated['password']);
+            }
+
+            $technician->user->update($userData);
 
             $optimizedPhotoPath = $request->hasFile('photo')
                 ? $this->imageOptimizer->optimize($request->file('photo'))
@@ -320,7 +355,7 @@ class TechnicianController extends Controller
             $technician->update([
                 'phone' => $validated['phone'],
                 'secondary_phone' => $validated['secondary_phone'] ?? null,
-                'is_internal' => $validated['is_internal'] ?? false,
+                'is_internal' => $isInternal,
                 'state' => $validated['state'] ?? null,
                 'city' => $validated['city'] ?? null,
                 'colony' => $validated['colony'] ?? null,
@@ -337,6 +372,8 @@ class TechnicianController extends Controller
                 'internal_notes' => $validated['internal_notes'] ?? null,
                 'rating_avg' => $validated['rating_avg'] ?? $technician->rating_avg,
             ]);
+
+            $technician->user->syncRoles($isInternal ? ($validated['roles'] ?? []) : []);
 
             $this->syncPayrollProfileAction->execute($technician->user, $payrollProfile);
 
@@ -454,18 +491,20 @@ class TechnicianController extends Controller
 
         $user = null;
 
-        DB::transaction(function () use ($validated, &$user) {
+        $isInternal = $validated['is_internal'] ?? false;
+
+        DB::transaction(function () use ($validated, &$user, $isInternal) {
             $user = User::create([
                 'name' => $validated['name'],
                 'email' => null,
                 'password' => Hash::make(Str::random(12)),
-                'is_active' => true,
+                'is_active' => $isInternal,
             ]);
 
             Technician::create([
                 'user_id' => $user->id,
                 'phone' => $validated['phone'],
-                'is_internal' => $validated['is_internal'] ?? false, // APLICADO AQUÍ
+                'is_internal' => $isInternal, // APLICADO AQUÍ
                 'level' => $validated['level'] ?? 'Encargado',
                 'state' => $validated['state'] ?? null,
                 'status' => 'Activo',
@@ -625,7 +664,7 @@ class TechnicianController extends Controller
         $user->restore();
         // Reactivation clears the payroll termination date so the collaborator
         // returns to the payroll and can register attendance again.
-        $user->update(['is_active' => true]);
+        $user->update(['is_active' => (bool) $technician->is_internal]);
         $user->payrollProfile?->update(['termination_date' => null]);
         $technician->update(['status' => 'Activo']);
 

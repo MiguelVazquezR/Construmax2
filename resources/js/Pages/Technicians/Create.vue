@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive } from 'vue';
+import { ref, computed } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage } from 'element-plus';
@@ -8,6 +8,10 @@ import TechnicianForm from './Partials/TechnicianForm.vue'; // Nuevo componente
 
 const props = defineProps({
     availableSpecialties: {
+        type: Array,
+        default: () => []
+    },
+    roles: {
         type: Array,
         default: () => []
     },
@@ -24,6 +28,8 @@ const form = useForm({
     // Datos User
     name: '',
     email: '',
+    password: '',
+    roles: [],
     phone: '',
     photo: null, 
     
@@ -70,11 +76,21 @@ const form = useForm({
 });
 
 // Dejamos requeridos SOLAMENTE Nombre y Teléfono para permitir creación rápida
-const rules = reactive({
+const rules = computed(() => ({
     name: [{ required: true, message: 'El nombre es obligatorio', trigger: 'blur' }],
     email: [
+        ...(form.is_internal ? [{ required: true, message: 'El correo es obligatorio para técnicos internos', trigger: 'blur' }] : []),
         { type: 'email', message: 'Formato de correo inválido', trigger: 'blur' }
     ],
+    password: form.is_internal
+        ? [
+            { required: true, message: 'La contraseña es obligatoria para técnicos internos', trigger: 'blur' },
+            { min: 8, message: 'La contraseña debe tener al menos 8 caracteres', trigger: 'blur' },
+        ]
+        : [],
+    roles: form.is_internal
+        ? [{ required: true, message: 'Debes asignar al menos un rol', trigger: 'change' }]
+        : [],
     phone: [{ required: true, message: 'Teléfono principal requerido', trigger: 'blur' }],
     shift_id: [
         {
@@ -88,7 +104,7 @@ const rules = reactive({
             trigger: 'change',
         },
     ],
-});
+}));
 
 const handlePhotoChange = (file) => {
     form.photo = file;
@@ -115,6 +131,7 @@ const submit = () => {
         if (valid) {
             form.post(route('technicians.store'), {
                 forceFormData: true, // <-- CORRECCIÓN: Obliga a Inertia a enviar los archivos
+                onFinish: () => form.reset('password'),
                 onSuccess: () => {
                     ElMessage.success('Técnico registrado exitosamente');
                 },
@@ -162,6 +179,7 @@ const submit = () => {
                     :photo-preview="photoPreview"
                     :is-edit="false"
                     :available-specialties="availableSpecialties"
+                    :roles="roles"
                     :shifts="shifts"
                     @photo-change="handlePhotoChange"
                     @tax-file-change="handleTaxFileChange"
