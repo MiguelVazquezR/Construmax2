@@ -5,6 +5,7 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import PdfInstructionsDialog from '@/Components/PdfInstructionsDialog.vue';
 
 const showPdfInstructions = ref(false);
+const showTotals = ref(true);
 
 const props = defineProps({
     budget: {
@@ -50,7 +51,13 @@ const handlePrint = () => {
         <!-- Top orange bar -->
         <div class="h-1.5 bg-[#f26c17] print:h-1 max-w-5xl mx-auto mb-4 rounded-t"></div>
 
-        <div class="print:hidden flex justify-end max-w-5xl mx-auto mb-4">
+        <div class="print:hidden flex justify-end items-center gap-4 max-w-5xl mx-auto mb-4">
+            <div class="flex items-center gap-2">
+                <span class="text-sm font-medium text-gray-700">
+                    {{ showTotals ? 'Desactivar totales' : 'Activar totales' }}
+                </span>
+                <el-switch v-model="showTotals" />
+            </div>
             <button @click="showPdfInstructions = true" class="bg-[#f26c17] hover:bg-[#d95d0f] text-white font-bold py-2 px-4 rounded shadow transition-colors">
                 Guardar como PDF / Imprimir
             </button>
@@ -125,12 +132,12 @@ const handlePrint = () => {
             <table class="w-full text-[11px] border-collapse border-2 border-[#b9b9b9] text-gray-900">
                 <thead>
                     <tr class="bg-[#f26c17] text-white text-center">
-                        <th class="border border-[#b9b9b9] py-2 w-16">PARTIDA<br>CLAVE</th>
-                        <th class="border border-[#b9b9b9] py-2">DESCRIPCIÓN</th>
-                        <th class="border border-[#b9b9b9] py-2 w-20">UNIDAD</th>
-                        <th class="border border-[#b9b9b9] py-2 w-20">CANTIDAD</th>
-                        <th class="border border-[#b9b9b9] py-2 w-24">P.U.</th>
-                        <th class="border border-[#b9b9b9] py-2 w-28">TOTAL</th>
+                        <th class="border border-[#b9b9b9] py-2" :class="showTotals ? 'w-16' : 'w-[12%]'">PARTIDA<br>CLAVE</th>
+                        <th class="border border-[#b9b9b9] py-2" :class="showTotals ? '' : 'w-[48%]'">DESCRIPCIÓN</th>
+                        <th class="border border-[#b9b9b9] py-2" :class="showTotals ? 'w-20' : 'w-[18%]'">UNIDAD</th>
+                        <th class="border border-[#b9b9b9] py-2" :class="showTotals ? 'w-20' : 'w-[22%]'">CANTIDAD</th>
+                        <th v-if="showTotals" class="border border-[#b9b9b9] py-2 w-24">P.U.</th>
+                        <th v-if="showTotals" class="border border-[#b9b9b9] py-2 w-28">TOTAL</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -139,19 +146,19 @@ const handlePrint = () => {
                         <td class="border border-[#b9b9b9] py-1.5 px-2 text-left leading-tight break-words text-gray-900">{{ item.description }}</td>
                         <td class="border border-[#b9b9b9] py-1.5 px-1 text-gray-900">{{ item.unit }}</td>
                         <td class="border border-[#b9b9b9] py-1.5 px-1 text-gray-900">{{ Number(item.quantity).toFixed(2) }}</td>
-                        <td class="border border-[#b9b9b9] py-1.5 px-2 text-right text-gray-900">
+                        <td v-if="showTotals" class="border border-[#b9b9b9] py-1.5 px-2 text-right text-gray-900">
                             <div class="flex justify-between w-full"><span>$</span><span>{{ formatCurrency(item.unit_price) }}</span></div>
                         </td>
-                        <td class="border border-[#b9b9b9] py-1.5 px-2 text-right bg-orange-50 text-gray-900">
+                        <td v-if="showTotals" class="border border-[#b9b9b9] py-1.5 px-2 text-right bg-orange-50 text-gray-900">
                             <div class="flex justify-between w-full"><span>$</span><span>{{ formatCurrency(item.total) }}</span></div>
                         </td>
                     </tr>
                     <!-- Fill empty rows if items are too few to maintain table structure -->
                     <tr v-if="!catalog?.items?.length">
-                        <td colspan="6" class="border border-[#b9b9b9] py-4 text-center text-gray-400">Sin partidas registradas en esta versión.</td>
+                        <td :colspan="showTotals ? 6 : 4" class="border border-[#b9b9b9] py-4 text-center text-gray-400">Sin partidas registradas en esta versión.</td>
                     </tr>
                 </tbody>
-                <tfoot v-if="catalog">
+                <tfoot v-if="catalog && showTotals">
                     <tr>
                         <!-- Customer notes (beside the cost breakdown) -->
                         <td v-if="catalog.customer_notes" rowspan="3" colspan="4" class="border border-[#b9b9b9] p-2 align-top">
@@ -178,6 +185,16 @@ const handlePrint = () => {
                         <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-white bg-[#b9b9b9] text-center">TOTAL</td>
                         <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-right bg-[#f26c17] text-white">
                             <div class="flex justify-between w-full"><span>$</span><span>{{ formatCurrency(catalog.total) }}</span></div>
+                        </td>
+                    </tr>
+                </tfoot>
+                <tfoot v-else-if="catalog?.customer_notes">
+                    <tr>
+                        <td colspan="4" class="border border-[#b9b9b9] p-2 align-top">
+                            <div class="border-2 border-[#b9b9b9] bg-orange-50">
+                                <div class="bg-[#b9b9b9] text-white px-2 py-0.5 font-bold text-center uppercase text-[10px]">Notas para el cliente</div>
+                                <div class="p-2 text-[10px] font-bold whitespace-pre-wrap text-gray-900 leading-relaxed">{{ catalog.customer_notes }}</div>
+                            </div>
                         </td>
                     </tr>
                 </tfoot>
