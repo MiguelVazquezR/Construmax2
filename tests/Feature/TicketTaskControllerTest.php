@@ -6,6 +6,7 @@ use App\Models\Ticket;
 use App\Models\TicketTask;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
 
 class TicketTaskControllerTest extends TestCase
@@ -67,6 +68,48 @@ class TicketTaskControllerTest extends TestCase
         $this->actingAs($this->user)
             ->post(route('tickets.tasks.store', $this->ticket), [])
             ->assertSessionHasErrors(['name', 'user_id', 'start_date', 'due_date']);
+    }
+
+    public function test_store_evidence_reports_unsupported_file_types(): void
+    {
+        $task = TicketTask::factory()->create([
+            'ticket_id' => $this->ticket->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        $this->actingAs($this->user)
+            ->post(route('tickets.tasks.evidence.store', $task), [
+                'files' => [UploadedFile::fake()->create('evidence.pdf', 10, 'application/pdf')],
+            ])
+            ->assertSessionHasErrors([
+                'files.0' => 'Las evidencias deben ser imágenes JPG, JPEG, PNG o WebP, o videos MP4, MOV, AVI o MKV.',
+            ]);
+    }
+
+    public function test_store_evidence_accepts_heic_mp4_filename_as_video(): void
+    {
+        $task = TicketTask::factory()->create([
+            'ticket_id' => $this->ticket->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        $this->actingAs($this->user)
+            ->post(route('tickets.tasks.evidence.store', $task), [
+                'files' => [UploadedFile::fake()->createWithContent(
+                    'evidence.heic.mp4',
+                    hex2bin('000000186674797069736f6d0000020069736f6d69736f32617663316d703431')
+                )],
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success', 'Evidencia subida.');
+
+        $this->assertDatabaseHas('media', [
+            'model_type' => TicketTask::class,
+            'model_id' => $task->id,
+            'file_name' => 'evidence.heic.mp4',
+            'mime_type' => 'video/mp4',
+            'collection_name' => 'task_evidence',
+        ]);
     }
 
     // --- update ---

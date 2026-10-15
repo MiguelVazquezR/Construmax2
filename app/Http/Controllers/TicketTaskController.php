@@ -89,6 +89,11 @@ class TicketTaskController extends Controller
         $request->validate([
             'files' => 'required|array',
             'files.*' => 'file|mimes:jpg,jpeg,png,webp,mp4,mov,avi,mkv|max:51200', 
+        ], [
+            'files.required' => 'Selecciona al menos una evidencia para subir.',
+            'files.*.file' => 'Cada evidencia debe ser un archivo válido.',
+            'files.*.mimes' => 'Las evidencias deben ser imágenes JPG, JPEG, PNG o WebP, o videos MP4, MOV, AVI o MKV.',
+            'files.*.max' => 'Cada evidencia debe pesar como máximo 50 MB.',
         ]);
 
         if ($request->hasFile('files')) {
@@ -248,6 +253,12 @@ class TicketTaskController extends Controller
         $request->validate([
             'files' => 'required|array',
             'files.*' => 'required|file|mimes:jpg,jpeg,png,webp,mp4,mov,avi,mkv|max:51200',
+        ], [
+            'files.required' => 'Selecciona al menos una evidencia para subir.',
+            'files.*.required' => 'Cada evidencia es obligatoria.',
+            'files.*.file' => 'Cada evidencia debe ser un archivo válido.',
+            'files.*.mimes' => 'Las evidencias deben ser imágenes JPG, JPEG, PNG o WebP, o videos MP4, MOV, AVI o MKV.',
+            'files.*.max' => 'Cada evidencia debe pesar como máximo 50 MB.',
         ]);
 
         if ($request->hasFile('files')) {

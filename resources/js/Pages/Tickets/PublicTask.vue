@@ -206,7 +206,7 @@
                                   :auto-upload="false"
                                   :show-file-list="false"
                                   :on-change="(f) => handleFileSelect(f, task)"
-                                  accept="image/*,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska"
+                                  accept="image/*,.heic,.heif,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska"
                                   multiple
                               >
                                   <el-button size="small" :icon="Camera" plain type="primary" class="!rounded-full">
@@ -493,6 +493,7 @@
 import { ref, computed, reactive } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
+import { getUploadErrorMessage, isHeicFile, prepareImageUploadFile } from '@/Utils/evidenceUpload';
 import {
     Check, 
     RefreshLeft, 
@@ -678,11 +679,13 @@ const toggleStatus = (task) => {
     });
 };
 
-const handleFileSelect = (file, task) => {
+const handleFileSelect = async (file, task) => {
     const raw = file.raw;
-    const isImage = raw.type?.startsWith('image/');
+    if (!raw) return;
+
+    const isImage = raw.type?.startsWith('image/') || isHeicFile(raw);
     const isVideo = raw.type?.startsWith('video/');
-    const isLt50M = raw.size / 1024 / 1024 < 50;
+    const isLt50M = raw.size / 1024 / 1024 <= 50;
 
     if (!isImage && !isVideo) {
         ElMessage.error('Solo se permiten imágenes y videos.');
@@ -690,14 +693,19 @@ const handleFileSelect = (file, task) => {
     }
 
     if (!isLt50M) {
-        ElMessage.error('El archivo no debe exceder los 50MB.');
+        ElMessage.error('El archivo no debe exceder los 50 MB.');
         return;
     }
 
-    if (!pendingEvidence[task.id]) {
-        pendingEvidence[task.id] = [];
+    try {
+        const preparedFile = await prepareImageUploadFile(raw);
+        if (!pendingEvidence[task.id]) {
+            pendingEvidence[task.id] = [];
+        }
+        pendingEvidence[task.id].push(preparedFile);
+    } catch (error) {
+        ElMessage.error(getUploadErrorMessage(error, 'No se pudo convertir la imagen HEIC a JPEG.'));
     }
-    pendingEvidence[task.id].push(raw);
 };
 
 const flushUpload = (task) => {
@@ -715,8 +723,8 @@ const flushUpload = (task) => {
         delete pendingEvidence[task.id];
         ElMessage.success('Archivos subidos correctamente');
         router.reload({ preserveScroll: true, preserveState: true });
-    }).catch(() => {
-        ElMessage.error('Ocurrió un error al subir los archivos');
+    }).catch((error) => {
+        ElMessage.error(getUploadErrorMessage(error, 'No se pudieron subir los archivos.'));
     }).finally(() => {
         delete uploadingTaskIds[task.id];
     });
