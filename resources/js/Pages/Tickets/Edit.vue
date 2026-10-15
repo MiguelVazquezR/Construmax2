@@ -6,6 +6,7 @@ import { ElMessage } from 'element-plus';
 import { Back } from '@element-plus/icons-vue';
 import TicketForm from './Partials/TicketForm.vue';
 import QuickTechnicianModal from './Partials/QuickTechnicianModal.vue';
+import { getUploadErrorMessage } from '@/Utils/evidenceUpload';
 
 const props = defineProps({
     ticket: Object,
@@ -132,6 +133,9 @@ const uploadTicketFiles = (ticketId) => {
         preserveState: false,
         onSuccess: () => {
             ElMessage.success('Ticket actualizado correctamente');
+        },
+        onError: (errors) => {
+            ElMessage.error(getUploadErrorMessage({ errors }, 'No se pudieron subir los archivos.'));
         },
     });
 };

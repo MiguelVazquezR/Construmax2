@@ -29,6 +29,7 @@
         "dayjs": "^1.11.21",
         "echarts": "^6.1.0",
         "element-plus": "^2.13.2",
+        "heic2any": "^0.0.4",
         "lodash": "^4.17.23",
         "vue-echarts": "^8.0.1",
         "vue3-apexcharts": "^1.10.0",
