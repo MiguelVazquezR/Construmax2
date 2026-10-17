@@ -23,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'attendance.device' => \App\Http\Middleware\EnsureAttendanceDevice::class,
+            'payroll.active' => \App\Http\Middleware\EnsurePayrollModuleIsActive::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
