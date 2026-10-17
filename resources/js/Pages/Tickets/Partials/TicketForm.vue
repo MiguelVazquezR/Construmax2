@@ -7,6 +7,7 @@ import TaskTemplateModal from './TaskTemplateModal.vue';
 import QuickBranchModal from './QuickBranchModal.vue';
 import axios from 'axios';
 import { debounce } from 'lodash';
+import { getUploadErrorMessage, prepareImageUploadFile } from '@/Utils/evidenceUpload';
 
 const props = defineProps({
     form: {
@@ -53,6 +54,15 @@ const confirmNotDuplicate = ref(false);
 const hasPendingConfirm = computed(
     () => strongDuplicates.value.length > 0 && !confirmNotDuplicate.value
 );
+
+const handleSupportFileSelect = async (file) => {
+    try {
+        const preparedFile = await prepareImageUploadFile(file.raw);
+        props.form.uploaded_files.push(preparedFile);
+    } catch (error) {
+        ElMessage.error(getUploadErrorMessage(error, 'No se pudo convertir la imagen HEIC a JPEG.'));
+    }
+};
 
 const hasQuery = computed(() => !!props.form.name || !!props.form.report_number);
 
@@ -745,14 +755,14 @@ const getTechLabel = (user) => {
                 ref="supportUploadRef"
                 :auto-upload="false"
                 :show-file-list="false"
-                :on-change="(file) => { form.uploaded_files.push(file.raw); }"
+                :on-change="handleSupportFileSelect"
                 :on-remove="(file) => { form.uploaded_files = form.uploaded_files.filter(f => f.name !== file.name || f.size !== file.size); }"
                 multiple
                 class="w-full"
             >
                 <el-button type="primary" plain icon="Upload">Seleccionar archivos</el-button>
                 <template #tip>
-                    <div class="el-upload__tip">Archivos PDF, imágenes, documentos (Máx. 10MB c/u)</div>
+                    <div class="el-upload__tip">Archivos PDF, imágenes (incluido HEIC) y documentos (Máx. 10 MB c/u)</div>
                 </template>
             </el-upload>
             <div v-if="form.uploaded_files.length > 0" class="mt-3 flex flex-wrap gap-2">

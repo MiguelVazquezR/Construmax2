@@ -6,6 +6,7 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import PdfInstructionsDialog from '@/Components/PdfInstructionsDialog.vue';
 
 const showPdfInstructions = ref(false);
+const showTotals = ref(true);
 
 const props = defineProps({
     budget: {
@@ -81,6 +82,12 @@ const handlePrint = () => {
         <div class="h-1.5 bg-[#f26c17] print:h-1 max-w-5xl mx-auto mb-4 rounded-t"></div>
 
         <div class="print:hidden flex justify-end max-w-5xl mx-auto mb-4 gap-3 items-center">
+            <div class="flex items-center gap-2">
+                <span class="text-sm font-medium text-gray-700">
+                    {{ showTotals ? 'Desactivar totales' : 'Activar totales' }}
+                </span>
+                <el-switch v-model="showTotals" />
+            </div>
             <span class="text-xs text-gray-500 flex items-center gap-1">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
                 Click en cualquier valor para copiar
@@ -142,12 +149,12 @@ const handlePrint = () => {
             <table class="w-full text-[11px] border-collapse border-2 border-[#b9b9b9] text-gray-900 mb-4">
                 <thead>
                     <tr class="bg-[#f26c17] text-white text-center">
-                        <th class="border border-[#b9b9b9] py-2 w-16">DESGLOCE</th>
-                        <th class="border border-[#b9b9b9] py-2">DESCRIPCIÓN</th>
-                        <th class="border border-[#b9b9b9] py-2 w-20">UNIDAD</th>
-                        <th class="border border-[#b9b9b9] py-2 w-20">QTY</th>
-                        <th class="border border-[#b9b9b9] py-2 w-24">PRECIO</th>
-                        <th class="border border-[#b9b9b9] py-2 w-28">TOTAL</th>
+                        <th class="border border-[#b9b9b9] py-2" :class="showTotals ? 'w-16' : 'w-[12%]'">DESGLOCE</th>
+                        <th class="border border-[#b9b9b9] py-2" :class="showTotals ? '' : 'w-[48%]'">DESCRIPCIÓN</th>
+                        <th class="border border-[#b9b9b9] py-2" :class="showTotals ? 'w-20' : 'w-[18%]'">UNIDAD</th>
+                        <th class="border border-[#b9b9b9] py-2" :class="showTotals ? 'w-20' : 'w-[22%]'">QTY</th>
+                        <th v-if="showTotals" class="border border-[#b9b9b9] py-2 w-24">PRECIO</th>
+                        <th v-if="showTotals" class="border border-[#b9b9b9] py-2 w-28">TOTAL</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -158,18 +165,18 @@ const handlePrint = () => {
                         <td class="border border-[#b9b9b9] py-1.5 px-1 text-gray-900">
                             <span class="cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(Number(item.quantity))" title="Clic para copiar">{{ Number(item.quantity).toFixed(2) }}</span>
                         </td>
-                        <td class="border border-[#b9b9b9] py-1.5 px-2 text-right text-gray-900">
+                        <td v-if="showTotals" class="border border-[#b9b9b9] py-1.5 px-2 text-right text-gray-900">
                             <div class="flex justify-between w-full cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(Number(item.unit_price))" title="Clic para copiar"><span>$</span><span>{{ formatCurrency(item.unit_price) }}</span></div>
                         </td>
-                        <td class="border border-[#b9b9b9] py-1.5 px-2 text-right bg-orange-50 text-gray-900">
+                        <td v-if="showTotals" class="border border-[#b9b9b9] py-1.5 px-2 text-right bg-orange-50 text-gray-900">
                             <div class="flex justify-between w-full cursor-pointer hover:text-[#f26c17] transition font-bold" @click="copyToClipboard(Number(item.total))" title="Clic para copiar"><span>$</span><span>{{ formatCurrency(item.total) }}</span></div>
                         </td>
                     </tr>
                     <tr v-if="materialsItems.length === 0">
-                        <td colspan="6" class="border border-[#b9b9b9] py-4 text-center text-gray-400">Sin materiales registrados.</td>
+                        <td :colspan="showTotals ? 6 : 4" class="border border-[#b9b9b9] py-4 text-center text-gray-400">Sin materiales registrados.</td>
                     </tr>
                 </tbody>
-                <tfoot v-if="materialsItems.length > 0">
+                <tfoot v-if="showTotals && materialsItems.length > 0">
                     <tr>
                         <td colspan="4" class="border-t-2 border-[#b9b9b9] border-b-0 border-l-0"></td>
                         <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-white bg-[#b9b9b9] text-center">Materiales subtotal</td>
@@ -186,12 +193,12 @@ const handlePrint = () => {
             <table class="w-full text-[11px] border-collapse border-2 border-[#b9b9b9] text-gray-900 mb-4">
                 <thead>
                     <tr class="bg-[#f26c17] text-white text-center">
-                        <th class="border border-[#b9b9b9] py-2 w-16">MO</th>
-                        <th class="border border-[#b9b9b9] py-2">DESCRIPCIÓN</th>
-                        <th class="border border-[#b9b9b9] py-2 w-32">TÉCNICO</th>
-                        <th class="border border-[#b9b9b9] py-2 w-20">HORAS</th>
-                        <th class="border border-[#b9b9b9] py-2 w-24">RATE</th>
-                        <th class="border border-[#b9b9b9] py-2 w-28">TOTAL</th>
+                        <th class="border border-[#b9b9b9] py-2" :class="showTotals ? 'w-16' : 'w-[12%]'">MO</th>
+                        <th class="border border-[#b9b9b9] py-2" :class="showTotals ? '' : 'w-[38%]'">DESCRIPCIÓN</th>
+                        <th class="border border-[#b9b9b9] py-2" :class="showTotals ? 'w-32' : 'w-[30%]'">TÉCNICO</th>
+                        <th class="border border-[#b9b9b9] py-2" :class="showTotals ? 'w-20' : 'w-[20%]'">HORAS</th>
+                        <th v-if="showTotals" class="border border-[#b9b9b9] py-2 w-24">RATE</th>
+                        <th v-if="showTotals" class="border border-[#b9b9b9] py-2 w-28">TOTAL</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -202,18 +209,18 @@ const handlePrint = () => {
                         <td class="border border-[#b9b9b9] py-1.5 px-1 text-gray-900">
                             <span class="cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(Number(item.hours))" title="Clic para copiar">{{ Number(item.hours).toFixed(2) }}</span>
                         </td>
-                        <td class="border border-[#b9b9b9] py-1.5 px-2 text-right text-gray-900">
+                        <td v-if="showTotals" class="border border-[#b9b9b9] py-1.5 px-2 text-right text-gray-900">
                             <div class="flex justify-between w-full cursor-pointer hover:text-[#f26c17] transition" @click="copyToClipboard(Number(item.rate))" title="Clic para copiar"><span>$</span><span>{{ formatCurrency(item.rate) }}</span></div>
                         </td>
-                        <td class="border border-[#b9b9b9] py-1.5 px-2 text-right bg-orange-50 text-gray-900">
+                        <td v-if="showTotals" class="border border-[#b9b9b9] py-1.5 px-2 text-right bg-orange-50 text-gray-900">
                             <div class="flex justify-between w-full cursor-pointer hover:text-[#f26c17] transition font-bold" @click="copyToClipboard(Number(item.total))" title="Clic para copiar"><span>$</span><span>{{ formatCurrency(item.total) }}</span></div>
                         </td>
                     </tr>
                     <tr v-if="laborItems.length === 0">
-                        <td colspan="6" class="border border-[#b9b9b9] py-4 text-center text-gray-400">Sin mano de obra registrada.</td>
+                        <td :colspan="showTotals ? 6 : 4" class="border border-[#b9b9b9] py-4 text-center text-gray-400">Sin mano de obra registrada.</td>
                     </tr>
                 </tbody>
-                <tfoot v-if="laborItems.length > 0">
+                <tfoot v-if="showTotals && laborItems.length > 0">
                     <tr>
                         <td colspan="4" class="border-t-2 border-[#b9b9b9] border-b-0 border-l-0"></td>
                         <td class="border border-[#b9b9b9] py-1.5 px-2 font-bold text-white bg-[#b9b9b9] text-center">Instalación laboral subtotal</td>
@@ -227,7 +234,7 @@ const handlePrint = () => {
             <!-- ============================================================ -->
             <!-- PIE: TOTALES GENERALES                                       -->
             <!-- ============================================================ -->
-            <table class="w-full text-[11px] border-collapse border-2 border-[#b9b9b9] text-gray-900" v-if="catalog">
+            <table class="w-full text-[11px] border-collapse border-2 border-[#b9b9b9] text-gray-900" v-if="catalog && showTotals">
                 <tfoot>
                     <tr>
                         <td colspan="4" class="border-none"></td>

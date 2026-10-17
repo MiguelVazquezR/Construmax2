@@ -36,17 +36,15 @@ class JetstreamServiceProvider extends ServiceProvider
         Fortify::authenticateUsing(function (Request $request) {
             $user = User::where('email', $request->email)->first();
 
-            if ($user &&
-                Hash::check($request->password, $user->password) &&
-                $user->is_active) { // Verificamos que esté activo
-                
-                return $user;
+            if (! $user || ! Hash::check($request->password, $user->password) || ! $user->is_active) {
+                return null;
             }
-            
-            // Si el usuario existe y la contraseña es correcta pero está inactivo,
-            // Fortify fallará automáticamente, pero si quieres un mensaje específico
-            // podrías lanzar una ValidationException aquí, aunque por seguridad
-            // es mejor dejar que falle genéricamente o manejarlo en el login.
+
+            if ($user->technician && ! $user->technician->is_internal) {
+                return null;
+            }
+
+            return $user;
         });
     }
 

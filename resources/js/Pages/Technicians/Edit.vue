@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive } from 'vue';
+import { ref, computed } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage } from 'element-plus';
@@ -9,6 +9,10 @@ import TechnicianForm from './Partials/TechnicianForm.vue'; // Nuevo componente
 const props = defineProps({
     technician: Object,
     availableSpecialties: {
+        type: Array,
+        default: () => []
+    },
+    roles: {
         type: Array,
         default: () => []
     },
@@ -46,6 +50,10 @@ const form = useForm({
     // Datos User
     name: props.technician.user.name,
     email: props.technician.user.email || '',
+    password: '',
+    roles: props.technician.is_internal
+        ? (props.technician.user.roles || []).map(role => role.name)
+        : [],
     photo: null, 
     
     // Datos Técnico
@@ -93,11 +101,23 @@ const form = useForm({
 });
 
 // Igualmente relajamos las reglas, dejando obligatorios solo Nombre, Teléfono y el Estatus.
-const rules = reactive({
+const rules = computed(() => ({
     name: [{ required: true, message: 'El nombre es obligatorio', trigger: 'blur' }],
     email: [
+        ...(form.is_internal ? [{ required: true, message: 'El correo es obligatorio para técnicos internos', trigger: 'blur' }] : []),
         { type: 'email', message: 'Formato de correo inválido', trigger: 'blur' }
     ],
+    password: form.is_internal
+        ? [
+            ...(! props.technician.is_internal
+                ? [{ required: true, message: 'La contraseña es obligatoria al convertirlo en técnico interno', trigger: 'blur' }]
+                : []),
+            { min: 8, message: 'La contraseña debe tener al menos 8 caracteres', trigger: 'blur' },
+        ]
+        : [],
+    roles: form.is_internal
+        ? [{ required: true, message: 'Debes asignar al menos un rol', trigger: 'change' }]
+        : [],
     phone: [{ required: true, message: 'Teléfono principal requerido', trigger: 'blur' }],
     status: [{ required: true, message: 'El estatus es requerido', trigger: 'change' }],
     shift_id: [
@@ -112,7 +132,7 @@ const rules = reactive({
             trigger: 'change',
         },
     ],
-});
+}));
 
 const handlePhotoChange = (file) => {
     form.photo = file;
@@ -139,6 +159,7 @@ const submit = () => {
         if (valid) {
             form.post(route('technicians.update', props.technician.id), {
                 forceFormData: true, 
+                onFinish: () => form.reset('password'),
                 onSuccess: () => {
                     ElMessage.success('Perfil actualizado exitosamente');
                 },
@@ -187,6 +208,7 @@ const submit = () => {
                     :is-edit="true"
                     :technician="technician"
                     :available-specialties="availableSpecialties"
+                    :roles="roles"
                     :shifts="shifts"
                     @photo-change="handlePhotoChange"
                     @tax-file-change="handleTaxFileChange"

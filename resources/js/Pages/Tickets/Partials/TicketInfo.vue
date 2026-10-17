@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { useForm, router, Link } from '@inertiajs/vue3';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useCatalogStatus } from '@/Composables/useCatalogStatus';
+import { getUploadErrorMessage, prepareImageUploadFile } from '@/Utils/evidenceUpload';
 
 const { catalogStatusLabel, catalogStatusType, catalogUpdatedTooltip, isCatalogPendingUpdate } = useCatalogStatus();
 
@@ -36,11 +37,19 @@ const openCostsPrint = () => {
 };
 
 // --- EVIDENCIA GENERAL DEL TICKET ---
-const handleGeneralUpload = (file) => {
-    const form = useForm({ files: [file.raw] });
+const handleGeneralUpload = async (file) => {
+    let preparedFile;
+    try {
+        preparedFile = await prepareImageUploadFile(file.raw);
+    } catch (error) {
+        ElMessage.error(getUploadErrorMessage(error, 'No se pudo convertir la imagen HEIC a JPEG.'));
+        return;
+    }
+
+    const form = useForm({ files: [preparedFile] });
     form.post(route('tickets.evidence.store', props.ticket.id), {
         onSuccess: () => ElMessage.success('Archivo general subido'),
-        onError: () => ElMessage.error('Error al subir archivo')
+        onError: (errors) => ElMessage.error(getUploadErrorMessage({ errors }, 'No se pudo subir el archivo.'))
     });
 };
 

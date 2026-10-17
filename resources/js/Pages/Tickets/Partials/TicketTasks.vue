@@ -10,6 +10,7 @@ import {
 import { usePermissions } from '@/Composables/usePermissions';
 import draggable from 'vuedraggable';
 import axios from 'axios';
+import { getUploadErrorMessage, prepareImageUploadFile } from '@/Utils/evidenceUpload';
 import TechnicianPaymentSection from './TechnicianPaymentSection.vue';
 import TaskFormModal from './TaskFormModal.vue';
 import IntegrateTechniciansModal from './IntegrateTechniciansModal.vue';
@@ -165,9 +166,14 @@ const pendingEvidence = reactive({});
 const uploadingTasks = reactive({});
 const reorderingTasks = reactive({});
 
-const handleEvidenceUpload = (file, task) => {
-    if (!pendingEvidence[task.id]) pendingEvidence[task.id] = [];
-    pendingEvidence[task.id].push(file.raw);
+const handleEvidenceUpload = async (file, task) => {
+    try {
+        const preparedFile = await prepareImageUploadFile(file.raw);
+        if (!pendingEvidence[task.id]) pendingEvidence[task.id] = [];
+        pendingEvidence[task.id].push(preparedFile);
+    } catch (error) {
+        ElMessage.error(getUploadErrorMessage(error, 'No se pudo convertir la imagen HEIC a JPEG.'));
+    }
 };
 
 const flushEvidenceUpload = (task) => {
@@ -184,8 +190,8 @@ const flushEvidenceUpload = (task) => {
         delete pendingEvidence[task.id];
         ElMessage.success('Evidencia subida');
         router.reload({ only: ['ticket'], preserveScroll: true, preserveState: true });
-    }).catch(() => {
-        ElMessage.error('Error al subir evidencia');
+    }).catch((error) => {
+        ElMessage.error(getUploadErrorMessage(error, 'No se pudo subir la evidencia.'));
     }).finally(() => {
         delete uploadingTasks[task.id];
     });
@@ -406,7 +412,7 @@ const reorderEvidence = (task) => {
                                 </template>
                             </draggable>
                             <div v-if="can('tickets.tasks.edit')" class="flex items-center gap-2 mt-2">
-                                <el-upload :show-file-list="false" :auto-upload="false" :on-change="(f) => handleEvidenceUpload(f, task)" accept="image/*,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska" multiple>
+                                <el-upload :show-file-list="false" :auto-upload="false" :on-change="(f) => handleEvidenceUpload(f, task)" accept="image/*,.heic,.heif,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska" multiple>
                                     <el-button size="small" icon="Camera" plain>Seleccionar archivos</el-button>
                                 </el-upload>
                                 <el-button
