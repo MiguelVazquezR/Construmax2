@@ -55,6 +55,7 @@ const form = useForm({
         ? (props.technician.user.roles || []).map(role => role.name)
         : [],
     photo: null, 
+    remove_photo: false,
     
     // Datos Técnico
     phone: props.technician.phone || '', 
@@ -93,7 +94,6 @@ const form = useForm({
     daily_salary: toNumber(profile.daily_salary),
     is_attendance_subject: Boolean(profile.is_attendance_subject),
     can_remote_attendance: Boolean(profile.can_remote_attendance),
-    kiosk_pin: '', // Empty keeps the current pin.
     shift_id: props.currentShiftId ?? null,
 
     // Archivos 
@@ -120,6 +120,9 @@ const rules = computed(() => ({
         : [],
     phone: [{ required: true, message: 'Teléfono principal requerido', trigger: 'blur' }],
     status: [{ required: true, message: 'El estatus es requerido', trigger: 'change' }],
+    employee_number: form.is_internal
+        ? [{ required: true, message: 'El número de empleado es obligatorio', trigger: 'blur' }]
+        : [],
     shift_id: [
         {
             validator: (rule, value, callback) => {
@@ -136,7 +139,14 @@ const rules = computed(() => ({
 
 const handlePhotoChange = (file) => {
     form.photo = file;
+    form.remove_photo = false;
     photoPreview.value = URL.createObjectURL(file);
+};
+
+const handlePhotoRemove = () => {
+    form.photo = null;
+    form.remove_photo = true;
+    photoPreview.value = null;
 };
 
 const handleTaxFileChange = (file) => {
@@ -211,6 +221,7 @@ const submit = () => {
                     :roles="roles"
                     :shifts="shifts"
                     @photo-change="handlePhotoChange"
+                    @photo-remove="handlePhotoRemove"
                     @tax-file-change="handleTaxFileChange"
                     @tax-file-remove="handleTaxFileRemove"
                 >

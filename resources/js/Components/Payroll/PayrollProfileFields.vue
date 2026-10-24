@@ -21,11 +21,6 @@ const props = defineProps({
         type: Boolean,
         default: true,
     },
-    // Whether the profile already stores a kiosk pin (the pin itself is never exposed).
-    hasKioskPin: {
-        type: Boolean,
-        default: false,
-    },
     // Active shifts available to assign (empty list hides the selector).
     shifts: {
         type: Array,
@@ -56,11 +51,6 @@ watch(() => props.form.is_payroll_subject, (isPayrollSubject) => {
         props.form.can_remote_attendance = false;
     }
 });
-
-// The kiosk pin is digits only (4 to 12).
-const onPinInput = (value) => {
-    props.form.kiosk_pin = String(value ?? '').replace(/\D/g, '');
-};
 </script>
 
 <template>
@@ -77,7 +67,7 @@ const onPinInput = (value) => {
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
                 <el-form-item label="Número de empleado" prop="employee_number" :error="form.errors.employee_number">
-                    <el-input v-model="form.employee_number" placeholder="Se genera automáticamente" />
+                    <el-input v-model="form.employee_number" placeholder="Ej. EMP-0001" />
                 </el-form-item>
 
                 <el-form-item label="Fecha de ingreso" prop="hire_date" :error="form.errors.hire_date">
@@ -106,7 +96,11 @@ const onPinInput = (value) => {
                 </el-form-item>
             </div>
 
-            <p v-if="showPayrollFields" class="text-xs text-gray-400">
+            <p class="text-xs text-gray-400">
+                Con este número el colaborador registra su asistencia en el kiosco y en el portal Mi asistencia.
+            </p>
+
+            <p v-if="showPayrollFields" class="text-xs text-gray-400 mt-1">
                 Con fecha de baja, el colaborador permanece en la nómina hasta ese día y deja de aparecer en los periodos siguientes.
             </p>
         </div>
@@ -185,28 +179,6 @@ const onPinInput = (value) => {
                 />
             </div>
 
-            <!-- PIN de kiosco -->
-            <div v-if="canManage" class="rounded-lg border border-gray-100 dark:border-[#2b2b2e] bg-white dark:bg-[#1e1e20] px-3 py-2.5">
-                <el-form-item label="PIN de kiosco" prop="kiosk_pin" class="!mb-1">
-                    <el-input
-                        v-model="form.kiosk_pin"
-                        maxlength="12"
-                        show-password
-                        inputmode="numeric"
-                        :disabled="!form.is_attendance_subject"
-                        :placeholder="hasKioskPin ? 'Configurado · escribe uno nuevo' : '4 a 12 dígitos'"
-                        @input="onPinInput"
-                    />
-                </el-form-item>
-                <p v-if="form.errors.kiosk_pin" class="text-xs text-red-500 mb-1">
-                    {{ form.errors.kiosk_pin }}
-                </p>
-                <p class="text-xs text-gray-400 mt-1">
-                    Permite identificarte con tu PIN en el kiosco y en la asistencia remota, sin usar el rostro.
-                    <template v-if="hasKioskPin">Escribe uno nuevo para reemplazarlo o déjalo vacío para conservar el actual.</template>
-                    <template v-if="!form.is_attendance_subject">Requiere activar «Registra asistencia».</template>
-                </p>
-            </div>
         </div>
     </div>
 </template>

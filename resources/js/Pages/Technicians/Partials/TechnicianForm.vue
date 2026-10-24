@@ -45,7 +45,7 @@ const props = defineProps({
     }
 });
 
-defineEmits(['photo-change', 'tax-file-change', 'tax-file-remove']);
+defineEmits(['photo-change', 'photo-remove', 'tax-file-change', 'tax-file-remove']);
 
 // External technicians are providers, not company staff: when the "Interno"
 // switch turns off, the whole payroll and attendance state is cleared (the
@@ -57,7 +57,6 @@ watch(() => props.form.is_internal, (isInternal) => {
         props.form.is_payroll_subject = false;
         props.form.is_attendance_subject = false;
         props.form.can_remote_attendance = false;
-        props.form.kiosk_pin = '';
         props.form.shift_id = null;
     }
 });
@@ -184,7 +183,11 @@ const mexicoStates = [
                 
                 <div class="flex flex-col sm:flex-row gap-6 mb-6 items-center sm:items-start">
                     <!-- Foto de Perfil -->
-                    <PhotoUploader :preview="photoPreview" @change="(file) => $emit('photo-change', file)" />
+                    <PhotoUploader
+                        :preview="photoPreview"
+                        @change="(file) => $emit('photo-change', file)"
+                        @remove="$emit('photo-remove')"
+                    />
 
                     <div class="flex-1 w-full grid grid-cols-1 md:grid-cols-2 gap-4">
                         <el-form-item label="Nombre completo" prop="name" class="md:col-span-2">
@@ -413,7 +416,6 @@ const mexicoStates = [
                     :form="form"
                     :show-payroll-fields="false"
                     :internal="Boolean(form.is_internal)"
-                    :has-kiosk-pin="Boolean(technician?.user?.payroll_profile?.has_kiosk_pin)"
                     :shifts="shifts"
                 />
             </div>

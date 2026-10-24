@@ -34,7 +34,7 @@ class PayrollSettingsControllerTest extends TestCase
         return array_merge([
             'face_recognition_enabled' => false,
             'face_match_threshold' => 90,
-            'kiosk_pin_fallback_enabled' => true,
+            'kiosk_employee_number_enabled' => true,
             'rekognition_collection_id' => 'construmax-attendance',
             'late_tolerance_minutes' => 10,
             'late_discount_mode' => 'track_only',

@@ -85,7 +85,7 @@ class RegisterAttendancePunchAction
             'type' => $type,
             'punched_at' => $punchedAt,
             'source' => $source,
-            'identifier_method' => $data['identifier_method'] ?? AttendanceLog::IDENTIFIER_PIN,
+            'identifier_method' => $data['identifier_method'] ?? AttendanceLog::IDENTIFIER_MANUAL,
             'face_similarity' => $data['face_similarity'] ?? null,
             'latitude' => $latitude,
             'longitude' => $longitude,

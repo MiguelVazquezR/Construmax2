@@ -536,8 +536,8 @@ class BudgetController extends Controller
             'amount' => $validated['amount'],
             'payment_date' => $validated['payment_date'],
             'payment_method' => $validated['payment_method'],
-            'reference' => $validated['reference'],
-            'notes' => $validated['notes'],
+            'reference' => $validated['reference'] ?? null,
+            'notes' => $validated['notes'] ?? null,
         ]);
 
         if ($request->hasFile('proof')) {

@@ -7,7 +7,6 @@ use App\Models\Shift;
 use App\Models\Technician;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -53,6 +52,8 @@ class PayrollProfileTest extends TestCase
             'department' => 'Obras',
             'position' => 'Supervisor',
             'phone' => '3312345678',
+            'employee_number' => $user->payrollProfile?->employee_number
+                ?: 'EMP-9'.str_pad((string) $user->id, 3, '0', STR_PAD_LEFT),
         ], $overrides);
     }
 
@@ -78,13 +79,13 @@ class PayrollProfileTest extends TestCase
 
         $this->actingAs($this->admin)
             ->post(route('users.store'), $this->userPayload([
+                'employee_number' => 'EMP-0001',
                 'hire_date' => '2024-03-01',
                 'daily_salary' => 550.50,
                 'daily_hours' => 8,
                 'is_payroll_subject' => true,
                 'is_attendance_subject' => true,
                 'can_remote_attendance' => true,
-                'kiosk_pin' => '4321',
                 'shift_id' => $shift->id,
             ]))
             ->assertRedirect(route('users.index'));
@@ -98,7 +99,6 @@ class PayrollProfileTest extends TestCase
         $this->assertTrue($profile->is_payroll_subject);
         $this->assertTrue($profile->is_attendance_subject);
         $this->assertTrue($profile->can_remote_attendance);
-        $this->assertTrue(Hash::check('4321', $profile->kiosk_pin));
 
         // Subject to payroll: the schedule was assigned and the hours follow it.
         $this->assertDatabaseHas('shift_assignments', [
@@ -112,11 +112,38 @@ class PayrollProfileTest extends TestCase
     {
         $this->actingAs($this->admin)
             ->post(route('users.store'), $this->userPayload([
+                'employee_number' => 'EMP-0001',
                 'is_payroll_subject' => true,
             ]))
             ->assertSessionHasErrors('shift_id');
 
         $this->assertDatabaseCount('payroll_profiles', 0);
+    }
+
+    public function test_user_store_requires_the_employee_number(): void
+    {
+        $this->actingAs($this->admin)
+            ->post(route('users.store'), $this->userPayload())
+            ->assertSessionHasErrors('employee_number');
+
+        $this->assertDatabaseCount('payroll_profiles', 0);
+    }
+
+    public function test_employee_number_must_be_unique(): void
+    {
+        $existing = User::factory()->create(['is_active' => true]);
+        PayrollProfile::create([
+            'user_id' => $existing->id,
+            'employee_number' => 'EMP-0001',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->post(route('users.store'), $this->userPayload([
+                'employee_number' => 'EMP-0001',
+            ]))
+            ->assertSessionHasErrors('employee_number');
+
+        $this->assertDatabaseCount('payroll_profiles', 1);
     }
 
     public function test_user_store_ignores_payroll_fields_without_permission(): void
@@ -201,22 +228,21 @@ class PayrollProfileTest extends TestCase
             ->assertSessionHasErrors('termination_date');
     }
 
-    public function test_kiosk_pin_keeps_its_value_when_left_empty(): void
+    public function test_user_update_changes_the_employee_number(): void
     {
         $user = User::factory()->create(['is_active' => true]);
-        $profile = PayrollProfile::create(['user_id' => $user->id]);
+        PayrollProfile::create([
+            'user_id' => $user->id,
+            'employee_number' => 'EMP-0100',
+        ]);
 
         $this->actingAs($this->admin)
-            ->put(route('users.update', $user), $this->updatePayload($user, ['kiosk_pin' => '9876']))
+            ->put(route('users.update', $user), $this->updatePayload($user, [
+                'employee_number' => 'EMP-0101',
+            ]))
             ->assertRedirect(route('users.index'));
 
-        $this->assertTrue(Hash::check('9876', $profile->fresh()->kiosk_pin));
-
-        $this->actingAs($this->admin)
-            ->put(route('users.update', $user), $this->updatePayload($user, ['kiosk_pin' => '']))
-            ->assertRedirect(route('users.index'));
-
-        $this->assertTrue(Hash::check('9876', $profile->fresh()->kiosk_pin));
+        $this->assertSame('EMP-0101', $user->payrollProfile->fresh()->employee_number);
     }
 
     public function test_disabling_attendance_disables_remote_attendance(): void
@@ -299,11 +325,13 @@ class PayrollProfileTest extends TestCase
             ->post(route('technicians.store'), [
                 'name' => 'Técnico Interno',
                 'email' => 'interno-asistencia@test.com',
+                'password' => 'Password123!',
+                'roles' => ['Operator'],
                 'phone' => '3311112233',
                 'is_internal' => true,
+                'employee_number' => 'EMP-0200',
                 'is_attendance_subject' => true,
                 'can_remote_attendance' => true,
-                'kiosk_pin' => '2468',
                 'shift_id' => $shift->id,
             ])
             ->assertRedirect(route('technicians.index'));
@@ -312,9 +340,9 @@ class PayrollProfileTest extends TestCase
         $profile = PayrollProfile::where('user_id', $technician->user_id)->first();
 
         $this->assertNotNull($profile);
+        $this->assertSame('EMP-0200', $profile->employee_number);
         $this->assertTrue($profile->is_attendance_subject);
         $this->assertTrue($profile->can_remote_attendance);
-        $this->assertTrue(Hash::check('2468', $profile->kiosk_pin));
         // Registering attendance requires being a payroll subject.
         $this->assertTrue($profile->is_payroll_subject);
     }
@@ -333,21 +361,23 @@ class PayrollProfileTest extends TestCase
             ->put(route('technicians.update', $technician), [
                 'name' => $user->name,
                 'email' => $user->email,
+                'password' => 'Password123!',
+                'roles' => ['Operator'],
                 'phone' => '3333333333',
                 'status' => 'Activo',
                 'is_internal' => true,
+                'employee_number' => 'EMP-0300',
                 'is_attendance_subject' => true,
                 'shift_id' => $shift->id,
-                'kiosk_pin' => '1111',
             ])
             ->assertRedirect(route('technicians.show', $technician->id));
 
         $profile = PayrollProfile::where('user_id', $user->id)->first();
 
         $this->assertNotNull($profile);
+        $this->assertSame('EMP-0300', $profile->employee_number);
         $this->assertTrue($profile->is_attendance_subject);
         $this->assertTrue($profile->is_payroll_subject);
-        $this->assertTrue(Hash::check('1111', $profile->kiosk_pin));
     }
 
     public function test_internal_technician_can_be_a_payroll_subject(): void
@@ -358,8 +388,11 @@ class PayrollProfileTest extends TestCase
             ->post(route('technicians.store'), [
                 'name' => 'Técnico Interno',
                 'email' => 'interno@test.com',
+                'password' => 'Password123!',
+                'roles' => ['Operator'],
                 'phone' => '3322223333',
                 'is_internal' => true,
+                'employee_number' => 'EMP-0400',
                 'hire_date' => '2026-01-15',
                 'daily_salary' => 480,
                 'daily_hours' => 8,
@@ -398,6 +431,7 @@ class PayrollProfileTest extends TestCase
                 'email' => 'sin-horario@test.com',
                 'phone' => '3366667777',
                 'is_internal' => true,
+                'employee_number' => 'EMP-0500',
                 'is_payroll_subject' => true,
             ])
             ->assertSessionHasErrors('shift_id');

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Payroll;
 
 use App\Models\AttendanceDevice;
+use App\Models\PayrollSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
@@ -40,7 +41,68 @@ class AttendanceDeviceControllerTest extends TestCase
                 ->component('Payroll/Devices/Index')
                 ->has('devices', 1)
                 ->has('kioskUrl')
+                ->has('registrationUrl')
+                ->where('registrationPasswordConfigured', false)
             );
+    }
+
+    public function test_update_modifies_the_device(): void
+    {
+        $device = AttendanceDevice::create([
+            'name' => 'Tablet recepción',
+            'token_hash' => hash('sha256', 'token-update'),
+            'registered_by' => $this->admin->id,
+            'registered_at' => now(),
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('payroll.devices.update', $device), [
+                'name' => 'Tablet entrada',
+                'location' => 'Recepción',
+                'notes' => 'Actualizada',
+            ])
+            ->assertOk()
+            ->assertJsonPath('device.name', 'Tablet entrada');
+
+        $this->assertDatabaseHas('attendance_devices', [
+            'id' => $device->id,
+            'name' => 'Tablet entrada',
+            'location' => 'Recepción',
+            'notes' => 'Actualizada',
+        ]);
+    }
+
+    public function test_update_registration_password_stores_plain_text_with_three_characters(): void
+    {
+        $this->actingAs($this->admin)
+            ->putJson(route('payroll.devices.registration-password'), [
+                'password' => 'abc',
+            ])
+            ->assertOk()
+            ->assertJsonPath('configured', true);
+
+        $this->assertSame('abc', PayrollSetting::current()->device_registration_password);
+    }
+
+    public function test_update_registration_password_rejects_less_than_three_characters(): void
+    {
+        $this->actingAs($this->admin)
+            ->putJson(route('payroll.devices.registration-password'), [
+                'password' => 'ab',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('password');
+    }
+
+    public function test_update_registration_password_requires_permission(): void
+    {
+        $user = User::factory()->create(['is_active' => true]);
+
+        $this->actingAs($user)
+            ->putJson(route('payroll.devices.registration-password'), [
+                'password' => 'Secret123!',
+            ])
+            ->assertForbidden();
     }
 
     public function test_index_is_forbidden_without_permission(): void
@@ -86,7 +148,7 @@ class AttendanceDeviceControllerTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_destroy_revokes_the_device(): void
+    public function test_revoke_deactivates_the_device(): void
     {
         $device = AttendanceDevice::create([
             'name' => 'Tablet obsoleta',
@@ -96,7 +158,7 @@ class AttendanceDeviceControllerTest extends TestCase
         ]);
 
         $this->actingAs($this->admin)
-            ->deleteJson(route('payroll.devices.destroy', $device))
+            ->patchJson(route('payroll.devices.revoke', $device))
             ->assertOk()
             ->assertJsonPath('device.is_active', false);
 
@@ -105,5 +167,46 @@ class AttendanceDeviceControllerTest extends TestCase
         $this->assertFalse($device->is_active);
         $this->assertSame($this->admin->id, $device->revoked_by);
         $this->assertNotNull($device->revoked_at);
+    }
+
+    public function test_restore_reactivates_a_revoked_device(): void
+    {
+        $device = AttendanceDevice::create([
+            'name' => 'Tablet recepción',
+            'token_hash' => hash('sha256', 'token-3'),
+            'registered_by' => $this->admin->id,
+            'registered_at' => now(),
+            'is_active' => false,
+            'revoked_by' => $this->admin->id,
+            'revoked_at' => now(),
+        ]);
+
+        $this->actingAs($this->admin)
+            ->patchJson(route('payroll.devices.restore', $device))
+            ->assertOk()
+            ->assertJsonPath('device.is_active', true);
+
+        $device->refresh();
+
+        $this->assertTrue($device->is_active);
+        $this->assertNull($device->revoked_by);
+        $this->assertNull($device->revoked_at);
+    }
+
+    public function test_destroy_deletes_the_device_permanently(): void
+    {
+        $device = AttendanceDevice::create([
+            'name' => 'Tablet obsoleta',
+            'token_hash' => hash('sha256', 'token-4'),
+            'registered_by' => $this->admin->id,
+            'registered_at' => now(),
+        ]);
+
+        $this->actingAs($this->admin)
+            ->deleteJson(route('payroll.devices.destroy', $device))
+            ->assertOk()
+            ->assertJsonPath('deleted', true);
+
+        $this->assertDatabaseMissing('attendance_devices', ['id' => $device->id]);
     }
 }

@@ -4,6 +4,7 @@ namespace App\Actions\Payroll;
 
 use App\Models\FaceEnrollment;
 use App\Models\User;
+use App\Services\Payroll\FaceRecognition\Exceptions\FaceNotDetectedException;
 use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -31,6 +32,7 @@ class EnrollUserFacesAction
         // Index first: when every capture fails the previous references must
         // stay untouched (the collaborator keeps marking with their old face).
         $indexed = [];
+        $notDetected = 0;
 
         foreach (array_slice($photos, 0, 3) as $photo) {
             if (! is_string($photo) || trim($photo) === '') {
@@ -39,6 +41,13 @@ class EnrollUserFacesAction
 
             try {
                 $indexed[] = $this->faceRecognition->indexFace((string) $user->id, $photo);
+            } catch (FaceNotDetectedException $exception) {
+                $notDetected++;
+
+                Log::warning('No se pudo indexar un rostro.', [
+                    'user_id' => $user->id,
+                    'error' => $exception->getMessage(),
+                ]);
             } catch (\Throwable $exception) {
                 Log::warning('No se pudo indexar un rostro.', [
                     'user_id' => $user->id,
@@ -49,7 +58,9 @@ class EnrollUserFacesAction
 
         if ($indexed === []) {
             throw ValidationException::withMessages([
-                'photos' => 'No se pudo registrar el rostro. Intenta de nuevo con mejor iluminación y sin lentes oscuros.',
+                'photos' => $notDetected > 0
+                    ? 'No se detectó un rostro en las fotos capturadas. Intenta de nuevo con mejor iluminación y sin lentes oscuros.'
+                    : 'No se pudo registrar el rostro. Intenta de nuevo con mejor iluminación y sin lentes oscuros.',
             ]);
         }
 

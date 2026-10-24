@@ -14,13 +14,14 @@ use App\Models\User;
 use App\Models\VacationRequest;
 use App\Services\Payroll\AttendanceDayService;
 use App\Services\Payroll\AttendanceDaySummary;
+use App\Services\Payroll\FaceRecognition\Exceptions\FaceNotDetectedException;
+use App\Services\Payroll\FaceRecognition\Exceptions\MultipleFacesDetectedException;
 use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
 use App\Services\Payroll\VacationPeriodService;
 use App\Services\Payroll\VacationService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -119,9 +120,6 @@ class MyAttendanceController extends Controller
             'profile' => [
                 'employee_number' => $profile->employee_number,
                 'can_remote_attendance' => (bool) $profile->can_remote_attendance,
-                // The pin itself is never exposed; the portal only needs to
-                // know whether the collaborator can identify with one.
-                'has_kiosk_pin' => $profile->kiosk_pin !== null,
                 'hire_date' => $profile->hire_date?->toDateString(),
                 'termination_date' => $profile->termination_date?->toDateString(),
                 // Dismissed collaborators keep their history and receipts but cannot punch any more.
@@ -142,7 +140,7 @@ class MyAttendanceController extends Controller
             'punchTypes' => AttendanceLog::TYPES,
             'vacationMinDays' => (float) $settings->vacation_min_days_to_request,
             'remoteGeolocationRequired' => (bool) $settings->remote_geolocation_required,
-            'remotePinEnabled' => (bool) $settings->kiosk_pin_fallback_enabled,
+            'remoteEmployeeNumberEnabled' => (bool) $settings->kiosk_employee_number_enabled,
             'faceRecognition' => [
                 'enabled' => (bool) $settings->face_recognition_enabled,
                 'configured' => $this->faceRecognition->isConfigured(),
@@ -156,8 +154,8 @@ class MyAttendanceController extends Controller
 
     /**
      * Register a remote punch with geolocation. The collaborator identifies
-     * with their face or with their kiosk pin; when no method is active the
-     * punch is stored as manual.
+     * with their face or with their employee number; when no method is active
+     * the punch is stored as manual.
      */
     public function punch(Request $request): JsonResponse
     {
@@ -176,8 +174,8 @@ class MyAttendanceController extends Controller
 
         $validated = $request->validate([
             'type' => ['required', 'string', 'in:'.implode(',', array_keys(AttendanceLog::TYPES))],
-            'method' => ['nullable', 'string', 'in:face,pin'],
-            'pin' => ['nullable', 'string', 'max:12'],
+            'method' => ['nullable', 'string', 'in:face,employee_number'],
+            'employee_number' => ['nullable', 'string', 'max:50'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'location_accuracy' => ['nullable', 'numeric', 'min:0'],
@@ -190,9 +188,9 @@ class MyAttendanceController extends Controller
         $similarity = null;
         $method = $validated['method'] ?? null;
 
-        if ($method === 'pin') {
-            $this->ensureRemotePinIsValid($profile, $validated['pin'] ?? null);
-            $identifierMethod = AttendanceLog::IDENTIFIER_PIN;
+        if ($method === 'employee_number') {
+            $this->ensureRemoteEmployeeNumberIsValid($profile, $validated['employee_number'] ?? null);
+            $identifierMethod = AttendanceLog::IDENTIFIER_EMPLOYEE_NUMBER;
         } elseif ($faceVerification) {
             if (empty($validated['photo'])) {
                 throw ValidationException::withMessages([
@@ -202,8 +200,19 @@ class MyAttendanceController extends Controller
 
             try {
                 $match = $this->faceRecognition->search($validated['photo']);
+            } catch (FaceNotDetectedException) {
+                throw ValidationException::withMessages([
+                    'photo' => 'No se detectó tu rostro en la foto. Colócate de frente a la cámara, con buena iluminación, e intenta de nuevo.',
+                ]);
+            } catch (MultipleFacesDetectedException) {
+                throw ValidationException::withMessages([
+                    'photo' => 'La foto muestra más de un rostro. Asegúrate de estar solo frente a la cámara e intenta de nuevo.',
+                ]);
             } catch (\Throwable $exception) {
-                Log::warning('Remote face verification failed.', ['error' => $exception->getMessage()]);
+                Log::warning('Remote face verification failed.', [
+                    'error' => $exception->getMessage(),
+                    'exception' => $exception::class,
+                ]);
 
                 throw ValidationException::withMessages([
                     'photo' => 'No se pudo procesar tu rostro. Intenta de nuevo con mejor iluminación.',
@@ -212,7 +221,7 @@ class MyAttendanceController extends Controller
 
             if (! $match || (int) $match['external_image_id'] !== $user->id) {
                 throw ValidationException::withMessages([
-                    'photo' => 'El rostro no coincide con tu registro facial. Intenta de nuevo o contacta al administrador.',
+                    'photo' => 'Tu rostro no coincide con ningún rostro registrado. Mira de frente a la cámara e intenta de nuevo; si el problema continúa, pide al administrador que actualice tu registro facial.',
                 ]);
             }
 
@@ -220,7 +229,7 @@ class MyAttendanceController extends Controller
             $similarity = $match['similarity'];
         } elseif ($method === 'face') {
             throw ValidationException::withMessages([
-                'method' => 'El reconocimiento facial no está activo. Intenta con tu PIN.',
+                'method' => 'El reconocimiento facial no está activo. Intenta con tu número de empleado.',
             ]);
         }
 
@@ -248,25 +257,26 @@ class MyAttendanceController extends Controller
     }
 
     /**
-     * The remote pin must be active and match the collaborator's own kiosk pin.
+     * The collaborator must confirm their own employee number, and the
+     * employee-number method must be active in the settings.
      */
-    private function ensureRemotePinIsValid(PayrollProfile $profile, ?string $pin): void
+    private function ensureRemoteEmployeeNumberIsValid(PayrollProfile $profile, ?string $employeeNumber): void
     {
-        if (! PayrollSetting::current()->kiosk_pin_fallback_enabled) {
+        if (! PayrollSetting::current()->kiosk_employee_number_enabled) {
             throw ValidationException::withMessages([
-                'pin' => 'El registro con PIN no está activo. Usa tu rostro o pide ayuda al administrador.',
+                'employee_number' => 'El registro con número de empleado no está activo. Usa tu rostro o pide ayuda al administrador.',
             ]);
         }
 
-        if ($profile->kiosk_pin === null) {
+        if (blank($profile->employee_number)) {
             throw ValidationException::withMessages([
-                'pin' => 'Aún no tienes un PIN configurado. Pide ayuda al administrador.',
+                'employee_number' => 'Aún no tienes un número de empleado asignado. Pide ayuda al administrador.',
             ]);
         }
 
-        if ($pin === null || $pin === '' || ! Hash::check($pin, $profile->kiosk_pin)) {
+        if (mb_strtoupper(trim((string) $employeeNumber)) !== mb_strtoupper(trim($profile->employee_number))) {
             throw ValidationException::withMessages([
-                'pin' => 'PIN incorrecto. Intenta de nuevo.',
+                'employee_number' => 'Número de empleado incorrecto. Intenta de nuevo.',
             ]);
         }
     }

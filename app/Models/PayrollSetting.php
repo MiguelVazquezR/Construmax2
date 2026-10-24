@@ -49,7 +49,7 @@ class PayrollSetting extends Model
     protected $fillable = [
         'face_recognition_enabled',
         'face_match_threshold',
-        'kiosk_pin_fallback_enabled',
+        'kiosk_employee_number_enabled',
         'rekognition_collection_id',
         'period_type',
         'period_anchor_date',
@@ -69,13 +69,18 @@ class PayrollSetting extends Model
         'payroll_expense_category_id',
         'attendance_capture_retention_months',
         'remote_geolocation_required',
+        'device_registration_password',
         'updated_by',
+    ];
+
+    protected $hidden = [
+        'device_registration_password',
     ];
 
     protected $casts = [
         'face_recognition_enabled' => 'boolean',
         'face_match_threshold' => 'integer',
-        'kiosk_pin_fallback_enabled' => 'boolean',
+        'kiosk_employee_number_enabled' => 'boolean',
         'period_anchor_date' => 'date',
         'late_tolerance_minutes' => 'integer',
         'late_discount_mode' => 'string',

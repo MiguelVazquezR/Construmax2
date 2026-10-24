@@ -81,6 +81,7 @@ class ProfilePhotoEnrollmentTest extends TestCase
             'department' => 'Obras',
             'position' => 'Ayudante',
             'phone' => '3331234567',
+            'employee_number' => 'EMP-0501',
             'is_attendance_subject' => true,
             'shift_id' => $this->makeShift()->id,
         ], $overrides);
@@ -95,6 +96,7 @@ class ProfilePhotoEnrollmentTest extends TestCase
             'department' => 'Obras',
             'position' => 'Ayudante',
             'phone' => '3331234567',
+            'employee_number' => 'EMP-0500',
         ], $overrides);
     }
 
@@ -240,6 +242,31 @@ class ProfilePhotoEnrollmentTest extends TestCase
         $this->assertSame('Empleado Foto Actualizado', $this->employee->fresh()->name);
     }
 
+    public function test_update_can_remove_the_profile_photo_and_its_face_reference(): void
+    {
+        $this->activeEnrollment('old-face');
+
+        Storage::disk('public')->put('profile-photos/old.jpg', 'content');
+        $this->employee->forceFill(['profile_photo_path' => 'profile-photos/old.jpg'])->save();
+
+        $this->mock(FaceRecognitionService::class, function (MockInterface $mock) {
+            $mock->shouldReceive('removeFace')->once()->with('old-face');
+        });
+
+        $this->actingAs($this->admin)
+            ->put(route('users.update', $this->employee->id), $this->updatePayload([
+                'remove_photo' => true,
+            ]))
+            ->assertRedirect(route('users.index'))
+            ->assertSessionHas('success', 'Usuario actualizado exitosamente.');
+
+        $this->assertNull($this->employee->fresh()->profile_photo_path);
+        $this->assertDatabaseHas('face_enrollments', [
+            'face_id' => 'old-face',
+            'status' => FaceEnrollment::STATUS_REMOVED,
+        ]);
+    }
+
     public function test_technician_store_enrolls_the_profile_photo_when_recognition_is_active(): void
     {
         PayrollSetting::current()->update(['face_recognition_enabled' => true]);
@@ -254,8 +281,11 @@ class ProfilePhotoEnrollmentTest extends TestCase
             ->post(route('technicians.store'), [
                 'name' => 'Técnico Con Foto',
                 'email' => 'tecnico.foto@test.com',
+                'password' => 'Password123!',
+                'roles' => ['Employee'],
                 'phone' => '3311112233',
                 'is_internal' => true,
+                'employee_number' => 'EMP-0502',
                 'is_attendance_subject' => true,
                 'shift_id' => $this->makeShift()->id,
                 'photo' => UploadedFile::fake()->image('tecnico.jpg', 400, 400),
