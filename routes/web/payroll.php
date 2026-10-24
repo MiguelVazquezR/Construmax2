@@ -11,6 +11,7 @@ use App\Http\Controllers\Payroll\MyAttendanceController;
 use App\Http\Controllers\Payroll\PayrollNoteController;
 use App\Http\Controllers\Payroll\PayrollPeriodController;
 use App\Http\Controllers\Payroll\PayrollSettingController;
+use App\Http\Controllers\Payroll\PayrollSuspensionController;
 use App\Http\Controllers\Payroll\PayslipController;
 use App\Http\Controllers\Payroll\ShiftAssignmentController;
 use App\Http\Controllers\Payroll\ShiftController;
@@ -19,7 +20,11 @@ use App\Http\Controllers\Payroll\VacationController;
 use App\Http\Controllers\Payroll\VacationPeriodController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'verified'])->prefix('payroll')->name('payroll.')->group(function () {
+Route::middleware(['auth', 'verified', 'payroll.active'])->prefix('payroll')->name('payroll.')->group(function () {
+    // Notice shown while the development balance of the module is pending.
+    // EnsurePayrollModuleIsActive always lets this route through.
+    Route::get('/suspended', PayrollSuspensionController::class)->name('suspended');
+
     // Payroll module configuration (period, tolerance, multipliers, vacations, face recognition...)
     Route::get('/settings', [PayrollSettingController::class, 'edit'])->name('settings.edit');
     Route::put('/settings', [PayrollSettingController::class, 'update'])->name('settings.update');

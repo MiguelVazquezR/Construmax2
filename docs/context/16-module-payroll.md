@@ -37,7 +37,7 @@
 | Permissions | `database/seeders/PermissionSeeder.php` (category *Nómina*) | `payroll.settings.manage`, `payroll.profiles.manage`, `payroll.remote-attendance.manage`, `payroll.devices.manage`, `payroll.shifts.manage`, `payroll.incidents.manage`, `payroll.vacations.manage`, `payroll.vacations.approve`, `payroll.holidays.manage`, `payroll.periods.index`, `payroll.periods.manage`, `payroll.periods.close`, `payroll.payslips.view`, `payroll.faces.manage` |
 | Notifications | `app/Notifications/VacationRequested.php`, `VacationReviewed.php`, `PayrollPeriodClosed.php` | Approval requests (permission-based), review results (direct to requester) and period closures (subscribers of `payroll.period-closed`) |
 | Routes | `routes/web/payroll.php` (registered from `routes/web.php`) | Authenticated routes + the public kiosk group |
-| Menu | `resources/js/Layouts/AppSidebar.vue` | "Recursos Humanos" submenu (permission-gated; the shifts screen entry is labeled *Horarios del personal*) + "Mi asistencia" for collaborators with a payroll profile (`attendance_portal` shared prop) |
+| Menu | `resources/js/Layouts/AppSidebar.vue` | "Recursos Humanos" submenu (permission-gated; the shifts screen entry is labeled *Horarios del personal*) + "Mi asistencia" for collaborators with a payroll profile (`attendance_portal` shared prop); a *Suspendido* tag is shown while the suspension flag is on |
 | Tests | `tests/Feature/Payroll/` (23 files, 210 tests) | See the Test coverage section below |
 
 ---
@@ -45,6 +45,8 @@
 ## Routes
 
 All routes are authenticated (`auth`, `verified`) unless noted. Payroll routes use the `/payroll` prefix and the `payroll.` name prefix.
+
+> **Module suspension:** every authenticated route below is guarded by the `payroll.active` middleware (`App\Http\Middleware\EnsurePayrollModuleIsActive`). While `payroll.suspension.active` is on (`config/payroll.php`, `PAYROLL_SUSPENSION_ACTIVE`), any visit is redirected to `GET /payroll/suspended` (`payroll.suspended`), which renders `Payroll/Suspended.vue` explaining that a development balance has been pending since `PAYROLL_SUSPENSION_SINCE` and that the module resumes once the total is settled. The sidebar shows a *Suspendido* tag (`payroll_suspended` shared prop). Set the flag to `false` to restore the module; the public kiosk group is not guarded.
 
 | Method | URI | Name | Notes |
 |--------|-----|------|-------|
