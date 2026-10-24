@@ -22,9 +22,6 @@ const page = usePage();
 // Portal de asistencia del colaborador (asistencia remota, vacaciones y recibos)
 const attendancePortal = computed(() => page.props.attendance_portal === true);
 
-// Human Resources module suspended while its balance is pending payment
-const payrollSuspended = computed(() => page.props.payroll_suspended === true);
-
 // Lógica para determinar qué menú está activo (incluyendo sub-rutas)
 const activeMenu = computed(() => {
     // Analíticas unificadas
@@ -183,15 +180,6 @@ const activeMenu = computed(() => {
                     <template #title>
                         <el-icon><Suitcase /></el-icon>
                         <span>Recursos Humanos</span>
-                        <el-tag
-                            v-if="payrollSuspended"
-                            size="small"
-                            type="danger"
-                            effect="plain"
-                            class="ml-2"
-                        >
-                            Suspendido
-                        </el-tag>
                     </template>
 
                     <Link v-if="attendancePortal" :href="route('payroll.my-attendance.index')">

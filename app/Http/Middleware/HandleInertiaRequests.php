@@ -42,9 +42,6 @@ class HandleInertiaRequests extends Middleware
             ],
             // Variables globales adicionales
             'attendance_portal' => fn () => (bool) $request->user()?->payrollProfile?->is_attendance_subject,
-            // The Human Resources menu is marked as suspended while its
-            // development balance is pending payment.
-            'payroll_suspended' => fn () => (bool) config('payroll.suspension.active'),
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
