@@ -364,12 +364,6 @@ const getWhatsappUrl = (phone) => {
                                             <p class="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{{ technician.user.payroll_profile.daily_hours ? `${Number(technician.user.payroll_profile.daily_hours)} h` : 'No asignado' }}</p>
                                         </div>
 
-                                        <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50/60 dark:bg-[#252529]/60 px-4 py-3">
-                                            <p class="text-[11px] uppercase tracking-wider text-gray-400 font-bold">PIN de kiosco</p>
-                                            <el-tag class="mt-1" :type="technician.user.payroll_profile.has_kiosk_pin ? 'success' : 'info'" size="small" effect="light">
-                                                {{ technician.user.payroll_profile.has_kiosk_pin ? 'Configurado' : 'Sin configurar' }}
-                                            </el-tag>
-                                        </div>
                                     </div>
 
                                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">

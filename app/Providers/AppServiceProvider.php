@@ -15,7 +15,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         // Face recognition: use AWS Rekognition when credentials are present,
-        // otherwise fall back to the null implementation (PIN kiosk keeps working).
+        // otherwise fall back to the null implementation (employee-number kiosk keeps working).
         $this->app->bind(FaceRecognitionService::class, function () {
             $aws = new AwsFaceRecognitionService();
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Actions\Payroll\AssignUserShiftAction;
 use App\Actions\Payroll\EnrollProfilePhotoAction;
+use App\Actions\Payroll\RemoveProfilePhotoAction;
 use App\Actions\Payroll\SyncPayrollProfileAction;
 use App\Models\FaceEnrollment;
 use App\Models\PayrollSetting;
@@ -21,6 +22,7 @@ use Illuminate\Http\Request; // Importar modelo Role
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -32,6 +34,7 @@ class UserController extends Controller
         private readonly SyncPayrollProfileAction $syncPayrollProfileAction,
         private readonly FaceRecognitionService $faceRecognition,
         private readonly EnrollProfilePhotoAction $enrollProfilePhotoAction,
+        private readonly RemoveProfilePhotoAction $removeProfilePhotoAction,
         private readonly ImageOptimizerService $imageOptimizer,
         private readonly VacationService $vacationService,
         private readonly VacationPeriodService $vacationPeriodService,
@@ -68,6 +71,8 @@ class UserController extends Controller
 
     public function store(Request $request)
     {
+        $this->normalizeEmployeeNumber($request);
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
@@ -77,6 +82,7 @@ class UserController extends Controller
             'position' => 'required|string|max:255',
             'phone' => 'required|string|max:20',
             'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+            'remove_photo' => ['sometimes', 'boolean'],
             ...$this->payrollRules($request),
         ], $this->payrollMessages());
 
@@ -104,9 +110,15 @@ class UserController extends Controller
 
             $this->assignUserShiftAction->executeFromForm($request, $user, $validated);
 
-            return $request->hasFile('photo')
-                ? $this->applyProfilePhoto($user, $request->file('photo'), $request->user())
-                : null;
+            if ($request->hasFile('photo')) {
+                return $this->applyProfilePhoto($user, $request->file('photo'), $request->user());
+            }
+
+            if ($request->boolean('remove_photo')) {
+                $this->removeProfilePhotoAction->execute($user);
+            }
+
+            return null;
         });
 
         return redirect()->route('users.index')
@@ -150,6 +162,8 @@ class UserController extends Controller
 
     public function update(Request $request, User $user)
     {
+        $this->normalizeEmployeeNumber($request);
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users,email,'.$user->id,
@@ -159,7 +173,8 @@ class UserController extends Controller
             'position' => 'required|string|max:255',
             'phone' => 'required|string|max:20',
             'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
-            ...$this->payrollRules($request),
+            'remove_photo' => ['sometimes', 'boolean'],
+            ...$this->payrollRules($request, $user),
         ], $this->payrollMessages());
 
         // Only the fields the acting user is allowed to change (permissions aware)
@@ -193,9 +208,15 @@ class UserController extends Controller
 
             $this->assignUserShiftAction->executeFromForm($request, $user, $validated);
 
-            return $request->hasFile('photo')
-                ? $this->applyProfilePhoto($user, $request->file('photo'), $request->user())
-                : null;
+            if ($request->hasFile('photo')) {
+                return $this->applyProfilePhoto($user, $request->file('photo'), $request->user());
+            }
+
+            if ($request->boolean('remove_photo')) {
+                $this->removeProfilePhotoAction->execute($user);
+            }
+
+            return null;
         });
 
         return redirect()->route('users.index')
@@ -292,16 +313,31 @@ class UserController extends Controller
      *
      * @return array<string, array<int, mixed>>
      */
-    private function payrollRules(Request $request): array
+    private function payrollRules(Request $request, ?User $user = null): array
     {
+        $canManagePayroll = $request->user()?->can('payroll.profiles.manage');
+
         // A collaborator marked as payroll subject or with attendance enabled
         // must have a schedule assigned: its daily hours feed the minute rate
         // used by overtime and late discounts.
-        $shiftRequired = $request->user()?->can('payroll.profiles.manage')
+        $shiftRequired = $canManagePayroll
             && ($request->boolean('is_payroll_subject') || $request->boolean('is_attendance_subject'));
 
+        // The employee number is the kiosk identifier, so it is required (and
+        // unique) whenever the payroll profile is being managed.
+        $employeeNumberRule = Rule::unique('payroll_profiles', 'employee_number');
+
+        if ($user?->payrollProfile) {
+            $employeeNumberRule->ignore($user->payrollProfile->id);
+        }
+
         return [
-            'employee_number' => ['nullable', 'string', 'max:50'],
+            'employee_number' => [
+                $canManagePayroll ? 'required' : 'nullable',
+                'string',
+                'max:50',
+                $employeeNumberRule,
+            ],
             'hire_date' => ['nullable', 'date'],
             'termination_date' => ['nullable', 'date', 'after_or_equal:hire_date'],
             'daily_salary' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
@@ -309,7 +345,6 @@ class UserController extends Controller
             'is_payroll_subject' => ['sometimes', 'boolean'],
             'is_attendance_subject' => ['sometimes', 'boolean'],
             'can_remote_attendance' => ['sometimes', 'boolean'],
-            'kiosk_pin' => ['nullable', 'string', 'min:4', 'max:12', 'regex:/^[0-9]+$/'],
             'shift_id' => [
                 $shiftRequired ? 'required' : 'nullable',
                 'integer',
@@ -323,13 +358,25 @@ class UserController extends Controller
      *
      * @return array<string, string>
      */
+    /**
+     * Normalize the employee number before validating it, so a case-variant of
+     * an existing number is detected as a duplicate.
+     */
+    private function normalizeEmployeeNumber(Request $request): void
+    {
+        if ($request->filled('employee_number')) {
+            $request->merge([
+                'employee_number' => mb_strtoupper(trim((string) $request->input('employee_number'))),
+            ]);
+        }
+    }
+
     private function payrollMessages(): array
     {
         return [
             'shift_id.required' => 'Selecciona un horario para el colaborador sujeto a nómina.',
-            'kiosk_pin.min' => 'El PIN debe tener al menos 4 dígitos.',
-            'kiosk_pin.max' => 'El PIN no puede tener más de 12 dígitos.',
-            'kiosk_pin.regex' => 'El PIN solo puede contener números.',
+            'employee_number.required' => 'El número de empleado es obligatorio.',
+            'employee_number.unique' => 'Ese número de empleado ya está asignado a otro colaborador.',
         ];
     }
 

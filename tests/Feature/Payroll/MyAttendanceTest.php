@@ -8,6 +8,7 @@ use App\Models\PayrollProfile;
 use App\Models\PayrollSetting;
 use App\Models\Payslip;
 use App\Models\User;
+use App\Services\Payroll\FaceRecognition\Exceptions\FaceNotDetectedException;
 use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -65,9 +66,9 @@ class MyAttendanceTest extends TestCase
                 ->has('payslips')
                 ->has('punchTypes')
                 ->has('faceRecognition')
-                ->has('remotePinEnabled')
+                ->has('remoteEmployeeNumberEnabled')
                 ->where('profile.can_remote_attendance', true)
-                ->where('profile.has_kiosk_pin', false)
+                ->where('profile.employee_number', 'EMP-0300')
             );
     }
 
@@ -269,6 +270,33 @@ class MyAttendanceTest extends TestCase
         $this->assertDatabaseCount('attendance_logs', 0);
     }
 
+    public function test_remote_punch_reports_when_the_photo_has_no_face(): void
+    {
+        PayrollSetting::current()->update(['face_recognition_enabled' => true]);
+
+        $this->mock(FaceRecognitionService::class, function (MockInterface $mock) {
+            $mock->shouldReceive('isConfigured')->andReturn(true);
+            $mock->shouldReceive('search')->once()->andThrow(
+                new FaceNotDetectedException('No face was detected in the image.')
+            );
+        });
+
+        $this->actingAs($this->employee)
+            ->postJson(route('payroll.my-attendance.punch'), [
+                'type' => AttendanceLog::TYPE_CHECK_IN,
+                'latitude' => 20.67,
+                'longitude' => -103.34,
+                'photo' => 'data:image/jpeg;base64,/9j/AAAA',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath(
+                'errors.photo.0',
+                'No se detectó tu rostro en la foto. Colócate de frente a la cámara, con buena iluminación, e intenta de nuevo.'
+            );
+
+        $this->assertDatabaseCount('attendance_logs', 0);
+    }
+
     public function test_remote_punch_accepts_the_own_face(): void
     {
         PayrollSetting::current()->update(['face_recognition_enabled' => true]);
@@ -300,71 +328,65 @@ class MyAttendanceTest extends TestCase
         ]);
     }
 
-    public function test_remote_punch_accepts_the_kiosk_pin_as_identification(): void
+    public function test_remote_punch_accepts_the_employee_number_as_identification(): void
     {
-        $this->employee->payrollProfile->update(['kiosk_pin' => '2468']);
-
         $this->actingAs($this->employee)
             ->postJson(route('payroll.my-attendance.punch'), [
                 'type' => AttendanceLog::TYPE_CHECK_IN,
                 'latitude' => 20.67,
                 'longitude' => -103.34,
-                'method' => 'pin',
-                'pin' => '2468',
+                'method' => 'employee_number',
+                'employee_number' => 'EMP-0300',
             ])
             ->assertOk()
-            ->assertJsonPath('identifier_method', AttendanceLog::IDENTIFIER_PIN)
+            ->assertJsonPath('identifier_method', AttendanceLog::IDENTIFIER_EMPLOYEE_NUMBER)
             ->assertJsonPath('similarity', null);
 
         $this->assertDatabaseHas('attendance_logs', [
             'user_id' => $this->employee->id,
             'type' => AttendanceLog::TYPE_CHECK_IN,
             'source' => AttendanceLog::SOURCE_REMOTE,
-            'identifier_method' => AttendanceLog::IDENTIFIER_PIN,
+            'identifier_method' => AttendanceLog::IDENTIFIER_EMPLOYEE_NUMBER,
         ]);
     }
 
-    public function test_remote_punch_with_a_wrong_pin_is_rejected(): void
+    public function test_remote_punch_with_a_wrong_employee_number_is_rejected(): void
     {
-        $this->employee->payrollProfile->update(['kiosk_pin' => '2468']);
+        $this->actingAs($this->employee)
+            ->postJson(route('payroll.my-attendance.punch'), [
+                'type' => AttendanceLog::TYPE_CHECK_IN,
+                'latitude' => 20.67,
+                'longitude' => -103.34,
+                'method' => 'employee_number',
+                'employee_number' => 'EMP-9999',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('employee_number');
+
+        $this->assertDatabaseCount('attendance_logs', 0);
+    }
+
+    public function test_remote_punch_with_employee_number_is_rejected_when_the_method_is_disabled(): void
+    {
+        PayrollSetting::current()->update(['kiosk_employee_number_enabled' => false]);
 
         $this->actingAs($this->employee)
             ->postJson(route('payroll.my-attendance.punch'), [
                 'type' => AttendanceLog::TYPE_CHECK_IN,
                 'latitude' => 20.67,
                 'longitude' => -103.34,
-                'method' => 'pin',
-                'pin' => '9999',
+                'method' => 'employee_number',
+                'employee_number' => 'EMP-0300',
             ])
             ->assertStatus(422)
-            ->assertJsonValidationErrors('pin');
+            ->assertJsonValidationErrors('employee_number');
 
         $this->assertDatabaseCount('attendance_logs', 0);
     }
 
-    public function test_remote_punch_with_pin_is_rejected_when_the_fallback_is_disabled(): void
-    {
-        PayrollSetting::current()->update(['kiosk_pin_fallback_enabled' => false]);
-        $this->employee->payrollProfile->update(['kiosk_pin' => '2468']);
-
-        $this->actingAs($this->employee)
-            ->postJson(route('payroll.my-attendance.punch'), [
-                'type' => AttendanceLog::TYPE_CHECK_IN,
-                'latitude' => 20.67,
-                'longitude' => -103.34,
-                'method' => 'pin',
-                'pin' => '2468',
-            ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('pin');
-
-        $this->assertDatabaseCount('attendance_logs', 0);
-    }
-
-    public function test_remote_punch_with_pin_bypasses_the_face_verification(): void
+    public function test_remote_punch_with_employee_number_bypasses_the_face_verification(): void
     {
         PayrollSetting::current()->update(['face_recognition_enabled' => true]);
-        $this->employee->payrollProfile->update(['kiosk_pin' => '2468']);
 
         $this->mock(FaceRecognitionService::class, function (MockInterface $mock) {
             $mock->shouldReceive('isConfigured')->andReturn(true);
@@ -376,11 +398,11 @@ class MyAttendanceTest extends TestCase
                 'type' => AttendanceLog::TYPE_CHECK_IN,
                 'latitude' => 20.67,
                 'longitude' => -103.34,
-                'method' => 'pin',
-                'pin' => '2468',
+                'method' => 'employee_number',
+                'employee_number' => 'EMP-0300',
             ])
             ->assertOk()
-            ->assertJsonPath('identifier_method', AttendanceLog::IDENTIFIER_PIN);
+            ->assertJsonPath('identifier_method', AttendanceLog::IDENTIFIER_EMPLOYEE_NUMBER);
     }
 
     public function test_remote_punch_with_face_method_is_rejected_when_recognition_is_off(): void

@@ -1,5 +1,5 @@
 <script setup>
-import { Camera, Plus } from '@element-plus/icons-vue';
+import { Camera, Delete, Plus } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 
 const props = defineProps({
@@ -17,7 +17,7 @@ const props = defineProps({
     },
 });
 
-const emit = defineEmits(['change']);
+const emit = defineEmits(['change', 'remove']);
 
 const handleChange = (file) => {
     const raw = file.raw;
@@ -60,6 +60,18 @@ const handleChange = (file) => {
                 </div>
             </div>
         </el-upload>
+
+        <el-button
+            v-if="preview"
+            link
+            type="danger"
+            size="small"
+            :icon="Delete"
+            class="mt-1"
+            @click="emit('remove')"
+        >
+            Eliminar foto
+        </el-button>
 
         <p v-if="hint" class="mt-2 text-xs text-gray-400">{{ hint }}</p>
     </div>

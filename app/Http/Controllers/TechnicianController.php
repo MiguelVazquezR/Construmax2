@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Actions\Payroll\AssignUserShiftAction;
 use App\Actions\Payroll\EnrollProfilePhotoAction;
+use App\Actions\Payroll\RemoveProfilePhotoAction;
 use App\Actions\Payroll\SyncPayrollProfileAction;
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
@@ -32,6 +33,7 @@ class TechnicianController extends Controller
         private readonly ImageOptimizerService $imageOptimizer,
         private readonly SyncPayrollProfileAction $syncPayrollProfileAction,
         private readonly EnrollProfilePhotoAction $enrollProfilePhotoAction,
+        private readonly RemoveProfilePhotoAction $removeProfilePhotoAction,
         private readonly AssignUserShiftAction $assignUserShiftAction,
         private readonly ScheduleResolverService $scheduleResolver,
     ) {}
@@ -94,6 +96,8 @@ class TechnicianController extends Controller
 
     public function store(Request $request)
     {
+        $this->normalizeEmployeeNumber($request);
+
         $isInternal = $request->boolean('is_internal');
 
         // CAMBIO: Dejamos como "required" solo name y phone (como en el quickStore)
@@ -106,6 +110,7 @@ class TechnicianController extends Controller
             'roles' => $isInternal ? ['required', 'array', 'min:1'] : ['nullable', 'array'],
             'roles.*' => ['string', Rule::exists('roles', 'name')->where('guard_name', 'web')],
             'photo' => 'nullable|image|max:2048',
+            'remove_photo' => 'sometimes|boolean',
             'phone' => 'required|string|max:20',
             'secondary_phone' => 'nullable|string|max:20',
             'is_internal' => 'boolean',
@@ -274,6 +279,8 @@ class TechnicianController extends Controller
 
     public function update(Request $request, Technician $technician)
     {
+        $this->normalizeEmployeeNumber($request);
+
         $isInternal = $request->has('is_internal')
             ? $request->boolean('is_internal')
             : (bool) $technician->is_internal;
@@ -289,6 +296,7 @@ class TechnicianController extends Controller
             'roles' => $isInternal ? ['required', 'array', 'min:1'] : ['nullable', 'array'],
             'roles.*' => ['string', Rule::exists('roles', 'name')->where('guard_name', 'web')],
             'photo' => 'nullable|image|max:2048',
+            'remove_photo' => 'sometimes|boolean',
             'phone' => 'required|string|max:20',
             'secondary_phone' => 'nullable|string|max:20',
             'is_internal' => 'boolean',
@@ -350,6 +358,8 @@ class TechnicianController extends Controller
                     null,
                     true
                 ));
+            } elseif ($request->boolean('remove_photo')) {
+                $this->removeProfilePhotoAction->execute($technician->user);
             }
 
             $technician->update([
@@ -419,12 +429,27 @@ class TechnicianController extends Controller
             ? $request->boolean('is_internal')
             : (bool) $technician?->is_internal;
 
-        $shiftRequired = $request->user()?->can('payroll.profiles.manage')
+        $canManagePayroll = $request->user()?->can('payroll.profiles.manage');
+
+        $shiftRequired = $canManagePayroll
             && $isInternal
             && ($request->boolean('is_payroll_subject') || $request->boolean('is_attendance_subject'));
 
+        // The employee number is the kiosk identifier, so it is required (and
+        // unique) for internal collaborators managed through payroll.
+        $employeeNumberRule = Rule::unique('payroll_profiles', 'employee_number');
+
+        if ($technician?->user?->payrollProfile) {
+            $employeeNumberRule->ignore($technician->user->payrollProfile->id);
+        }
+
         return [
-            'employee_number' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'employee_number' => [
+                $canManagePayroll && $isInternal ? 'required' : 'nullable',
+                'string',
+                'max:50',
+                $employeeNumberRule,
+            ],
             'hire_date' => ['sometimes', 'nullable', 'date'],
             'daily_salary' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:9999999'],
             'daily_hours' => ['sometimes', 'nullable', 'numeric', 'min:1', 'max:24'],
@@ -432,13 +457,25 @@ class TechnicianController extends Controller
             'is_payroll_subject' => ['sometimes', 'boolean'],
             'is_attendance_subject' => ['sometimes', 'boolean'],
             'can_remote_attendance' => ['sometimes', 'boolean'],
-            'kiosk_pin' => ['nullable', 'string', 'min:4', 'max:12', 'regex:/^[0-9]+$/'],
             'shift_id' => [
                 $shiftRequired ? 'required' : 'nullable',
                 'integer',
                 'exists:shifts,id',
             ],
         ];
+    }
+
+    /**
+     * Normalize the employee number before validating it, so a case-variant of
+     * an existing number is detected as a duplicate.
+     */
+    private function normalizeEmployeeNumber(Request $request): void
+    {
+        if ($request->filled('employee_number')) {
+            $request->merge([
+                'employee_number' => mb_strtoupper(trim((string) $request->input('employee_number'))),
+            ]);
+        }
     }
 
     /**
@@ -450,9 +487,8 @@ class TechnicianController extends Controller
     {
         return [
             'shift_id.required' => 'Selecciona un horario para el técnico sujeto a nómina.',
-            'kiosk_pin.min' => 'El PIN debe tener al menos 4 dígitos.',
-            'kiosk_pin.max' => 'El PIN no puede tener más de 12 dígitos.',
-            'kiosk_pin.regex' => 'El PIN solo puede contener números.',
+            'employee_number.required' => 'El número de empleado es obligatorio.',
+            'employee_number.unique' => 'Ese número de empleado ya está asignado a otro colaborador.',
         ];
     }
 

@@ -120,7 +120,7 @@ Construmax2/
 
 ```
 User ──hasOne──▶ Employee
-User ──hasOne──▶ PayrollProfile (employee number, salary, attendance flags, kiosk PIN)
+User ──hasOne──▶ PayrollProfile (employee number, salary, attendance flags)
 User ──hasOne──▶ Technician ──hasMany──▶ TechnicianBankAccount
 User ──hasMany──▶ Ticket (as seller)
 User ──belongsToMany──▶ Calendar (participants)

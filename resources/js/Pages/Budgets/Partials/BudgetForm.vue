@@ -145,8 +145,10 @@ const rules = reactive({
 const doSubmit = (sendToCosts = false) => {
     if (!formRef.value) return;
 
-    // A cleared type select sends '' — normalize it so the backend stores null.
-    form.concepts = form.concepts.map(c => ({ ...c, type: c.type || null }));
+    if (form.concepts.some(c => !c.type)) {
+        ElMessage.error('Selecciona una categoría para cada concepto.');
+        return;
+    }
 
     formRef.value.validate((valid) => {
         if (valid) {
@@ -438,7 +440,7 @@ defineExpose({ form });
                             <!-- Description, type and amount -->
                             <div class="flex flex-col sm:flex-row gap-3 sm:items-center">
                                 <el-input v-model="item.concept" placeholder="Concepto" class="flex-1" />
-                                <el-select v-model="item.type" class="!w-full sm:!w-44" placeholder="Sin categoría" clearable>
+                                <el-select v-model="item.type" class="!w-full sm:!w-44" placeholder="Categoría">
                                     <el-option label="Mano de obra" value="labor" />
                                     <el-option label="Materiales" value="material" />
                                 </el-select>

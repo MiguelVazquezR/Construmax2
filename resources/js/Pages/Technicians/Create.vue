@@ -32,6 +32,7 @@ const form = useForm({
     roles: [],
     phone: '',
     photo: null, 
+    remove_photo: false,
     
     // Datos Técnico
     secondary_phone: '',
@@ -68,7 +69,6 @@ const form = useForm({
     daily_salary: null,
     is_attendance_subject: false,
     can_remote_attendance: false,
-    kiosk_pin: '',
     shift_id: null,
 
     // Archivos
@@ -92,6 +92,9 @@ const rules = computed(() => ({
         ? [{ required: true, message: 'Debes asignar al menos un rol', trigger: 'change' }]
         : [],
     phone: [{ required: true, message: 'Teléfono principal requerido', trigger: 'blur' }],
+    employee_number: form.is_internal
+        ? [{ required: true, message: 'El número de empleado es obligatorio', trigger: 'blur' }]
+        : [],
     shift_id: [
         {
             validator: (rule, value, callback) => {
@@ -108,7 +111,14 @@ const rules = computed(() => ({
 
 const handlePhotoChange = (file) => {
     form.photo = file;
+    form.remove_photo = false;
     photoPreview.value = URL.createObjectURL(file);
+};
+
+const handlePhotoRemove = () => {
+    form.photo = null;
+    form.remove_photo = true;
+    photoPreview.value = null;
 };
 
 const handleTaxFileChange = (file) => {
@@ -182,6 +192,7 @@ const submit = () => {
                     :roles="roles"
                     :shifts="shifts"
                     @photo-change="handlePhotoChange"
+                    @photo-remove="handlePhotoRemove"
                     @tax-file-change="handleTaxFileChange"
                     @tax-file-remove="handleTaxFileRemove"
                 >

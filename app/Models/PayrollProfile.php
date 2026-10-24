@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Hash;
 
 class PayrollProfile extends Model
 {
@@ -23,7 +22,6 @@ class PayrollProfile extends Model
         'is_payroll_subject',
         'is_attendance_subject',
         'can_remote_attendance',
-        'kiosk_pin',
         'notes',
     ];
 
@@ -36,49 +34,6 @@ class PayrollProfile extends Model
         'is_attendance_subject' => 'boolean',
         'can_remote_attendance' => 'boolean',
     ];
-
-    protected $hidden = [
-        'kiosk_pin',
-        'kiosk_pin_lookup',
-    ];
-
-    protected $appends = [
-        'has_kiosk_pin',
-    ];
-
-    /**
-     * Whether the profile has a kiosk fallback pin configured (the pin itself is never exposed).
-     */
-    public function getHasKioskPinAttribute(): bool
-    {
-        return ! empty($this->kiosk_pin);
-    }
-
-    /**
-     * The kiosk pin is stored as a bcrypt hash (never reversible); the extra
-     * HMAC lookup allows the kiosk to find the collaborator from the typed pin
-     * without scanning every bcrypt hash.
-     */
-    public function setKioskPinAttribute(?string $value): void
-    {
-        $pin = trim((string) $value);
-
-        // An empty value keeps the current pin.
-        if ($pin === '') {
-            return;
-        }
-
-        $this->attributes['kiosk_pin'] = Hash::make($pin);
-        $this->attributes['kiosk_pin_lookup'] = self::pinLookup($pin);
-    }
-
-    /**
-     * Deterministic lookup hash of a kiosk pin, keyed with the app key.
-     */
-    public static function pinLookup(string $pin): string
-    {
-        return hash_hmac('sha256', trim($pin), (string) config('app.key'));
-    }
 
     protected static function booted(): void
     {
@@ -96,7 +51,22 @@ class PayrollProfile extends Model
     {
         $next = (int) static::query()->max('id') + 1;
 
-        return 'EMP-'.str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+        while (static::query()->where('employee_number', $number = 'EMP-'.str_pad((string) $next, 4, '0', STR_PAD_LEFT))->exists()) {
+            $next++;
+        }
+
+        return $number;
+    }
+
+    /**
+     * Employee numbers are stored trimmed and uppercase so the kiosk lookup
+     * and the unique validation always compare the same value.
+     */
+    public function setEmployeeNumberAttribute(?string $value): void
+    {
+        $number = trim((string) $value);
+
+        $this->attributes['employee_number'] = $number === '' ? null : mb_strtoupper($number);
     }
 
     /**

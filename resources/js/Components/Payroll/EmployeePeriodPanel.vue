@@ -145,6 +145,7 @@ const sourceLabel = (source) => ({
 
 const identifierLabel = (method) => ({
     face: 'rostro',
+    employee_number: 'número de empleado',
     pin: 'PIN',
     manual: 'manual',
 }[method] || method);

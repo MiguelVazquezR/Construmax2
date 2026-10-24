@@ -42,7 +42,7 @@ const form = useForm({
     // Face recognition
     face_recognition_enabled: Boolean(props.settings.face_recognition_enabled),
     face_match_threshold: toNumber(props.settings.face_match_threshold, 90),
-    kiosk_pin_fallback_enabled: Boolean(props.settings.kiosk_pin_fallback_enabled),
+    kiosk_employee_number_enabled: Boolean(props.settings.kiosk_employee_number_enabled),
     rekognition_collection_id: props.settings.rekognition_collection_id || 'construmax-attendance',
 
     // Attendance evidence
@@ -221,7 +221,7 @@ const submit = () => {
 
                         <el-form-item label="Reconocimiento facial activo" prop="face_recognition_enabled" :error="form.errors.face_recognition_enabled">
                             <el-switch v-model="form.face_recognition_enabled" style="--el-switch-on-color: #f26c17;" />
-                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-3">Habilita el botón «Registrar con rostro» en el kiosco.</p>
+                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-3">Habilita el registro y la verificación facial del portal del colaborador. El kiosco siempre muestra la opción «Registrar con rostro».</p>
                         </el-form-item>
 
                         <el-form-item label="Umbral de coincidencia (similitud mínima)" prop="face_match_threshold" :error="form.errors.face_match_threshold">
@@ -229,9 +229,9 @@ const submit = () => {
                             <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Similitud mínima para aceptar la identificación; más alto es más estricto.</p>
                         </el-form-item>
 
-                        <el-form-item label="Respaldo con PIN en kiosco" prop="kiosk_pin_fallback_enabled" :error="form.errors.kiosk_pin_fallback_enabled">
-                            <el-switch v-model="form.kiosk_pin_fallback_enabled" style="--el-switch-on-color: #f26c17;" />
-                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-3">Muestra la opción de registrar con PIN como alternativa al rostro.</p>
+                        <el-form-item label="Identificación con número de empleado en kiosco" prop="kiosk_employee_number_enabled" :error="form.errors.kiosk_employee_number_enabled">
+                            <el-switch v-model="form.kiosk_employee_number_enabled" style="--el-switch-on-color: #f26c17;" />
+                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-3">Muestra la opción de registrar con el número de empleado como alternativa al rostro.</p>
                         </el-form-item>
 
                         <el-form-item label="Colección de rostros en Rekognition" prop="rekognition_collection_id" :error="form.errors.rekognition_collection_id">
@@ -243,7 +243,7 @@ const submit = () => {
                             <el-icon class="mt-0.5 shrink-0"><InfoFilled /></el-icon>
                             <p>
                                 Requiere credenciales de AWS configuradas en el servidor. Mientras no esté activo, el
-                                kiosco puede operar con el respaldo de PIN.
+                                kiosco puede operar con el número de empleado.
                             </p>
                         </div>
                     </SettingsSection>

@@ -50,6 +50,12 @@ class AttendanceLog extends Model implements HasMedia
 
     public const IDENTIFIER_FACE = 'face';
 
+    public const IDENTIFIER_EMPLOYEE_NUMBER = 'employee_number';
+
+    /**
+     * Legacy identification method, kept so punches registered before the
+     * kiosk switched to the employee number keep their label.
+     */
     public const IDENTIFIER_PIN = 'pin';
 
     public const IDENTIFIER_MANUAL = 'manual';
