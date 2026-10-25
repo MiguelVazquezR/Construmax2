@@ -17,7 +17,7 @@ class UpdatePayrollSettingsRequest extends FormRequest
             // Face recognition
             'face_recognition_enabled' => ['required', 'boolean'],
             'face_match_threshold' => ['required', 'integer', 'min:50', 'max:100'],
-            'kiosk_pin_fallback_enabled' => ['required', 'boolean'],
+            'kiosk_employee_number_enabled' => ['required', 'boolean'],
             'rekognition_collection_id' => ['required', 'string', 'max:255', 'regex:/^[a-zA-Z0-9_.\-]+$/'],
 
             // Payroll period: weekly Monday–Sunday, opened and closed by the

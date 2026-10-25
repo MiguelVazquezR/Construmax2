@@ -24,7 +24,14 @@ const photoPreview = ref(props.user.profile_photo_url || null);
 
 const handlePhotoChange = (file) => {
     form.photo = file;
+    form.remove_photo = false;
     photoPreview.value = URL.createObjectURL(file);
+};
+
+const handlePhotoRemove = () => {
+    form.photo = null;
+    form.remove_photo = true;
+    photoPreview.value = null;
 };
 
 const toNumber = (value) => {
@@ -46,6 +53,7 @@ const form = useForm({
     position: props.user.employee?.position || '',
     phone: props.user.employee?.phone || '',
     photo: null,
+    remove_photo: false,
 
     // Nómina y asistencia (opcional, según permisos)
     employee_number: profile.employee_number || '',
@@ -55,7 +63,6 @@ const form = useForm({
     is_payroll_subject: Boolean(profile.is_payroll_subject),
     is_attendance_subject: Boolean(profile.is_attendance_subject),
     can_remote_attendance: Boolean(profile.can_remote_attendance),
-    kiosk_pin: '', // Empty keeps the current pin.
     shift_id: props.currentShiftId ?? null,
 });
 
@@ -82,6 +89,9 @@ const rules = reactive({
     ],
     phone: [
         { required: true, message: 'El teléfono es obligatorio', trigger: 'blur' },
+    ],
+    employee_number: [
+        { required: true, message: 'El número de empleado es obligatorio', trigger: 'blur' },
     ],
     shift_id: [
         {
@@ -148,7 +158,7 @@ const submit = () => {
                             <div class="flex flex-col sm:flex-row gap-6">
                                 <!-- Foto de perfil -->
                                 <div class="mx-auto sm:mx-0 shrink-0">
-                                    <PhotoUploader :preview="photoPreview" :max-size-mb="4" @change="handlePhotoChange" />
+                                    <PhotoUploader :preview="photoPreview" :max-size-mb="4" @change="handlePhotoChange" @remove="handlePhotoRemove" />
                                     <p v-if="form.errors.photo" class="text-center text-xs text-red-500 mt-1">{{ form.errors.photo }}</p>
                                 </div>
 
@@ -227,7 +237,7 @@ const submit = () => {
                         </div>
 
                         <!-- Sección: Nómina y asistencia -->
-                        <PayrollProfileFields :form="form" :has-kiosk-pin="Boolean(profile.has_kiosk_pin)" :shifts="shifts" />
+                        <PayrollProfileFields :form="form" :shifts="shifts" />
 
                         <!-- Botones -->
                         <div class="flex justify-end gap-3 pt-4 border-t border-gray-100 dark:border-gray-700">

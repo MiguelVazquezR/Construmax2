@@ -16,6 +16,7 @@ class UpdateAttendanceDayOverrideRequest extends FormRequest
         return [
             'date' => ['required', 'date'],
             'late_ignored' => ['sometimes', 'boolean'],
+            'early_leave_ignored' => ['sometimes', 'boolean'],
             'notes' => ['nullable', 'string', 'max:255'],
         ];
     }

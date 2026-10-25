@@ -62,16 +62,16 @@ POST   /users/bulk-delete          users.bulk-destroy
 |-------|-------|
 | Hire date | Drives vacation seasons and accrual |
 | Termination date | Optional dismissal date (must be `after_or_equal` the hire date). The collaborator stays in the payroll up to and including that day and disappears from the periods that start after it |
-| Employee number | Auto `EMP-####` when left empty in create |
+| Employee number | Required and unique while the payroll profile is managed; it is the identifier used to register attendance in the kiosk and in the remote portal (auto `EMP-####` only when the profile is created outside the form) |
 | Daily salary | Payroll basis. The daily hours are no longer typed: they follow the assigned schedule (see below) |
 | Subject to payroll / records attendance | `is_payroll_subject`, `is_attendance_subject` |
 | Remote attendance | `can_remote_attendance` — requires `payroll.remote-attendance.manage`; other fields require `payroll.profiles.manage` (enforced by `SyncPayrollProfileAction::sanitizeFor`) |
 | Assigned schedule | `shift_id` — the schedule selector lives in the *Nómina* card (where «Horas por día» used to be), required while the collaborator is subject to payroll, with an info icon that opens a summary popover (worked days, schedules and meal time). Saved through `AssignUserShiftAction`: creates or updates the individual fixed assignment starting on the hire date, removes it when the selector is cleared (falling back to the department assignment, if any), and keeps `daily_hours` in sync with the schedule. Only applied with `payroll.profiles.manage` |
-| Kiosk PIN | Digits only (4 to 12) in the *Asistencia* card; requires «Registra asistencia». Stored hashed — an empty value keeps the current pin and `has_kiosk_pin` is exposed as a boolean flag |
+| Profile photo | The shared `PhotoUploader` also offers **Eliminar foto**, which clears `profile_photo_path` and removes the active facial references through `RemoveProfilePhotoAction` |
 
 ### User show page
 - Hero card: avatar, name, email, roles, department
-- Tabs: General (employee info + **Vacaciones** card), Tickets (assigned as seller), **Nómina y asistencia** (payroll profile summary, kiosk PIN state, facial enrollment card with "Registrar / actualizar rostro" via `FaceEnrollmentDialog` when the user has `payroll.faces.manage` and records attendance)
+- Tabs: General (employee info + **Vacaciones** card), Tickets (assigned as seller), **Nómina y asistencia** (payroll profile summary, facial enrollment card with "Registrar / actualizar rostro" via `FaceEnrollmentDialog` when the user has `payroll.faces.manage` and records attendance)
 - The *Vacaciones* card (visible when the collaborator has a payroll profile or manual movements) shows the available / taken / pending / manual-adjustment days, the latest requests, the manual movements with their author and an expandable season breakdown (entitlement, accrual, expiry). With `payroll.vacations.manage` it offers **Saldo inicial**, **Agregar días** and **Ajustar días** (shared `VacationAdjustmentDialog`): each movement stores days, reason and author, never expires, is consumed after the LFT seasons and can be deleted in place (the balance recalculates live)
 - Header actions: **Editar usuario** and **Dar de baja / Reactivar** (permission-gated, same dialog as the list)
 

@@ -101,6 +101,7 @@ class AttendanceDayService
             incidentPayPercentage: $incident?->payPercentage(),
             holidayName: $holiday?->name,
             notes: $override?->notes,
+            earlyLeaveIgnored: (bool) $override?->early_leave_ignored,
         );
     }
 

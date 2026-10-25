@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Payroll\AttendanceDeviceController;
+use App\Http\Controllers\Payroll\AttendanceDeviceRegistrationController;
 use App\Http\Controllers\Payroll\AttendanceLogController;
 use App\Http\Controllers\Payroll\FaceEnrollmentController;
 use App\Http\Controllers\Payroll\HolidayController;
@@ -10,7 +11,6 @@ use App\Http\Controllers\Payroll\MyAttendanceController;
 use App\Http\Controllers\Payroll\PayrollNoteController;
 use App\Http\Controllers\Payroll\PayrollPeriodController;
 use App\Http\Controllers\Payroll\PayrollSettingController;
-use App\Http\Controllers\Payroll\PayrollSuspensionController;
 use App\Http\Controllers\Payroll\PayslipController;
 use App\Http\Controllers\Payroll\ShiftAssignmentController;
 use App\Http\Controllers\Payroll\ShiftController;
@@ -19,18 +19,20 @@ use App\Http\Controllers\Payroll\VacationController;
 use App\Http\Controllers\Payroll\VacationPeriodController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'verified', 'payroll.active'])->prefix('payroll')->name('payroll.')->group(function () {
-    // Notice shown while the development balance of the module is pending.
-    // EnsurePayrollModuleIsActive always lets this route through.
-    Route::get('/suspended', PayrollSuspensionController::class)->name('suspended');
-
+Route::middleware(['auth', 'verified'])->prefix('payroll')->name('payroll.')->group(function () {
     // Payroll module configuration (period, tolerance, multipliers, vacations, face recognition...)
     Route::get('/settings', [PayrollSettingController::class, 'edit'])->name('settings.edit');
     Route::put('/settings', [PayrollSettingController::class, 'update'])->name('settings.update');
 
-    // Authorized kiosk devices: list, register the current device and revoke
+    // Authorized kiosk devices: list, register the current device, revoke,
+    // reactivate and delete permanently
     Route::get('/devices', [AttendanceDeviceController::class, 'index'])->name('devices.index');
     Route::post('/devices', [AttendanceDeviceController::class, 'store'])->name('devices.store');
+    Route::put('/devices/registration-password', [AttendanceDeviceController::class, 'updateRegistrationPassword'])
+        ->name('devices.registration-password');
+    Route::put('/devices/{device}', [AttendanceDeviceController::class, 'update'])->name('devices.update');
+    Route::patch('/devices/{device}/revoke', [AttendanceDeviceController::class, 'revoke'])->name('devices.revoke');
+    Route::patch('/devices/{device}/restore', [AttendanceDeviceController::class, 'restore'])->name('devices.restore');
     Route::delete('/devices/{device}', [AttendanceDeviceController::class, 'destroy'])->name('devices.destroy');
 
     // Shifts, schedules and assignments
@@ -109,6 +111,14 @@ Route::middleware(['auth', 'verified', 'payroll.active'])->prefix('payroll')->na
 
     // Printable payslips (4-5 per sheet) of a closed period
     Route::get('/periods/{period}/payslips/print', [PayslipController::class, 'print'])->name('periods.payslips.print');
+});
+
+// Public device registration: an administrator shares this link so a tablet
+// can be authorized with the shared password, without signing in.
+Route::prefix('attendance/devices/register')->name('attendance.devices.')->group(function () {
+    Route::get('/', [AttendanceDeviceRegistrationController::class, 'show'])->name('register');
+    Route::post('/', [AttendanceDeviceRegistrationController::class, 'store'])
+        ->middleware('throttle:10,1')->name('register.store');
 });
 
 // Public attendance kiosk. Every API call is restricted by the

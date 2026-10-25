@@ -3,6 +3,8 @@
 namespace App\Services\Payroll\FaceRecognition;
 
 use App\Models\PayrollSetting;
+use App\Services\Payroll\FaceRecognition\Exceptions\FaceNotDetectedException;
+use App\Services\Payroll\FaceRecognition\Exceptions\MultipleFacesDetectedException;
 use Aws\Rekognition\Exception\RekognitionException;
 use Aws\Rekognition\RekognitionClient;
 use RuntimeException;
@@ -38,7 +40,7 @@ class AwsFaceRecognitionService implements FaceRecognitionService
         $record = $result['FaceRecords'][0] ?? null;
 
         if (!$record) {
-            throw new RuntimeException('No face was detected in the image.');
+            throw new FaceNotDetectedException('No face was detected in the image.');
         }
 
         return [
@@ -55,12 +57,19 @@ class AwsFaceRecognitionService implements FaceRecognitionService
 
         $threshold = (float) PayrollSetting::current()->face_match_threshold;
 
-        $result = $this->client()->searchFacesByImage([
-            'CollectionId' => $this->collectionId(),
-            'Image' => ['Bytes' => $this->decodeImage($imageBase64)],
-            'MaxFaces' => 1,
-            'FaceMatchThreshold' => $threshold,
-        ]);
+        try {
+            $result = $this->client()->searchFacesByImage([
+                'CollectionId' => $this->collectionId(),
+                'Image' => ['Bytes' => $this->decodeImage($imageBase64)],
+                'MaxFaces' => 1,
+                'FaceMatchThreshold' => $threshold,
+            ]);
+        } catch (RekognitionException $exception) {
+            // Rekognition answers with InvalidParameterException instead of an
+            // empty result when the photo has no face (or several) and when the
+            // collection has no indexed faces yet.
+            $result = $this->searchResultForFailure($exception);
+        }
 
         $match = $result['FaceMatches'][0] ?? null;
 
@@ -97,6 +106,35 @@ class AwsFaceRecognitionService implements FaceRecognitionService
                 'secret' => config('services.aws.secret'),
             ],
         ]);
+    }
+
+    /**
+     * Rekognition rejects the search instead of returning zero matches when the
+     * photo has no face, more than one face, or the collection has no faces.
+     * Only the last case is a real "no match"; the others must be reported so
+     * the collaborator knows how to retry.
+     *
+     * @return array{FaceMatches: array<int, mixed>}
+     */
+    private function searchResultForFailure(RekognitionException $exception): array
+    {
+        $message = strtolower((string) $exception->getAwsErrorMessage());
+
+        if ($exception->getAwsErrorCode() === 'InvalidParameterException') {
+            if (str_contains($message, 'multiple faces')) {
+                throw new MultipleFacesDetectedException('More than one face was detected in the image.');
+            }
+
+            if (str_contains($message, 'no faces in the image') || str_contains($message, 'at least 1')) {
+                throw new FaceNotDetectedException('No face was detected in the image.');
+            }
+
+            if (str_contains($message, 'contain any faces')) {
+                return ['FaceMatches' => []];
+            }
+        }
+
+        throw $exception;
     }
 
     /**

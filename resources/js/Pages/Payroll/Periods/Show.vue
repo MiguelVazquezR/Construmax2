@@ -292,7 +292,7 @@ const openPrePayroll = () => {
             <p v-if="rowFiltersActive" class="text-xs text-gray-500 dark:text-gray-400">
                 Las tarjetas reflejan únicamente a los colaboradores filtrados.
             </p>
-            <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4">
+            <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4">
                 <div class="bg-white dark:bg-[#1e1e20] rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
                     <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Días pagados</p>
                     <p class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ kpiStats.days_paid }}</p>
@@ -304,6 +304,10 @@ const openPrePayroll = () => {
                 <div class="bg-white dark:bg-[#1e1e20] rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
                     <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Retardos (min)</p>
                     <p class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ kpiStats.late_minutes }}</p>
+                </div>
+                <div class="bg-white dark:bg-[#1e1e20] rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
+                    <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Salida anticipada (min)</p>
+                    <p class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ kpiStats.early_leave_minutes }}</p>
                 </div>
                 <div class="bg-white dark:bg-[#1e1e20] rounded-xl border border-gray-100 dark:border-[#2b2b2e] p-4">
                     <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Horas extra</p>
@@ -452,6 +456,9 @@ const openPrePayroll = () => {
                                 </div>
                                 <div class="text-xs text-gray-500 font-normal">
                                     Retardos: <span class="font-semibold text-gray-700 dark:text-gray-200">{{ row.late_minutes }} min</span>
+                                </div>
+                                <div class="text-xs text-gray-500 font-normal">
+                                    Salida anticipada: <span class="font-semibold text-gray-700 dark:text-gray-200">{{ row.early_leave_minutes }} min</span>
                                 </div>
                                 <div class="text-xs text-gray-500 font-normal">
                                     Extra: <span class="font-semibold text-gray-700 dark:text-gray-200">{{ hours(row.overtime_minutes) }}</span>

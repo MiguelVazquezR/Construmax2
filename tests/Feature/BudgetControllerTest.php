@@ -84,9 +84,12 @@ class BudgetControllerTest extends TestCase
             ],
         ];
 
-        $this->actingAs($this->user)
-            ->post(route('budgets.store'), $data)
-            ->assertRedirect(route('budgets.index'))
+        $response = $this->actingAs($this->user)->post(route('budgets.store'), $data);
+
+        $budget = Budget::where('ticket_id', $ticket->id)->firstOrFail();
+
+        $response
+            ->assertRedirect(route('budgets.show', $budget->id))
             ->assertSessionHas('success');
 
         $this->assertDatabaseHas('budgets', [
@@ -353,7 +356,7 @@ class BudgetControllerTest extends TestCase
 
         $this->actingAs($this->user)
             ->put(route('budgets.update', $budget), $data)
-            ->assertRedirect(route('budgets.index'))
+            ->assertRedirect(route('budgets.show', $budget->id))
             ->assertSessionHas('success');
 
         $this->assertDatabaseHas('budgets', [
@@ -488,8 +491,29 @@ class BudgetControllerTest extends TestCase
         $budget = Budget::factory()->create(['user_id' => $this->user->id]);
 
         $this->actingAs($this->user)
+            ->post(route('budgets.technician-payments.store', $budget), [
+                'user_id' => $this->user->id,
+                'amount' => 750,
+                'payment_date' => now()->toDateString(),
+                'payment_method' => 'Transferencia',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('technician_payments', [
+            'budget_id' => $budget->id,
+            'user_id' => $this->user->id,
+            'amount' => 750,
+        ]);
+    }
+
+    public function test_store_technician_payment_fails_without_required_fields(): void
+    {
+        $budget = Budget::factory()->create(['user_id' => $this->user->id]);
+
+        $this->actingAs($this->user)
             ->post(route('budgets.technician-payments.store', $budget), [])
-            ->assertSessionHasErrors(['user_id', 'amount', 'payment_date', 'payment_method', 'proof']);
+            ->assertSessionHasErrors(['user_id', 'amount', 'payment_date', 'payment_method']);
     }
 
     // --- destroyTechnicianPayment ---

@@ -31,6 +31,5 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
-        <env name="PAYROLL_SUSPENSION_ACTIVE" value="false"/>
     </php>
 </phpunit>

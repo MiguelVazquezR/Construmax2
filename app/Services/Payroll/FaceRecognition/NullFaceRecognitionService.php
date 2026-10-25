@@ -6,7 +6,7 @@ use RuntimeException;
 
 /**
  * Fallback implementation used when AWS credentials are not configured yet:
- * the kiosk keeps working with the employee number + PIN fallback.
+ * the kiosk keeps working with the employee number.
  */
 class NullFaceRecognitionService implements FaceRecognitionService
 {

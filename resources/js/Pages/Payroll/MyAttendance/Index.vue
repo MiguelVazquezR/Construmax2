@@ -22,7 +22,7 @@ const props = defineProps({
     punchTypes: Object,
     vacationMinDays: Number,
     remoteGeolocationRequired: Boolean,
-    remotePinEnabled: Boolean,
+    remoteEmployeeNumberEnabled: Boolean,
     faceRecognition: Object,
 });
 
@@ -42,9 +42,9 @@ const recordsDialog = ref(false);
 const recordsDay = ref(null);
 const todayDialog = ref(false);
 // Identification method of the remote punch: the collaborator chooses face
-// or pin when both are available; otherwise the single active one is used.
+// or employee number when both are available; otherwise the single active one is used.
 const punchMethod = ref(null);
-const punchPin = ref('');
+const punchEmployeeNumber = ref('');
 
 const videoRef = ref(null);
 let stream = null;
@@ -61,12 +61,14 @@ const faceVerificationActive = computed(
     () => props.faceRecognition?.enabled === true && props.faceRecognition?.configured === true
 );
 
-// The collaborator can identify with a pin when the feature is active and
-// their profile has one configured.
-const pinAvailable = computed(() => props.remotePinEnabled === true && props.profile?.has_kiosk_pin === true);
+// The collaborator can identify with their employee number when the feature
+// is active and their profile has one assigned.
+const employeeNumberAvailable = computed(
+    () => props.remoteEmployeeNumberEnabled === true && Boolean(props.profile?.employee_number)
+);
 
 // Both methods active: the collaborator must choose one first.
-const needsMethodChoice = computed(() => faceVerificationActive.value && pinAvailable.value);
+const needsMethodChoice = computed(() => faceVerificationActive.value && employeeNumberAvailable.value);
 
 const effectiveMethod = computed(() => {
     if (needsMethodChoice.value) {
@@ -77,17 +79,17 @@ const effectiveMethod = computed(() => {
         return 'face';
     }
 
-    if (pinAvailable.value) {
-        return 'pin';
+    if (employeeNumberAvailable.value) {
+        return 'employee_number';
     }
 
     return 'manual';
 });
 
 const identificationTagLabel = computed(() => {
-    if (needsMethodChoice.value) return 'Elige rostro o PIN';
+    if (needsMethodChoice.value) return 'Elige rostro o número de empleado';
     if (faceVerificationActive.value) return 'Verificación facial activa';
-    if (pinAvailable.value) return 'Registro con PIN';
+    if (employeeNumberAvailable.value) return 'Registro con número de empleado';
 
     return null;
 });
@@ -132,6 +134,7 @@ const historySummary = computed(() => {
         count: days.length,
         worked: days.reduce((total, day) => total + Number(day.worked_minutes || 0), 0),
         late: days.reduce((total, day) => total + (day.late_ignored ? 0 : Number(day.late_minutes || 0)), 0),
+        early: days.reduce((total, day) => total + (day.early_leave_ignored ? 0 : Number(day.early_leave_minutes || 0)), 0),
         overtime: days.reduce((total, day) => total + Number(day.overtime_minutes || 0), 0),
     };
 });
@@ -224,15 +227,36 @@ const lunchMinutes = (day) => {
     return diff > 0 ? diff : null;
 };
 
-// The remote pin accepts digits only.
-const onPunchPinInput = (value) => {
-    punchPin.value = String(value ?? '').replace(/\D/g, '');
-};
-
 const openRecords = (day) => {
     recordsDay.value = day;
     recordsDialog.value = true;
 };
+
+const videoHasFrames = (video) => Boolean(video && video.readyState >= 2 && video.videoWidth > 0);
+
+// Resolves once the stream delivers its first frame (or after a short timeout
+// when the browser never reports one).
+const waitForVideoFrames = (video) =>
+    new Promise((resolve) => {
+        if (videoHasFrames(video)) {
+            resolve(true);
+            return;
+        }
+
+        let timer = null;
+
+        const finish = () => {
+            video.removeEventListener('loadeddata', finish);
+            video.removeEventListener('playing', finish);
+            clearTimeout(timer);
+            resolve(videoHasFrames(video));
+        };
+
+        timer = setTimeout(finish, 4000);
+
+        video.addEventListener('loadeddata', finish);
+        video.addEventListener('playing', finish);
+    });
 
 const initCamera = async () => {
     cameraError.value = false;
@@ -266,8 +290,8 @@ const stopCamera = () => {
 };
 
 // The camera is requested only while the face method is the one in use:
-// picking the pin (or leaving the tab) releases it so no camera access
-// stays active.
+// picking the employee number (or leaving the tab) releases it so no camera
+// access stays active.
 watch(cameraNeeded, async (needed) => {
     if (needed) {
         if (! cameraReady.value) {
@@ -280,12 +304,12 @@ watch(cameraNeeded, async (needed) => {
     stopCamera();
 });
 
-// A new selection starts fresh: the method is chosen again and the pin is
-// emptied.
+// A new selection starts fresh: the method is chosen again and the employee
+// number is emptied.
 watch(selectedType, (type) => {
     if (type === null) {
         punchMethod.value = null;
-        punchPin.value = '';
+        punchEmployeeNumber.value = '';
     }
 });
 
@@ -296,16 +320,22 @@ watch(activeTab, (tab) => {
     }
 });
 
-const capturePhoto = () => {
-    if (!cameraReady.value || !videoRef.value) return null;
-
+const capturePhoto = async () => {
     const video = videoRef.value;
+
+    if (!cameraReady.value || !video) return null;
+
+    // The element exists before the first frame arrives; capturing then would
+    // send a black image that the provider rejects as "no face".
+    if (!await waitForVideoFrames(video)) return null;
+
     const canvas = document.createElement('canvas');
-    canvas.width = 480;
-    canvas.height = 360;
+    const scale = Math.min(1, 640 / video.videoWidth);
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
     canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    return canvas.toDataURL('image/jpeg', 0.7);
+    return canvas.toDataURL('image/jpeg', 0.8);
 };
 
 const locate = () =>
@@ -353,23 +383,25 @@ const submitPunch = async () => {
         let photo = null;
 
         if (method === 'face') {
-            photo = capturePhoto();
+            photo = await capturePhoto();
 
             if (! photo) {
-                errorMessage.value = 'Se requiere la cámara para verificar tu rostro.';
+                errorMessage.value = cameraReady.value
+                    ? 'La cámara todavía se está activando. Espera un momento e intenta de nuevo.'
+                    : 'Se requiere la cámara para verificar tu rostro.';
                 return;
             }
         }
 
-        if (method === 'pin' && ! punchPin.value) {
-            errorMessage.value = 'Escribe tu PIN para continuar.';
+        if (method === 'employee_number' && ! punchEmployeeNumber.value.trim()) {
+            errorMessage.value = 'Escribe tu número de empleado para continuar.';
             return;
         }
 
         const { data } = await axios.post(route('payroll.my-attendance.punch'), {
             type: selectedType.value,
             method: method === 'manual' ? null : method,
-            pin: method === 'pin' ? punchPin.value : null,
+            employee_number: method === 'employee_number' ? punchEmployeeNumber.value.trim() : null,
             latitude,
             longitude,
             location_accuracy: accuracy,
@@ -589,13 +621,13 @@ onBeforeUnmount(() => {
                                                     <button
                                                         type="button"
                                                         class="rounded-xl border px-3 py-3.5 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
-                                                        :class="punchMethod === 'pin'
+                                                        :class="punchMethod === 'employee_number'
                                                             ? 'bg-orange-500 border-orange-400 text-white shadow-sm'
                                                             : 'bg-white dark:bg-[#1e1e20] border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-orange-400'"
-                                                        @click="punchMethod = 'pin'"
+                                                        @click="punchMethod = 'employee_number'"
                                                     >
-                                                        <el-icon :size="16"><Key /></el-icon>
-                                                        Con mi PIN
+                                                        <el-icon :size="16"><User /></el-icon>
+                                                        Con mi número
                                                     </button>
                                                 </div>
                                             </template>
@@ -650,21 +682,18 @@ onBeforeUnmount(() => {
                                                 </div>
                                             </div>
 
-                                            <!-- Pin method -->
-                                            <div v-else-if="effectiveMethod === 'pin'" class="max-w-md space-y-2">
-                                                <p class="text-sm text-gray-600 dark:text-gray-300">Escribe tu PIN de asistencia.</p>
+                                            <!-- Employee number method -->
+                                            <div v-else-if="effectiveMethod === 'employee_number'" class="max-w-md space-y-2">
+                                                <p class="text-sm text-gray-600 dark:text-gray-300">Escribe tu número de empleado para confirmar tu identidad.</p>
                                                 <el-input
-                                                    v-model="punchPin"
+                                                    v-model="punchEmployeeNumber"
                                                     size="large"
-                                                    maxlength="12"
-                                                    show-password
-                                                    inputmode="numeric"
-                                                    placeholder="Tu PIN"
-                                                    @input="onPunchPinInput"
+                                                    maxlength="50"
+                                                    placeholder="Tu número de empleado"
                                                     @keyup.enter="submitPunch"
                                                 />
                                                 <p class="text-xs text-gray-400">
-                                                    Si olvidaste tu PIN, pide ayuda al administrador.
+                                                    Si no conoces tu número de empleado, pide ayuda al administrador.
                                                 </p>
                                                 <p v-if="remoteGeolocationRequired" class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
                                                     <el-icon><Location /></el-icon>
@@ -683,7 +712,7 @@ onBeforeUnmount(() => {
                                                     :loading="submitting"
                                                     @click="submitPunch"
                                                 >
-                                                    Registrar con PIN
+                                                    Registrar con número de empleado
                                                 </el-button>
                                             </div>
 
@@ -735,7 +764,7 @@ onBeforeUnmount(() => {
 
                         <div class="p-6 space-y-6">
                             <!-- Same summary tiles as the payroll detail -->
-                            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
                                 <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50 dark:bg-[#252529]/60 px-4 py-3">
                                     <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Días del periodo</p>
                                     <p class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ historySummary.count }}</p>
@@ -748,6 +777,12 @@ onBeforeUnmount(() => {
                                     <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Retardos</p>
                                     <p class="text-lg font-bold" :class="historySummary.late > 0 ? 'text-red-500' : 'text-gray-800 dark:text-gray-100'">
                                         {{ historySummary.late }} min
+                                    </p>
+                                </div>
+                                <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50 dark:bg-[#252529]/60 px-4 py-3">
+                                    <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Salida anticipada</p>
+                                    <p class="text-lg font-bold" :class="historySummary.early > 0 ? 'text-red-500' : 'text-gray-800 dark:text-gray-100'">
+                                        {{ historySummary.early }} min
                                     </p>
                                 </div>
                                 <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50 dark:bg-[#252529]/60 px-4 py-3">
@@ -809,10 +844,20 @@ onBeforeUnmount(() => {
                                         </template>
                                     </el-table-column>
 
-                                    <el-table-column label="Salida" min-width="90" align="center">
+                                    <el-table-column label="Salida" min-width="100" align="center">
                                         <template #default="scope">
                                             <p v-if="scope.row.last_out" class="font-medium text-gray-700 dark:text-gray-200">{{ scope.row.last_out }}</p>
                                             <span v-else class="text-gray-400">—</span>
+                                            <p
+                                                v-if="scope.row.last_out && scope.row.early_leave_minutes > 0"
+                                                class="text-xs mt-0.5"
+                                                :class="scope.row.early_leave_ignored ? 'text-gray-400 line-through' : 'text-red-500'"
+                                                :title="scope.row.early_leave_ignored
+                                                    ? 'Salida antes del horario permitida: no se descuenta del pago'
+                                                    : 'Minutos antes de la hora de salida'"
+                                            >
+                                                {{ scope.row.early_leave_minutes }} min antes
+                                            </p>
                                         </template>
                                     </el-table-column>
 

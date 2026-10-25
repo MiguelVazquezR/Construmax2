@@ -582,7 +582,7 @@ const handleRowCommand = (command, expense) => {
         />
 
         <!-- Budget picker -->
-        <BudgetPickerDialog v-if="showBudgetPicker" v-model="showBudgetPicker" />
+        <BudgetPickerDialog v-if="showBudgetPicker" v-model="showBudgetPicker" :categories="categories" />
 
         <!-- Complete deposit dialog -->
         <CompleteDepositDialog

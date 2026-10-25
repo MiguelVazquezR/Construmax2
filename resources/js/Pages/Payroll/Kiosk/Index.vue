@@ -1,13 +1,14 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Head } from '@inertiajs/vue3';
-import { Camera, CircleCheck, WarningFilled } from '@element-plus/icons-vue';
+import { Camera, CircleCheck, Location, WarningFilled } from '@element-plus/icons-vue';
 import axios from 'axios';
+import AttendanceKeypad from '@/Components/Payroll/AttendanceKeypad.vue';
 
 const props = defineProps({
     punchTypes: Object,
     faceRecognitionEnabled: Boolean,
-    pinFallbackEnabled: Boolean,
+    employeeNumberEnabled: Boolean,
     appName: String,
 });
 
@@ -20,28 +21,29 @@ const status = ref('checking'); // checking | authorized | unauthorized
 const clock = ref(new Date());
 
 const selectedType = ref(null);
-// Identification method: face or kiosk pin. When both are available the
-// collaborator must choose first, so the camera is not requested from the
-// start.
-const method = ref(
-    props.faceRecognitionEnabled && props.pinFallbackEnabled
-        ? null
-        : (props.faceRecognitionEnabled ? 'face' : (props.pinFallbackEnabled ? 'pin' : null))
-);
-const pin = ref('');
-const pinSubmitting = ref(false);
+// Face capture is always offered. With both methods enabled the collaborator
+// chooses first, so the camera is not requested from the start.
+const method = ref(props.employeeNumberEnabled ? null : 'face');
+const employeeNumber = ref('');
+const employeeNumberSubmitting = ref(false);
 const faceSubmitting = ref(false);
 const errorMessage = ref('');
 const result = ref(null);
+const locationStatus = ref('idle'); // idle | loading | ready | unavailable
 const cameraReady = ref(false);
 
 const videoRef = ref(null);
+const photoInputRef = ref(null);
 let stream = null;
 let clockTimer = null;
 let resultTimer = null;
 
+// The on-screen keypad replaces the native keyboard only when the employee
+// number is the selected method: it keeps the whole kiosk on a single screen.
+const employeeNumberMode = computed(() => props.employeeNumberEnabled && method.value === 'employee_number');
+
 const stepTwoTitle = computed(() => {
-    if (method.value === 'pin') return 'Identifícate con tu PIN';
+    if (method.value === 'employee_number') return 'Identifícate con tu número de empleado';
     if (method.value === 'face') return 'Identifícate con tu rostro';
 
     return 'Identifícate';
@@ -50,6 +52,28 @@ const stepTwoTitle = computed(() => {
 const typeEntries = computed(() =>
     Object.entries(props.punchTypes || {}).map(([value, label]) => ({ value, label }))
 );
+
+const selectedTypeLabel = computed(
+    () => typeEntries.value.find((entry) => entry.value === selectedType.value)?.label ?? ''
+);
+
+// On phones the setup card is replaced by a compact summary once the method is
+// chosen: the keypad or the camera gets the whole screen without scrolling.
+const phoneCompact = computed(() => Boolean(method.value) && Boolean(selectedType.value));
+
+const methodLabel = computed(() => {
+    if (method.value === 'employee_number') return 'Con número de empleado';
+    if (method.value === 'face') return 'Con mi rostro';
+
+    return '';
+});
+
+const changeSelection = () => {
+    selectedType.value = null;
+    // With a single identification method there is no chooser to return to.
+    method.value = props.employeeNumberEnabled ? null : 'face';
+    errorMessage.value = '';
+};
 
 const timeLabel = computed(() =>
     clock.value.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -81,8 +105,46 @@ const bootstrap = async () => {
     }
 };
 
+/**
+ * Kiosk punches also store the device location, just like remote attendance.
+ * The punch is never blocked when the location is unavailable.
+ */
+const locate = () =>
+    new Promise((resolve) => {
+        if (!navigator.geolocation) {
+            resolve(null);
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => resolve({
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+                location_accuracy: position.coords.accuracy,
+            }),
+            () => resolve(null),
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+        );
+    });
+
+const captureLocation = async () => {
+    locationStatus.value = 'loading';
+
+    const position = await locate();
+    locationStatus.value = position ? 'ready' : 'unavailable';
+
+    return position;
+};
+
 const initCamera = async () => {
     if (stream) return;
+
+    // Android browsers only expose getUserMedia on secure origins (HTTPS).
+    // In that case the capture falls back to the device camera app.
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+        cameraReady.value = false;
+        return;
+    }
 
     try {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -92,8 +154,8 @@ const initCamera = async () => {
 
         await nextTick();
 
-        // The method may have changed to PIN while the camera was starting:
-        // release it immediately so no camera access stays active.
+        // The method may have changed to the employee number while the camera
+        // was starting: release it immediately so no camera access stays active.
         if (method.value !== 'face') {
             releaseCamera();
             return;
@@ -122,19 +184,95 @@ const releaseCamera = () => {
     cameraReady.value = false;
 };
 
-const capturePhoto = () => {
-    if (!cameraReady.value || !videoRef.value) return null;
+const videoHasFrames = (video) => Boolean(video && video.readyState >= 2 && video.videoWidth > 0);
 
+// Resolves once the stream delivers its first frame (or after a short timeout
+// when the browser never reports one).
+const waitForVideoFrames = (video) =>
+    new Promise((resolve) => {
+        if (videoHasFrames(video)) {
+            resolve(true);
+            return;
+        }
+
+        let timer = null;
+
+        const finish = () => {
+            video.removeEventListener('loadeddata', finish);
+            video.removeEventListener('playing', finish);
+            clearTimeout(timer);
+            resolve(videoHasFrames(video));
+        };
+
+        timer = setTimeout(finish, 4000);
+
+        video.addEventListener('loadeddata', finish);
+        video.addEventListener('playing', finish);
+    });
+
+const capturePhoto = async () => {
     const video = videoRef.value;
+
+    if (!cameraReady.value || !video) return null;
+
+    // The element exists before the first frame arrives; capturing then would
+    // send a black image that the provider rejects as "no face".
+    if (!await waitForVideoFrames(video)) return null;
+
     const canvas = document.createElement('canvas');
-    canvas.width = 480;
-    canvas.height = 360;
+    const scale = Math.min(1, 640 / video.videoWidth);
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
     canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    return canvas.toDataURL('image/jpeg', 0.7);
+    return canvas.toDataURL('image/jpeg', 0.8);
 };
 
-const submitFace = async () => {
+// Fallback for browsers without live camera access (for example Android over
+// plain HTTP): the hidden file input opens the device camera and returns a photo.
+const pickPhoto = () => {
+    photoInputRef.value?.click();
+};
+
+const readPhotoFile = (file) =>
+    new Promise((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onload = () => {
+            const image = new Image();
+
+            image.onload = () => {
+                const maxWidth = 640;
+                const scale = Math.min(1, maxWidth / image.width);
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.round(image.width * scale);
+                canvas.height = Math.round(image.height * scale);
+                canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+                resolve(canvas.toDataURL('image/jpeg', 0.8));
+            };
+
+            image.onerror = () => reject(new Error('La foto no se pudo leer.'));
+            image.src = reader.result;
+        };
+
+        reader.onerror = () => reject(new Error('La foto no se pudo leer.'));
+        reader.readAsDataURL(file);
+    });
+
+const onPhotoSelected = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) return;
+
+    try {
+        await submitFace(await readPhotoFile(file));
+    } catch {
+        errorMessage.value = 'La foto no se pudo leer. Intenta de nuevo.';
+    }
+};
+
+const submitFace = async (capturedPhoto = null) => {
     errorMessage.value = '';
 
     if (!selectedType.value) {
@@ -142,25 +280,36 @@ const submitFace = async () => {
         return;
     }
 
-    const photo = capturePhoto();
+    const photo = capturedPhoto || await capturePhoto();
 
     if (!photo) {
-        errorMessage.value = 'La cámara no está disponible en este equipo.';
+        if (cameraReady.value) {
+            errorMessage.value = 'La cámara todavía se está activando. Espera un momento e intenta de nuevo.';
+            return;
+        }
+
+        pickPhoto();
         return;
     }
 
     faceSubmitting.value = true;
 
     try {
+        const position = await captureLocation();
+
         const { data } = await axios.post(route('attendance.kiosk.face-punch'), {
             type: selectedType.value,
             photo,
+            latitude: position?.latitude ?? null,
+            longitude: position?.longitude ?? null,
+            location_accuracy: position?.location_accuracy ?? null,
         }, {
             headers: { 'X-Attendance-Device': token.value },
         });
 
         result.value = data;
         selectedType.value = null;
+        blurActiveElement();
 
         clearTimeout(resultTimer);
         resultTimer = setTimeout(() => {
@@ -176,7 +325,7 @@ const submitFace = async () => {
     }
 };
 
-const submitPin = async () => {
+const submitEmployeeNumber = async () => {
     errorMessage.value = '';
 
     if (!selectedType.value) {
@@ -184,24 +333,30 @@ const submitPin = async () => {
         return;
     }
 
-    if (!pin.value) {
-        errorMessage.value = 'Escribe tu PIN de kiosco.';
+    if (!employeeNumber.value.trim()) {
+        errorMessage.value = 'Escribe tu número de empleado.';
         return;
     }
 
-    pinSubmitting.value = true;
+    employeeNumberSubmitting.value = true;
 
     try {
+        const position = await captureLocation();
+
         const { data } = await axios.post(route('attendance.kiosk.punch'), {
-            pin: pin.value,
+            employee_number: employeeNumber.value.trim(),
             type: selectedType.value,
+            latitude: position?.latitude ?? null,
+            longitude: position?.longitude ?? null,
+            location_accuracy: position?.location_accuracy ?? null,
         }, {
             headers: { 'X-Attendance-Device': token.value },
         });
 
         result.value = data;
         selectedType.value = null;
-        pin.value = '';
+        employeeNumber.value = '';
+        blurActiveElement();
 
         clearTimeout(resultTimer);
         resultTimer = setTimeout(() => {
@@ -213,14 +368,32 @@ const submitPin = async () => {
             ? Object.values(errors).flat()[0]
             : 'No se pudo guardar el registro. Intenta de nuevo.';
     } finally {
-        pinSubmitting.value = false;
+        employeeNumberSubmitting.value = false;
     }
 };
 
+// Hides the caret of the on-screen keypad input so no keyboard appears on
+// tablets while the next collaborator registers.
+const blurActiveElement = () => {
+    if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+    }
+};
+
+// Closes the success dialog immediately instead of waiting for the automatic
+// reset, so the next collaborator can register right away.
+const closeResult = () => {
+    clearTimeout(resultTimer);
+    result.value = null;
+    selectedType.value = null;
+    employeeNumber.value = '';
+    errorMessage.value = '';
+};
+
 // The camera is requested only while the face method is selected: choosing
-// the PIN releases it so no camera access stays active.
+// the employee number releases it so no camera access stays active.
 watch(method, (value) => {
-    if (value === 'face' && props.faceRecognitionEnabled && status.value === 'authorized') {
+    if (value === 'face' && status.value === 'authorized') {
         initCamera();
     } else {
         releaseCamera();
@@ -249,12 +422,12 @@ onBeforeUnmount(() => {
 <template>
     <Head title="Kiosco de asistencia" />
 
-    <div class="min-h-screen bg-[#f4f6f8] dark:bg-[#141416] text-gray-800 dark:text-gray-100 flex flex-col">
+    <div class="kiosk-screen bg-[#f4f6f8] dark:bg-[#141416] text-gray-800 dark:text-gray-100 flex flex-col overflow-hidden">
         <!-- Top bar -->
-        <header class="flex items-center justify-between px-8 py-4 bg-white dark:bg-[#1e1e20] border-b border-gray-100 dark:border-[#2b2b2e]">
+        <header class="flex items-center justify-between px-4 py-3 lg:px-8 bg-white dark:bg-[#1e1e20] border-b border-gray-100 dark:border-[#2b2b2e]">
             <div class="flex items-center gap-3">
-                <span class="text-lg font-bold tracking-tight text-[#f26c17]">{{ appName }}</span>
-                <span class="text-xs uppercase tracking-widest text-gray-400">Kiosco de asistencia</span>
+                <span class="text-base lg:text-lg font-bold tracking-tight text-[#f26c17]">{{ appName }}</span>
+                <span class="hidden sm:inline text-xs uppercase tracking-widest text-gray-400">Kiosco de asistencia</span>
             </div>
             <div v-if="device" class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                 <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
@@ -285,30 +458,55 @@ onBeforeUnmount(() => {
         </main>
 
         <!-- Kiosk -->
-        <main v-else class="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-8 px-8 py-8">
-            <!-- Left: clock + form -->
-            <section :class="method === 'face' && faceRecognitionEnabled ? 'lg:col-span-3' : 'lg:col-span-5'" class="flex flex-col">
-                <div class="text-center mb-8">
-                    <p class="text-6xl font-bold tabular-nums tracking-tight text-gray-800 dark:text-white">{{ timeLabel }}</p>
-                    <p class="text-gray-400 capitalize mt-2">{{ dateLabel }}</p>
+        <main v-else class="flex-1 min-h-0 overflow-y-auto px-4 py-3 lg:overflow-hidden lg:px-8 lg:py-6 grid grid-cols-1 gap-3 lg:grid-cols-5 lg:gap-6">
+            <!-- Clock + form -->
+            <section
+                :class="[method ? 'lg:col-span-3' : 'lg:col-span-5', employeeNumberMode ? 'lg:order-2' : 'lg:order-1']"
+                class="order-first flex min-h-0 flex-col"
+            >
+                <div class="text-center mb-3 lg:mb-5">
+                    <p class="text-2xl sm:text-4xl lg:text-5xl font-bold tabular-nums tracking-tight text-gray-800 dark:text-white">{{ timeLabel }}</p>
+                    <p class="hidden sm:block text-gray-400 capitalize mt-1">{{ dateLabel }}</p>
                 </div>
 
-                <div class="bg-white dark:bg-[#1e1e20] border border-gray-100 dark:border-[#2b2b2e] rounded-2xl p-8 flex-1 flex flex-col shadow-sm">
-                    <div class="flex items-center gap-3 mb-5">
-                        <span class="w-7 h-7 rounded-full bg-[#f26c17] text-white text-sm font-bold flex items-center justify-center shrink-0">1</span>
+                <p v-if="errorMessage" class="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-400/30 rounded-lg px-3 py-2 mb-3">
+                    {{ errorMessage }}
+                </p>
+
+                <!-- Phone: compact summary so the keypad or the camera gets the full screen -->
+                <div
+                    v-if="phoneCompact"
+                    class="lg:hidden flex items-center justify-between gap-3 rounded-2xl border border-gray-100 dark:border-[#2b2b2e] bg-white dark:bg-[#1e1e20] px-4 py-2.5 mb-3 shadow-sm"
+                >
+                    <div class="min-w-0">
+                        <p class="text-[10px] uppercase tracking-widest text-gray-400">Tipo de registro</p>
+                        <p class="truncate text-sm font-semibold text-gray-700 dark:text-gray-200">{{ selectedTypeLabel }}</p>
+                        <p class="truncate text-[11px] text-gray-400">{{ methodLabel }}</p>
+                    </div>
+                    <el-button text size="small" class="!text-xs !font-semibold !text-[#f26c17]" @click="changeSelection">
+                        Cambiar
+                    </el-button>
+                </div>
+
+                <div
+                    class="bg-white dark:bg-[#1e1e20] border border-gray-100 dark:border-[#2b2b2e] rounded-2xl p-4 lg:p-6 flex-1 flex-col shadow-sm min-h-0"
+                    :class="phoneCompact ? 'hidden lg:flex' : 'flex'"
+                >
+                    <div class="flex items-center gap-2 mb-3 lg:mb-4">
+                        <span class="w-6 h-6 lg:w-7 lg:h-7 rounded-full bg-[#f26c17] text-white text-xs lg:text-sm font-bold flex items-center justify-center shrink-0">1</span>
                         <div>
-                            <h2 class="text-lg font-semibold text-gray-800 dark:text-white">Elige el tipo de registro</h2>
-                            <p class="text-xs text-gray-400">¿Qué vas a registrar en este momento?</p>
+                            <h2 class="text-sm lg:text-base font-semibold text-gray-800 dark:text-white">Elige el tipo de registro</h2>
+                            <p class="hidden sm:block text-xs text-gray-400">¿Qué vas a registrar en este momento?</p>
                         </div>
                     </div>
 
                     <!-- Punch type -->
-                    <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4 lg:mb-5">
                         <button
                             v-for="entry in typeEntries"
                             :key="entry.value"
                             type="button"
-                            class="rounded-xl border px-4 py-4 text-sm font-semibold transition-all"
+                            class="rounded-xl border px-2 py-2.5 text-xs lg:text-sm font-semibold transition-all"
                             :class="selectedType === entry.value
                                 ? 'bg-[#f26c17] border-[#f26c17] text-white shadow-md shadow-[#f26c17]/30'
                                 : 'bg-white dark:bg-[#252529] border-gray-200 dark:border-[#2b2b2e] text-gray-600 dark:text-gray-300 hover:border-[#f26c17]/60 hover:text-[#f26c17]'"
@@ -318,25 +516,25 @@ onBeforeUnmount(() => {
                         </button>
                     </div>
 
-                    <div class="flex items-center gap-3 mb-4">
-                        <span class="w-7 h-7 rounded-full bg-[#f26c17] text-white text-sm font-bold flex items-center justify-center shrink-0">2</span>
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="w-6 h-6 lg:w-7 lg:h-7 rounded-full bg-[#f26c17] text-white text-xs lg:text-sm font-bold flex items-center justify-center shrink-0">2</span>
                         <div>
-                            <h2 class="text-lg font-semibold text-gray-800 dark:text-white">
+                            <h2 class="text-sm lg:text-base font-semibold text-gray-800 dark:text-white">
                                 {{ stepTwoTitle }}
                             </h2>
-                            <p class="text-xs text-gray-400">
-                                <template v-if="faceRecognitionEnabled && pinFallbackEnabled">Elige cómo quieres identificarte.</template>
-                                <template v-else-if="method === 'pin'">Escribe tu PIN de kiosco.</template>
+                            <p class="hidden sm:block text-xs text-gray-400">
+                                <template v-if="employeeNumberEnabled">Elige cómo quieres identificarte.</template>
+                                <template v-else-if="method === 'employee_number'">Escribe tu número de empleado.</template>
                                 <template v-else>Mira de frente a la cámara y presiona el botón.</template>
                             </p>
                         </div>
                     </div>
 
                     <!-- Identification method -->
-                    <div v-if="faceRecognitionEnabled && pinFallbackEnabled" class="grid grid-cols-2 gap-3 mb-6">
+                    <div v-if="employeeNumberEnabled" class="grid grid-cols-2 gap-2 mb-3">
                         <button
                             type="button"
-                            class="rounded-xl border px-4 py-3 text-sm font-semibold transition-all"
+                            class="rounded-xl border px-3 py-2.5 text-xs lg:text-sm font-semibold transition-all"
                             :class="method === 'face'
                                 ? 'bg-[#f26c17] border-[#f26c17] text-white shadow-md shadow-[#f26c17]/30'
                                 : 'bg-white dark:bg-[#252529] border-gray-200 dark:border-[#2b2b2e] text-gray-600 dark:text-gray-300 hover:border-[#f26c17]/60 hover:text-[#f26c17]'"
@@ -346,19 +544,19 @@ onBeforeUnmount(() => {
                         </button>
                         <button
                             type="button"
-                            class="rounded-xl border px-4 py-3 text-sm font-semibold transition-all"
-                            :class="method === 'pin'
+                            class="rounded-xl border px-3 py-2.5 text-xs lg:text-sm font-semibold transition-all"
+                            :class="method === 'employee_number'
                                 ? 'bg-[#f26c17] border-[#f26c17] text-white shadow-md shadow-[#f26c17]/30'
                                 : 'bg-white dark:bg-[#252529] border-gray-200 dark:border-[#2b2b2e] text-gray-600 dark:text-gray-300 hover:border-[#f26c17]/60 hover:text-[#f26c17]'"
-                            @click="method = 'pin'"
+                            @click="method = 'employee_number'"
                         >
-                            Con PIN
+                            Con número de empleado
                         </button>
                     </div>
 
                     <!-- Identification -->
-                    <!-- Personal registration notice (only with the PIN: the face identifies the collaborator) -->
-                    <div v-if="method === 'pin'" class="flex items-start gap-2 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-400/30 px-4 py-3 mb-5 text-xs text-amber-700 dark:text-amber-200">
+                    <!-- Personal registration notice (only with the employee number: the face identifies the collaborator) -->
+                    <div v-if="method === 'employee_number'" class="flex items-start gap-2 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-400/30 px-3 py-2 mb-3 text-[11px] leading-snug text-amber-700 dark:text-amber-200">
                         <el-icon class="mt-0.5 shrink-0"><WarningFilled /></el-icon>
                         <p>
                             El registro es personal e individual: no registres la asistencia de otra persona.
@@ -366,64 +564,52 @@ onBeforeUnmount(() => {
                         </p>
                     </div>
 
-                    <p v-if="errorMessage" class="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-400/30 rounded-lg px-4 py-3 mb-5">
-                        {{ errorMessage }}
-                    </p>
-
                     <div class="mt-auto space-y-3">
-                        <!-- Pin -->
-                        <template v-if="method === 'pin' && pinFallbackEnabled">
-                            <el-input
-                                v-model="pin"
-                                size="large"
-                                type="password"
-                                maxlength="12"
-                                inputmode="numeric"
-                                placeholder="PIN de kiosco"
-                                show-password
-                                @keyup.enter="submitPin"
-                            />
-                            <el-button
-                                type="primary"
-                                color="#f26c17"
-                                size="large"
-                                class="!h-14 !text-base w-full"
-                                :loading="pinSubmitting"
-                                @click="submitPin"
-                            >
-                                Registrar con PIN
-                            </el-button>
-                        </template>
+                        <!-- Employee number: the submit button lives in the on-screen keypad -->
+                        <p
+                            v-if="employeeNumberMode"
+                            class="text-center text-xs text-gray-400 dark:text-gray-500"
+                        >
+                            Escribe tu número con el teclado en pantalla y presiona "Registrar con número de empleado".
+                        </p>
 
                         <!-- Face -->
                         <el-button
-                            v-else-if="method === 'face' && faceRecognitionEnabled"
+                            v-else-if="method === 'face'"
                             type="primary"
                             color="#f26c17"
                             size="large"
                             class="!h-14 !text-base w-full"
-                            :disabled="!cameraReady"
                             :loading="faceSubmitting"
-                            @click="submitFace"
+                            @click="submitFace()"
                         >
-                            Registrar con rostro
+                            {{ cameraReady ? 'Registrar con rostro' : 'Tomar foto y registrar' }}
                         </el-button>
+
+                        <p
+                            v-if="locationStatus !== 'idle'"
+                            class="flex items-center justify-center gap-1.5 text-xs"
+                            :class="locationStatus === 'ready'
+                                ? 'text-emerald-600 dark:text-emerald-300'
+                                : 'text-gray-400 dark:text-gray-500'"
+                        >
+                            <el-icon><Location /></el-icon>
+                            <template v-if="locationStatus === 'loading'">Obteniendo la ubicación del dispositivo…</template>
+                            <template v-else-if="locationStatus === 'ready'">Se registrará la ubicación de este dispositivo.</template>
+                            <template v-else>No se pudo obtener la ubicación; el registro se guardará sin ella.</template>
+                        </p>
                     </div>
 
-                    <p class="text-xs text-gray-400 dark:text-gray-500 mt-4">
-                        <template v-if="!faceRecognitionEnabled && !pinFallbackEnabled">
-                            Este kiosco no tiene métodos de registro activos. Pide al administrador que habilite el reconocimiento facial o el respaldo con PIN en Configuración de nómina.
-                        </template>
-                        <template v-else-if="!method">
+                    <p class="hidden sm:block text-xs text-gray-400 dark:text-gray-500 mt-3">
+                        <template v-if="!method">
                             Elige cómo quieres identificarte para continuar.
                         </template>
-                        <template v-else-if="method === 'pin'">
-                            Si olvidaste tu PIN, pide ayuda al administrador.
+                        <template v-else-if="method === 'employee_number'">
+                            Si no conoces tu número de empleado, pide ayuda al administrador.
                         </template>
                         <template v-else-if="!cameraReady">
-                            Se requiere la cámara para identificar tu rostro.
-                            <template v-if="pinFallbackEnabled">Puedes registrar con tu PIN.</template>
-                            <template v-else>Pide ayuda al administrador.</template>
+                            Presiona "Tomar foto y registrar" para capturar tu rostro con la cámara del dispositivo.
+                            <template v-if="employeeNumberEnabled"> También puedes registrar con tu número de empleado.</template>
                         </template>
                         <template v-else>
                             Presiona "Registrar con rostro" y mira de frente a la cámara.
@@ -433,8 +619,8 @@ onBeforeUnmount(() => {
             </section>
 
             <!-- Right: camera (only when identifying with the face) -->
-            <section v-if="faceRecognitionEnabled && method === 'face'" class="lg:col-span-2 flex flex-col gap-4">
-                <div class="relative rounded-2xl overflow-hidden border border-gray-200 dark:border-[#2b2b2e] bg-gray-900 aspect-[4/3] flex items-center justify-center shadow-sm">
+            <section v-if="method === 'face'" class="lg:col-span-2 lg:order-2 flex min-h-0 flex-col gap-4">
+                <div class="relative rounded-2xl overflow-hidden border border-gray-200 dark:border-[#2b2b2e] bg-gray-900 aspect-[4/3] max-h-full flex items-center justify-center shadow-sm">
                     <video
                         ref="videoRef"
                         autoplay
@@ -445,34 +631,56 @@ onBeforeUnmount(() => {
                     ></video>
                     <div v-if="!cameraReady" class="text-center text-gray-400 px-6">
                         <el-icon :size="40"><Camera /></el-icon>
-                        <p class="text-sm mt-3">Sin cámara disponible</p>
+                        <p class="text-sm mt-3">Cámara no disponible en este navegador</p>
+                        <p class="text-xs mt-1">Usa el botón "Tomar foto y registrar".</p>
                     </div>
                 </div>
 
-                <div class="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-400/30 rounded-xl px-4 py-3 text-sm text-emerald-700 dark:text-emerald-200">
+                <!-- Phone: the register button lives here because the setup card is hidden -->
+                <el-button
+                    v-if="phoneCompact"
+                    type="primary"
+                    color="#f26c17"
+                    size="large"
+                    class="lg:hidden !h-14 !text-base w-full"
+                    :loading="faceSubmitting"
+                    @click="submitFace()"
+                >
+                    {{ cameraReady ? 'Registrar con rostro' : 'Tomar foto y registrar' }}
+                </el-button>
+
+                <div v-if="faceRecognitionEnabled" class="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-400/30 rounded-xl px-4 py-3 text-sm text-emerald-700 dark:text-emerald-200">
                     Reconocimiento facial activo: presiona "Registrar con rostro" para identificarte.
+                </div>
+                <div v-else class="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-400/30 rounded-xl px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
+                    El reconocimiento facial aún no está configurado en el servidor. Pide ayuda al administrador.
                 </div>
             </section>
 
-            <!-- Right: pin help (pin method or face disabled) -->
-            <section v-else-if="pinFallbackEnabled && (method === 'pin' || !faceRecognitionEnabled)" class="lg:col-span-2 flex flex-col gap-4">
-                <div class="bg-white dark:bg-[#1e1e20] border border-gray-100 dark:border-[#2b2b2e] rounded-2xl p-6 shadow-sm">
-                    <h3 class="font-semibold text-gray-800 dark:text-white">¿Cómo registro con PIN?</h3>
-                    <ol class="text-sm text-gray-500 dark:text-gray-400 mt-3 space-y-2 list-decimal list-inside">
-                        <li>Elige el tipo de registro.</li>
-                        <li>Escribe tu PIN de kiosco.</li>
-                        <li>Presiona "Registrar con PIN".</li>
-                    </ol>
-                    <p class="text-xs text-gray-400 mt-4">
-                        Si no tienes PIN, pide al administrador que lo configure en tu perfil.
-                    </p>
-                </div>
+            <!-- Left: on-screen keypad (employee number only) -->
+            <section v-if="employeeNumberMode" class="lg:col-span-2 lg:order-1 flex min-h-0 flex-col">
+                <AttendanceKeypad
+                    v-model="employeeNumber"
+                    :loading="employeeNumberSubmitting"
+                    submit-label="Registrar con número de empleado"
+                    @submit="submitEmployeeNumber"
+                />
             </section>
         </main>
 
+        <!-- Camera fallback for browsers without live camera access -->
+        <input
+            ref="photoInputRef"
+            type="file"
+            accept="image/*"
+            capture="user"
+            class="hidden"
+            @change="onPhotoSelected"
+        />
+
         <!-- Success overlay -->
-        <div v-if="result" class="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-50 px-6">
-            <div class="bg-white dark:bg-[#1e1e20] border border-gray-100 dark:border-[#2b2b2e] rounded-3xl p-12 text-center max-w-lg w-full shadow-2xl">
+        <div v-if="result" class="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-50 px-4 py-4">
+            <div class="bg-white dark:bg-[#1e1e20] border border-gray-100 dark:border-[#2b2b2e] rounded-3xl p-8 lg:p-10 text-center max-w-lg w-full max-h-full overflow-y-auto shadow-2xl">
                 <div class="w-20 h-20 mx-auto rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
                     <el-icon :size="44"><CircleCheck /></el-icon>
                 </div>
@@ -491,8 +699,18 @@ onBeforeUnmount(() => {
                         Siguiente registro sugerido: <span class="font-semibold text-gray-700 dark:text-gray-200">{{ result.suggested_next_label }}</span>
                     </template>
                 </p>
-                <p class="text-gray-400 text-xs mt-8">Puedes retirarte, el kiosco se reinicia en unos segundos.</p>
+                <el-button class="!mt-8 !h-12 w-full !text-base" color="#f26c17" @click="closeResult">
+                    Cerrar
+                </el-button>
+                <p class="text-gray-400 text-xs mt-3">Si nadie lo cierra, el kiosco se reinicia solo en unos segundos.</p>
             </div>
         </div>
     </div>
 </template>
+
+<style scoped>
+.kiosk-screen {
+    height: 100vh;
+    height: 100dvh;
+}
+</style>

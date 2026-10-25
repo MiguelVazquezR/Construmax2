@@ -160,6 +160,7 @@ The central work-order entity.
 | `technicians` | json | array of lead technician IDs |
 | `assistant_technicians` | json | array of assistant technician IDs |
 | `status` | string | Borrador → Levantamiento → Catálogo → Proceso de ejecución → Ejecutado → Facturado → Pagado (also: Cancelado, Perdido) |
+| `status_changed_at` | timestamp | nullable — set automatically on create and every time `status` changes (migration `2026_10_24_000002`); existing rows were backfilled from `updated_at` |
 | `priority` | string | Baja, Media, Alta, Urgente |
 | `scheduled_start` | date | nullable |
 | `scheduled_end` | date | nullable |
@@ -221,6 +222,7 @@ Financial proposal linked to a ticket (1:1).
 | `id` | bigint PK | |
 | `ticket_id` | FK → tickets.id CASCADE | one budget per ticket |
 | `status` | string | Borrador, Enviado al cliente, Aprobado, Rechazado, Facturado |
+| `status_changed_at` | timestamp | nullable — set automatically on create and every time `status` changes (migration `2026_10_24_000002`) |
 | `description` | text | nullable |
 | `currency` | string(3) | MXN or USD |
 | `exchange_rate` | decimal(10,4) | default 1 |
@@ -479,19 +481,20 @@ Created by the consolidated migration `2026_09_19_000001_create_payroll_module_t
 | `incapacity_paid` / `incapacity_pay_percentage` | bool / int | Default false / 60 |
 | `default_daily_hours` | decimal | Default 8. No longer in the settings form: hidden fallback for profiles without an assigned schedule |
 | `payroll_expense_category_id` | FK → expense_categories.id | Mirrored expense category |
-| `face_recognition_enabled`, `face_match_threshold`, `rekognition_collection_id`, `kiosk_pin_fallback_enabled` | mixed | Facial recognition + kiosk fallback |
+| `face_recognition_enabled`, `face_match_threshold`, `rekognition_collection_id`, `kiosk_employee_number_enabled` | mixed | Facial recognition + employee-number identification (renamed from `kiosk_pin_fallback_enabled`) |
 | `attendance_capture_retention_months` | int | Default 12 (purged by `payroll:prune-captures`) |
 | `remote_geolocation_required` | bool | Default true |
+| `device_registration_password` | string | Shared password for the public device registration link (plain text, minimum 3 characters, visible only in the devices module); nullable (link disabled until configured) |
 | `updated_by` | FK → users.id | nullable |
 
 ### `payroll_profiles`
-One per user. `employee_number` (unique, auto `EMP-####`), `hire_date`, `termination_date`, `daily_salary`, `daily_hours` (kept in sync from the assigned schedule by `AssignUserShiftAction`; no longer typed in the forms), `is_payroll_subject`, `is_attendance_subject`, `can_remote_attendance`, `kiosk_pin` (bcrypt) + `kiosk_pin_lookup` (HMAC fingerprint for the kiosk search), `notes`.
+One per user. `employee_number` (unique, required by the Users/Technicians forms and also the kiosk identifier), `hire_date`, `termination_date`, `daily_salary`, `daily_hours` (kept in sync from the assigned schedule by `AssignUserShiftAction`; no longer typed in the forms), `is_payroll_subject`, `is_attendance_subject`, `can_remote_attendance`, `notes`.
 
 ### `attendance_devices`
-Authorized kiosk devices: `name`, `location`, `token_hash` (sha256, unique), registered by/at, `last_seen_at`/`last_seen_ip`/`user_agent`, `is_active`, revoked by/at.
+Authorized kiosk devices: `name`, `location`, `token_hash` (sha256, unique), registered by/at (`registered_by` nullable for the public registration link), `last_seen_at`/`last_seen_ip`/`user_agent`, `is_active`, revoked by/at.
 
 ### `attendance_logs`
-Punches: `user_id`, `attendance_device_id` (nullable), `type` (check_in, lunch_start, lunch_end, break_start, break_end, check_out), `punched_at`, `source` (kiosk/remote/manual), `identifier_method` (face/pin/manual), `face_similarity`, `latitude`/`longitude`/`location_accuracy`, `ip`, `user_agent`, audit `edited_by`/`edited_at`/`edit_reason`. Evidence photo in media collection `capture`.
+Punches: `user_id`, `attendance_device_id` (nullable), `type` (check_in, lunch_start, lunch_end, break_start, break_end, check_out), `punched_at`, `source` (kiosk/remote/manual), `identifier_method` (face/employee_number/manual; legacy `pin` rows keep their historical value), `face_similarity`, `latitude`/`longitude`/`location_accuracy`, `ip`, `user_agent`, audit `edited_by`/`edited_at`/`edit_reason`. Evidence photo in media collection `capture`.
 
 ### `attendance_day_overrides`
 Sparse per user+date: `late_ignored`, `notes`, `updated_by` (unique user_id + date).

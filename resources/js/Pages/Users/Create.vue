@@ -19,7 +19,14 @@ const photoPreview = ref(null);
 
 const handlePhotoChange = (file) => {
     form.photo = file;
+    form.remove_photo = false;
     photoPreview.value = URL.createObjectURL(file);
+};
+
+const handlePhotoRemove = () => {
+    form.photo = null;
+    form.remove_photo = true;
+    photoPreview.value = null;
 };
 
 const form = useForm({
@@ -31,6 +38,7 @@ const form = useForm({
     position: '',
     phone: '',
     photo: null,
+    remove_photo: false,
 
     // Nómina y asistencia (opcional, según permisos)
     employee_number: '',
@@ -40,7 +48,6 @@ const form = useForm({
     is_payroll_subject: false,
     is_attendance_subject: false,
     can_remote_attendance: false,
-    kiosk_pin: '',
     shift_id: null,
 });
 
@@ -68,6 +75,9 @@ const rules = reactive({
     ],
     phone: [
         { required: true, message: 'El teléfono es obligatorio', trigger: 'blur' },
+    ],
+    employee_number: [
+        { required: true, message: 'El número de empleado es obligatorio', trigger: 'blur' },
     ],
     shift_id: [
         {
@@ -134,7 +144,7 @@ const submit = () => {
                             <div class="flex flex-col sm:flex-row gap-6">
                                 <!-- Foto de perfil -->
                                 <div class="mx-auto sm:mx-0 shrink-0">
-                                    <PhotoUploader :preview="photoPreview" :max-size-mb="4" @change="handlePhotoChange" />
+                                    <PhotoUploader :preview="photoPreview" :max-size-mb="4" @change="handlePhotoChange" @remove="handlePhotoRemove" />
                                     <p v-if="form.errors.photo" class="text-center text-xs text-red-500 mt-1">{{ form.errors.photo }}</p>
                                 </div>
 

@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Actions\Expenses\MarkBudgetConceptsPaidAction;
 use App\Actions\Expenses\RegisterBudgetConceptPaymentAction;
+use App\Actions\Expenses\RegisterBulkConceptPaymentsAction;
 use App\Http\Requests\Expenses\MarkBudgetConceptsPaidRequest;
 use App\Http\Requests\Expenses\RegisterBudgetConceptPaymentRequest;
+use App\Http\Requests\Expenses\RegisterBulkConceptPaymentsRequest;
 use App\Models\Budget;
 use App\Models\BudgetConcept;
 use App\Models\ExpenseCategory;
@@ -21,11 +23,13 @@ class BudgetExpenseController extends Controller
     public function __construct(
         private readonly BudgetExpenseService $budgetExpenseService,
         private readonly RegisterBudgetConceptPaymentAction $registerConceptPaymentAction,
+        private readonly RegisterBulkConceptPaymentsAction $registerBulkConceptPaymentsAction,
         private readonly MarkBudgetConceptsPaidAction $markConceptsPaidAction,
     ) {}
 
     /**
-     * Remote search of budgets for the expense form picker.
+     * Remote search of budgets for the expense picker, including the payment
+     * state of each breakdown concept.
      */
     public function search(Request $request): JsonResponse
     {
@@ -35,15 +39,30 @@ class BudgetExpenseController extends Controller
 
         $validated = $request->validate([
             'q' => ['nullable', 'string', 'max:255'],
+            'statuses' => ['nullable', 'array'],
+            'statuses.*' => ['string', 'max:100'],
+            // Single status kept for backwards compatibility with older clients.
             'status' => ['nullable', 'string', 'max:100'],
-            'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date', 'after_or_equal:from'],
+            'only_pending' => ['nullable', 'boolean'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:200'],
         ]);
+
+        $statuses = $validated['statuses'] ?? [];
+
+        if (!empty($validated['status'])) {
+            $statuses[] = $validated['status'];
+        }
 
         return response()->json(
             $this->budgetExpenseService->searchBudgets(
                 $validated['q'] ?? null,
-                $validated['status'] ?? null,
-                $validated['limit'] ?? 30,
+                $statuses,
+                $validated['from'] ?? null,
+                $validated['to'] ?? null,
+                $request->boolean('only_pending'),
+                $validated['limit'] ?? 100,
             )
         );
     }
@@ -75,6 +94,22 @@ class BudgetExpenseController extends Controller
         $this->registerConceptPaymentAction->execute($concept, $request->validated());
 
         return back()->with('success', 'Pago del concepto registrado correctamente.');
+    }
+
+    /**
+     * Register the payment of concepts across several budgets at once.
+     */
+    public function storeBulkConceptPayments(RegisterBulkConceptPaymentsRequest $request): RedirectResponse
+    {
+        $count = $this->registerBulkConceptPaymentsAction->execute($request->validated());
+
+        if ($count === 0) {
+            return back()->with('warning', 'Los gastos seleccionados ya estaban pagados.');
+        }
+
+        return back()->with('success', $count === 1
+            ? 'Se registró el pago de 1 gasto.'
+            : "Se registraron los pagos de {$count} gastos.");
     }
 
     /**

@@ -8,6 +8,7 @@ use App\Models\FaceEnrollment;
 use App\Models\PayrollProfile;
 use App\Models\PayrollSetting;
 use App\Models\User;
+use App\Services\Payroll\FaceRecognition\Exceptions\FaceNotDetectedException;
 use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery\MockInterface;
@@ -99,29 +100,8 @@ class FaceRecognitionTest extends TestCase
         ]);
     }
 
-    public function test_kiosk_face_punch_is_rejected_when_recognition_is_disabled(): void
-    {
-        PayrollSetting::current()->update(['face_recognition_enabled' => false]);
-
-        $this->mock(FaceRecognitionService::class, function (MockInterface $mock) {
-            $mock->shouldReceive('isConfigured')->andReturn(true);
-            $mock->shouldNotReceive('search');
-        });
-
-        $this->postJson(route('attendance.kiosk.face-punch'), [
-            'type' => AttendanceLog::TYPE_CHECK_IN,
-            'photo' => 'data:image/jpeg;base64,/9j/AAAA',
-        ], $this->deviceHeaders())
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('face');
-
-        $this->assertDatabaseCount('attendance_logs', 0);
-    }
-
     public function test_kiosk_face_punch_is_rejected_when_the_provider_is_not_configured(): void
     {
-        $this->enableFaceRecognition();
-
         $this->mock(FaceRecognitionService::class, function (MockInterface $mock) {
             $mock->shouldReceive('isConfigured')->andReturn(false);
             $mock->shouldNotReceive('search');
@@ -133,6 +113,8 @@ class FaceRecognitionTest extends TestCase
         ], $this->deviceHeaders())
             ->assertStatus(422)
             ->assertJsonValidationErrors('face');
+
+        $this->assertDatabaseCount('attendance_logs', 0);
     }
 
     public function test_kiosk_face_punch_is_rejected_when_the_face_is_not_recognized(): void
@@ -149,7 +131,34 @@ class FaceRecognitionTest extends TestCase
             'photo' => 'data:image/jpeg;base64,/9j/AAAA',
         ], $this->deviceHeaders())
             ->assertStatus(422)
-            ->assertJsonValidationErrors('face');
+            ->assertJsonPath(
+                'errors.face.0',
+                'Tu rostro no coincide con ningún rostro registrado. Mira de frente a la cámara e intenta de nuevo; si el problema continúa, pide al administrador que actualice tu registro facial.'
+            );
+
+        $this->assertDatabaseCount('attendance_logs', 0);
+    }
+
+    public function test_kiosk_face_punch_reports_when_the_photo_has_no_face(): void
+    {
+        $this->enableFaceRecognition();
+
+        $this->mock(FaceRecognitionService::class, function (MockInterface $mock) {
+            $mock->shouldReceive('isConfigured')->andReturn(true);
+            $mock->shouldReceive('search')->once()->andThrow(
+                new FaceNotDetectedException('No face was detected in the image.')
+            );
+        });
+
+        $this->postJson(route('attendance.kiosk.face-punch'), [
+            'type' => AttendanceLog::TYPE_CHECK_IN,
+            'photo' => 'data:image/jpeg;base64,/9j/AAAA',
+        ], $this->deviceHeaders())
+            ->assertStatus(422)
+            ->assertJsonPath(
+                'errors.face.0',
+                'No se detectó un rostro en la foto. Colócate de frente a la cámara, con buena iluminación, e intenta de nuevo.'
+            );
 
         $this->assertDatabaseCount('attendance_logs', 0);
     }

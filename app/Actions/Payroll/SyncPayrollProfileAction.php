@@ -20,7 +20,6 @@ class SyncPayrollProfileAction
         'daily_hours',
         'is_payroll_subject',
         'is_attendance_subject',
-        'kiosk_pin',
     ];
 
     /**
@@ -51,20 +50,12 @@ class SyncPayrollProfileAction
 
     /**
      * Create or update the payroll profile of a user. Keys absent from the
-     * attributes are left untouched. An empty "kiosk_pin" means "keep the
-     * current pin"; a non-empty value replaces it (the model cast hashes it).
+     * attributes are left untouched.
      */
     public function execute(User $user, array $attributes): ?PayrollProfile
     {
         if ($attributes === []) {
             return null;
-        }
-
-        $pin = null;
-
-        if (array_key_exists('kiosk_pin', $attributes)) {
-            $pin = trim((string) $attributes['kiosk_pin']);
-            unset($attributes['kiosk_pin']);
         }
 
         $profile = PayrollProfile::firstOrNew(['user_id' => $user->id]);
@@ -82,10 +73,6 @@ class SyncPayrollProfileAction
         // payroll there is no period where those records could be reviewed.
         if ($profile->is_attendance_subject) {
             $profile->is_payroll_subject = true;
-        }
-
-        if ($pin !== null && $pin !== '') {
-            $profile->kiosk_pin = $pin;
         }
 
         $profile->save();

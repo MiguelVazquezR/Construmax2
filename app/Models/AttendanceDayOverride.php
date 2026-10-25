@@ -14,6 +14,7 @@ class AttendanceDayOverride extends Model
         'user_id',
         'date',
         'late_ignored',
+        'early_leave_ignored',
         'notes',
         'updated_by',
     ];
@@ -21,6 +22,7 @@ class AttendanceDayOverride extends Model
     protected $casts = [
         'date' => 'date',
         'late_ignored' => 'boolean',
+        'early_leave_ignored' => 'boolean',
     ];
 
     public function user(): BelongsTo

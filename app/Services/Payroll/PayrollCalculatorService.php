@@ -62,6 +62,9 @@ class PayrollCalculatorService
                 'late_minutes' => $day->late_minutes,
                 'late_ignored' => false,
                 'late_effective_minutes' => $day->late_minutes,
+                'early_leave_minutes' => $day->early_leave_minutes,
+                'early_leave_ignored' => false,
+                'early_leave_effective_minutes' => $day->early_leave_minutes,
                 'overtime_minutes' => $day->overtime_minutes,
                 'first_in' => $day->first_in,
                 'lunch_start' => $day->lunch_start,
@@ -99,6 +102,9 @@ class PayrollCalculatorService
      *    are the only source of truth for the day.
      *  - Late arrivals: only discounted when the settings say so, and only
      *    when the late was not manually ignored.
+     *  - Early leaves: discounted in proportion to the missing minutes,
+     *    unless the day was manually flagged to allow leaving before the
+     *    scheduled exit (permission, errand...).
      *  - Worked rest days: every worked minute is overtime, and the same
      *    minutes travel in the day payload, so the period detail reconciles
      *    with the weekly pool shown as the collaborator total.
@@ -147,6 +153,8 @@ class PayrollCalculatorService
             'unpaid_days' => 0.0,
             'late_minutes' => 0,
             'late_discount' => 0.0,
+            'early_leave_minutes' => 0,
+            'early_leave_discount' => 0.0,
             'overtime_double_minutes' => 0,
             'overtime_triple_minutes' => 0,
             'overtime_amount' => 0.0,
@@ -225,6 +233,11 @@ class PayrollCalculatorService
                         $totals['late_discount'] += round($summary->expectedLateMinutes() * $minuteRate, 2);
                     }
 
+                    // Leaving before the scheduled exit is discounted unless
+                    // the day was flagged to allow it (permission, errand...).
+                    $totals['early_leave_minutes'] += $summary->earlyLeaveMinutes;
+                    $totals['early_leave_discount'] += round($summary->expectedEarlyLeaveMinutes() * $minuteRate, 2);
+
                     $totals['late_minutes'] += $summary->lateMinutes;
                     $overtimePoolMinutes += $summary->overtimeMinutes;
                 } elseif (! ($profile?->is_attendance_subject ?? true)) {
@@ -275,6 +288,9 @@ class PayrollCalculatorService
                 'late_minutes' => $summary->lateMinutes,
                 'late_ignored' => $summary->lateIgnored,
                 'late_effective_minutes' => $summary->expectedLateMinutes(),
+                'early_leave_minutes' => $summary->earlyLeaveMinutes,
+                'early_leave_ignored' => $summary->earlyLeaveIgnored,
+                'early_leave_effective_minutes' => $summary->expectedEarlyLeaveMinutes(),
                 'overtime_minutes' => $summary->overtimeMinutes,
                 'first_in' => $summary->firstIn?->format('H:i'),
                 'lunch_start' => $summary->lunchStart?->format('H:i'),
@@ -344,7 +360,7 @@ class PayrollCalculatorService
             $baseAmount + $totals['overtime_amount'] + $totals['holiday_amount'] + $totals['adjustments_earnings'],
             2
         );
-        $totalDeductions = round($totals['late_discount'] + $totals['adjustments_deductions'], 2);
+        $totalDeductions = round($totals['late_discount'] + $totals['early_leave_discount'] + $totals['adjustments_deductions'], 2);
         $totalNet = round($totalGross - $totalDeductions, 2);
 
         $totals['base_amount'] = $baseAmount;
@@ -457,6 +473,18 @@ class PayrollCalculatorService
                 'quantity' => null,
                 'unit_rate' => null,
                 'amount' => round($totals['late_discount'], 2),
+                'source' => 'attendance',
+                'sort_order' => $deductionSort += 10,
+            ];
+        }
+
+        if ($totals['early_leave_discount'] > 0) {
+            $lines[] = [
+                'concept' => 'Salida antes del horario',
+                'type' => 'deduction',
+                'quantity' => round($totals['early_leave_minutes'] / 60, 2),
+                'unit_rate' => round($minuteRate * 60, 2),
+                'amount' => round($totals['early_leave_discount'], 2),
                 'source' => 'attendance',
                 'sort_order' => $deductionSort += 10,
             ];

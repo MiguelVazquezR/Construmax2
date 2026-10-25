@@ -145,6 +145,7 @@ const sourceLabel = (source) => ({
 
 const identifierLabel = (method) => ({
     face: 'rostro',
+    employee_number: 'número de empleado',
     pin: 'PIN',
     manual: 'manual',
 }[method] || method);
@@ -174,6 +175,7 @@ const daysSummary = computed(() => {
         count: list.length,
         worked: list.reduce((total, day) => total + Number(day.worked_minutes || 0), 0),
         late: list.reduce((total, day) => total + (day.late_ignored ? 0 : Number(day.late_minutes || 0)), 0),
+        early: list.reduce((total, day) => total + (day.early_leave_ignored ? 0 : Number(day.early_leave_minutes || 0)), 0),
         overtime: list.reduce((total, day) => total + Number(day.overtime_minutes || 0), 0),
     };
 });
@@ -334,11 +336,13 @@ const saveNewPunch = () => {
 
 // --- Day overrides ---
 
-const toggleLate = (day) => {
+// Sends both override flags so toggling one never resets the other.
+const saveOverride = (day) => {
     punchForm
         .transform(() => ({
             date: day.date,
             late_ignored: day.late_ignored,
+            early_leave_ignored: day.early_leave_ignored,
             notes: day.notes,
         }))
         .put(route('payroll.periods.override', [props.period.id, props.row.user_id]), {
@@ -451,7 +455,12 @@ const dayCommand = (command) => {
         case 'ignore_late':
         case 'restore_late':
             command.day.late_ignored = command.action === 'ignore_late';
-            toggleLate(command.day);
+            saveOverride(command.day);
+            break;
+        case 'allow_early_leave':
+        case 'restore_early_leave':
+            command.day.early_leave_ignored = command.action === 'allow_early_leave';
+            saveOverride(command.day);
             break;
         case 'add_incident':
             openIncidentDialog(command.day, null, command.type);
@@ -600,7 +609,7 @@ const destroyNote = (note) => {
                     description="Este colaborador está exento del control de asistencia: sus días laborables aparecen como «Sin registro» y se pagan completos, sin marcar faltas."
                 />
 
-                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
                     <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50 dark:bg-[#252529] px-4 py-3">
                         <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Días mostrados</p>
                         <p class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ daysSummary.count }}</p>
@@ -613,6 +622,12 @@ const destroyNote = (note) => {
                         <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Retardos</p>
                         <p class="text-lg font-bold" :class="daysSummary.late > 0 ? 'text-red-500' : 'text-gray-800 dark:text-gray-100'">
                             {{ daysSummary.late }} min
+                        </p>
+                    </div>
+                    <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50 dark:bg-[#252529] px-4 py-3">
+                        <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Salida anticipada</p>
+                        <p class="text-lg font-bold" :class="daysSummary.early > 0 ? 'text-red-500' : 'text-gray-800 dark:text-gray-100'">
+                            {{ daysSummary.early }} min
                         </p>
                     </div>
                     <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50 dark:bg-[#252529] px-4 py-3">
@@ -657,10 +672,20 @@ const destroyNote = (note) => {
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="Salida" min-width="90" align="center">
+                    <el-table-column label="Salida" min-width="100" align="center">
                         <template #default="scope">
                             <p v-if="scope.row.last_out" class="font-medium text-gray-700 dark:text-gray-200">{{ scope.row.last_out }}</p>
                             <span v-else class="text-gray-400">—</span>
+                            <p
+                                v-if="scope.row.last_out && scope.row.early_leave_minutes > 0"
+                                class="text-xs mt-0.5"
+                                :class="scope.row.early_leave_ignored ? 'text-gray-400 line-through' : 'text-red-500'"
+                                :title="scope.row.early_leave_ignored
+                                    ? 'Salida antes del horario permitida: no se descuenta del pago'
+                                    : 'Minutos antes de la hora de salida'"
+                            >
+                                {{ scope.row.early_leave_minutes }} min antes
+                            </p>
                         </template>
                     </el-table-column>
 
@@ -729,6 +754,21 @@ const destroyNote = (note) => {
                                             divided
                                         >
                                             Restaurar retardo
+                                        </el-dropdown-item>
+
+                                        <el-dropdown-item
+                                            v-if="canEdit && scope.row.early_leave_minutes > 0 && !scope.row.early_leave_ignored"
+                                            :command="{ action: 'allow_early_leave', day: scope.row }"
+                                            divided
+                                        >
+                                            Permitir salida antes del horario
+                                        </el-dropdown-item>
+                                        <el-dropdown-item
+                                            v-if="canEdit && scope.row.early_leave_ignored"
+                                            :command="{ action: 'restore_early_leave', day: scope.row }"
+                                            divided
+                                        >
+                                            Quitar permiso de salida anticipada
                                         </el-dropdown-item>
 
                                         <template v-if="canManageIncidents">
