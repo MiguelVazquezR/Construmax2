@@ -160,6 +160,7 @@ The central work-order entity.
 | `technicians` | json | array of lead technician IDs |
 | `assistant_technicians` | json | array of assistant technician IDs |
 | `status` | string | Borrador → Levantamiento → Catálogo → Proceso de ejecución → Ejecutado → Facturado → Pagado (also: Cancelado, Perdido) |
+| `status_changed_at` | timestamp | nullable — set automatically on create and every time `status` changes (migration `2026_10_24_000002`); existing rows were backfilled from `updated_at` |
 | `priority` | string | Baja, Media, Alta, Urgente |
 | `scheduled_start` | date | nullable |
 | `scheduled_end` | date | nullable |
@@ -221,6 +222,7 @@ Financial proposal linked to a ticket (1:1).
 | `id` | bigint PK | |
 | `ticket_id` | FK → tickets.id CASCADE | one budget per ticket |
 | `status` | string | Borrador, Enviado al cliente, Aprobado, Rechazado, Facturado |
+| `status_changed_at` | timestamp | nullable — set automatically on create and every time `status` changes (migration `2026_10_24_000002`) |
 | `description` | text | nullable |
 | `currency` | string(3) | MXN or USD |
 | `exchange_rate` | decimal(10,4) | default 1 |

@@ -19,6 +19,7 @@ class Budget extends Model implements HasMedia
     protected $fillable = [
         'ticket_id',
         'status',
+        'status_changed_at',
         'description',
         'currency',
         'exchange_rate',
@@ -30,7 +31,18 @@ class Budget extends Model implements HasMedia
     protected $casts = [
         'exchange_rate' => 'decimal:4',
         'invoice_date'  => 'date',
+        'status_changed_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        // Keep track of when the budget moved to its current status.
+        static::saving(function (Budget $budget) {
+            if ($budget->isDirty('status') && !$budget->isDirty('status_changed_at')) {
+                $budget->status_changed_at = now();
+            }
+        });
+    }
 
     protected $appends = ['total_cost', 'total_paid', 'balance_due', 'total_catalog_cost'];
 

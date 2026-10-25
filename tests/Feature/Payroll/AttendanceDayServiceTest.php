@@ -226,8 +226,25 @@ class AttendanceDayServiceTest extends TestCase
         $this->assertSame('Retardo justificado por tráfico', $summary->notes);
     }
 
-    public function test_no_schedule_status_when_the_collaborator_has_no_assignment(): void
+    public function test_early_leave_override_is_applied(): void
     {
+        AttendanceDayOverride::create([
+            'user_id' => $this->user->id,
+            'date' => $this->monday(),
+            'early_leave_ignored' => true,
+        ]);
+
+        $this->punch(AttendanceLog::TYPE_CHECK_IN, $this->monday().' 08:00:00');
+        $this->punch(AttendanceLog::TYPE_CHECK_OUT, $this->monday().' 16:30:00');
+
+        $summary = $this->service->summaryFor($this->user, $this->monday());
+
+        $this->assertSame(30, $summary->earlyLeaveMinutes);
+        $this->assertTrue($summary->earlyLeaveIgnored);
+        $this->assertSame(0, $summary->expectedEarlyLeaveMinutes());
+    }
+
+    public function test_no_schedule_status_when_the_collaborator_has_no_assignment(): void    {
         $other = User::factory()->create(['is_active' => true]);
 
         $summary = $this->service->summaryFor($other, $this->monday());

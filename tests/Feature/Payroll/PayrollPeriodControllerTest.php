@@ -732,6 +732,32 @@ class PayrollPeriodControllerTest extends TestCase
         ]);
     }
 
+    public function test_override_allows_leaving_before_the_schedule_without_resetting_the_late_flag(): void
+    {
+        $period = $this->openPeriod();
+
+        $this->actingAs($this->admin)
+            ->put(route('payroll.periods.override', [$period, $this->employee]), [
+                'date' => '2026-09-07',
+                'late_ignored' => true,
+            ])
+            ->assertRedirect();
+
+        // Only the early leave flag travels: the late override is kept.
+        $this->actingAs($this->admin)
+            ->put(route('payroll.periods.override', [$period, $this->employee]), [
+                'date' => '2026-09-07',
+                'early_leave_ignored' => true,
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('attendance_day_overrides', [
+            'user_id' => $this->employee->id,
+            'late_ignored' => true,
+            'early_leave_ignored' => true,
+        ]);
+    }
+
     public function test_attendance_log_update_is_audited(): void
     {
         $log = AttendanceLog::create([

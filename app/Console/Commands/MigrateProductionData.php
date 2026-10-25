@@ -504,6 +504,7 @@ class MigrateProductionData extends Command
                 'duration'            => $oldBudget->duration,
                 'technicians'         => null, // Will be populated from old ticket tasks
                 'status'              => $ticketStatus,
+                'status_changed_at'   => $oldBudget->updated_at ?? $oldBudget->created_at,
                 'priority'            => $oldBudget->priority ?? 'Media',
                 'scheduled_start'     => $oldTicket->scheduled_start ?? null,
                 'scheduled_end'       => $oldTicket->scheduled_end ?? null,
@@ -519,6 +520,7 @@ class MigrateProductionData extends Command
             DB::connection($this->target)->table('budgets')->insert([
                 'ticket_id'     => $ticketId,
                 'status'        => $budgetStatus,
+                'status_changed_at' => $oldBudget->updated_at ?? $oldBudget->created_at,
                 'description'   => $oldBudget->description,
                 'currency'      => $oldBudget->currency ?? 'MXN',
                 'exchange_rate' => $oldBudget->exchange_rate ?? 1.0000,

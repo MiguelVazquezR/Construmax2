@@ -315,18 +315,43 @@ class PayrollPeriodController extends Controller
     }
 
     /**
-     * Manual override of a day inside the period (ignore a late arrival, add notes).
+     * Manual override of a day inside the period (ignore a late arrival or an
+     * early leave, add notes). Flags that are not sent keep their current
+     * value, so toggling one never resets the other.
      */
     public function updateOverride(UpdateAttendanceDayOverrideRequest $request, PayrollPeriod $period, User $user): RedirectResponse
     {
-        AttendanceDayOverride::updateOrCreate(
-            ['user_id' => $user->id, 'date' => $request->validated('date')],
-            [
-                'late_ignored' => $request->boolean('late_ignored'),
-                'notes' => $request->validated('notes'),
-                'updated_by' => $request->user()->id,
-            ]
-        );
+        $attributes = [
+            'notes' => $request->validated('notes'),
+            'updated_by' => $request->user()->id,
+        ];
+
+        if ($request->has('late_ignored')) {
+            $attributes['late_ignored'] = $request->boolean('late_ignored');
+        }
+
+        if ($request->has('early_leave_ignored')) {
+            $attributes['early_leave_ignored'] = $request->boolean('early_leave_ignored');
+        }
+
+        $date = $request->validated('date');
+
+        // The date column holds a plain day: a whereDate lookup keeps the
+        // override unique regardless of the datetime serialization.
+        $override = AttendanceDayOverride::query()
+            ->where('user_id', $user->id)
+            ->whereDate('date', $date)
+            ->first();
+
+        if ($override) {
+            $override->update($attributes);
+        } else {
+            AttendanceDayOverride::create([
+                ...$attributes,
+                'user_id' => $user->id,
+                'date' => $date,
+            ]);
+        }
 
         return back()->with('success', 'Día actualizado.');
     }
@@ -401,11 +426,14 @@ class PayrollPeriodController extends Controller
                 $row['days_paid'],
                 $row['unpaid_days'],
                 $row['late_minutes'],
+                $row['early_leave_minutes'],
             ];
 
             if ($lateDiscountEnabled) {
                 $line[] = $row['late_discount'];
             }
+
+            $line[] = $row['early_leave_discount'];
 
             return array_merge($line, [
                 round($row['overtime_minutes'] / 60, 2),
@@ -422,13 +450,16 @@ class PayrollPeriodController extends Controller
             ]);
         }, $rows);
 
-        $headers = ['Colaborador', 'Número', 'Departamento', 'Días trabajados', 'Días pagados', 'Días no pagados', 'Retardos (min)'];
-        $widths = [24, 12, 18, 14, 12, 14, 12];
+        $headers = ['Colaborador', 'Número', 'Departamento', 'Días trabajados', 'Días pagados', 'Días no pagados', 'Retardos (min)', 'Salida anticipada (min)'];
+        $widths = [24, 12, 18, 14, 12, 14, 12, 16];
 
         if ($lateDiscountEnabled) {
             $headers[] = 'Descuento retardos';
             $widths[] = 16;
         }
+
+        $headers[] = 'Descuento salida anticipada';
+        $widths[] = 20;
 
         $headers = array_merge($headers, [
             'Horas extra', 'Importe extra', 'Días festivos', 'Importe festivo', 'Días vacaciones',
@@ -509,6 +540,8 @@ class PayrollPeriodController extends Controller
                         'unpaid_days' => (float) $payslip->unpaid_days,
                         'late_minutes' => $payslip->late_minutes,
                         'late_discount' => (float) $payslip->late_discount,
+                        'early_leave_minutes' => (int) $payslip->early_leave_minutes,
+                        'early_leave_discount' => (float) $payslip->early_leave_discount,
                         'overtime_double_minutes' => $payslip->overtime_double_minutes,
                         'overtime_triple_minutes' => $payslip->overtime_triple_minutes,
                         'overtime_amount' => (float) $payslip->overtime_amount,
@@ -537,6 +570,7 @@ class PayrollPeriodController extends Controller
             'total_net' => round(array_sum(array_column($rows, 'total_net')), 2),
             'overtime_hours' => round(array_sum(array_column($rows, 'overtime_minutes')) / 60, 2),
             'late_minutes' => (int) array_sum(array_column($rows, 'late_minutes')),
+            'early_leave_minutes' => (int) array_sum(array_column($rows, 'early_leave_minutes')),
             'unpaid_days' => round(array_sum(array_column($rows, 'unpaid_days')), 2),
             'days_paid' => round(array_sum(array_column($rows, 'days_paid')), 2),
         ];
@@ -564,6 +598,8 @@ class PayrollPeriodController extends Controller
             'unpaid_days' => round((float) $totals['unpaid_days'], 2),
             'late_minutes' => (int) $totals['late_minutes'],
             'late_discount' => round((float) $totals['late_discount'], 2),
+            'early_leave_minutes' => (int) $totals['early_leave_minutes'],
+            'early_leave_discount' => round((float) $totals['early_leave_discount'], 2),
             'overtime_minutes' => (int) $totals['overtime_double_minutes'] + (int) $totals['overtime_triple_minutes'],
             'overtime_amount' => round((float) $totals['overtime_amount'], 2),
             'holiday_days' => round((float) $totals['holiday_days'], 2),

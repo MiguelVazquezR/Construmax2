@@ -1155,6 +1155,142 @@ class ExpenseControllerTest extends TestCase
         $this->assertNull($commission->budget_concept_id);
     }
 
+    public function test_bulk_concept_payment_splits_the_fixed_commission_evenly(): void
+    {
+        $concepts = collect([1000, 2000, 3000, 4000])
+            ->map(fn (int $amount) => BudgetConcept::factory()->create(['amount' => $amount]));
+
+        $this->actingAs($this->user)
+            ->post(route('expenses.budgets.concepts.bulk-payment'), [
+                'concepts' => $concepts->pluck('id')->all(),
+                'payment_date' => '2026-09-15',
+                'payment_method' => 'transfer',
+                'commission_mode' => 'fixed',
+                'commission_value' => 54,
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $expenses = Expense::whereNotNull('budget_concept_id')->get();
+
+        $this->assertCount(4, $expenses);
+        $this->assertTrue($expenses->every(fn (Expense $expense) => $expense->status === Expense::STATUS_PAID));
+        $this->assertSame('13.50', $expenses->first()->commission_amount);
+        $this->assertSame(54.0, (float) $expenses->sum('commission_amount'));
+        $this->assertSame(0, Expense::where('is_commission', true)->count());
+    }
+
+    public function test_bulk_concept_payment_applies_a_percentage_commission(): void
+    {
+        $first = BudgetConcept::factory()->create(['amount' => 1000]);
+        $second = BudgetConcept::factory()->create(['amount' => 500]);
+
+        $this->actingAs($this->user)
+            ->post(route('expenses.budgets.concepts.bulk-payment'), [
+                'concepts' => [$first->id, $second->id],
+                'payment_date' => '2026-09-15',
+                'commission_mode' => 'percent',
+                'commission_value' => 10,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('100.00', $first->fresh()->expense->commission_amount);
+        $this->assertSame('50.00', $second->fresh()->expense->commission_amount);
+    }
+
+    public function test_bulk_concept_payment_skips_concepts_already_paid(): void
+    {
+        $paid = BudgetConcept::factory()->create(['amount' => 100]);
+        Expense::factory()->paid()->create([
+            'budget_id' => $paid->budget_id,
+            'budget_concept_id' => $paid->id,
+            'amount' => 100,
+        ]);
+        $pending = BudgetConcept::factory()->create(['amount' => 200]);
+
+        $this->actingAs($this->user)
+            ->post(route('expenses.budgets.concepts.bulk-payment'), [
+                'concepts' => [$paid->id, $pending->id],
+                'payment_date' => '2026-09-15',
+                'commission_mode' => 'none',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame(1, Expense::where('budget_concept_id', $paid->id)->count());
+        $this->assertSame(Expense::STATUS_PAID, $pending->fresh()->expense->status);
+    }
+
+    public function test_budget_search_filters_by_multiple_statuses_and_pending_payments(): void
+    {
+        $withPending = Budget::factory()->create([
+            'ticket_id' => Ticket::factory()->create(['status' => 'Facturado'])->id,
+        ]);
+        BudgetConcept::factory()->create(['budget_id' => $withPending->id]);
+
+        $alreadyPaid = Budget::factory()->create([
+            'ticket_id' => Ticket::factory()->create(['status' => 'Facturado'])->id,
+        ]);
+        $paidConcept = BudgetConcept::factory()->create(['budget_id' => $alreadyPaid->id]);
+        Expense::factory()->paid()->create([
+            'budget_id' => $alreadyPaid->id,
+            'budget_concept_id' => $paidConcept->id,
+        ]);
+
+        $executed = Budget::factory()->create([
+            'ticket_id' => Ticket::factory()->create(['status' => 'Proceso de ejecución'])->id,
+        ]);
+        BudgetConcept::factory()->create(['budget_id' => $executed->id]);
+
+        $this->actingAs($this->user)
+            ->getJson(route('expenses.budgets.search', [
+                'statuses' => ['Facturado', 'Proceso de ejecución'],
+                'only_pending' => 1,
+            ]))
+            ->assertOk()
+            ->assertJsonFragment(['id' => $withPending->id])
+            ->assertJsonFragment(['id' => $executed->id])
+            ->assertJsonMissing(['id' => $alreadyPaid->id]);
+    }
+
+    public function test_budget_search_filters_by_the_ticket_status_change_date(): void
+    {
+        $ticket = Ticket::factory()->create(['status' => 'Levantamiento']);
+        $budget = Budget::factory()->create(['ticket_id' => $ticket->id]);
+        BudgetConcept::factory()->create(['budget_id' => $budget->id]);
+
+        $ticket->update(['status' => 'Facturado']);
+
+        $statusDate = $ticket->fresh()->status_changed_at;
+
+        $this->assertNotNull($statusDate);
+        $this->assertTrue($statusDate->isToday());
+
+        $this->actingAs($this->user)
+            ->getJson(route('expenses.budgets.search', [
+                'statuses' => ['Facturado'],
+                'from' => $statusDate->toDateString(),
+                'to' => $statusDate->toDateString(),
+                'only_pending' => 1,
+            ]))
+            ->assertOk()
+            ->assertJsonFragment([
+                'id' => $budget->id,
+                'status_date' => $statusDate->toDateString(),
+            ]);
+
+        $this->actingAs($this->user)
+            ->getJson(route('expenses.budgets.search', [
+                'statuses' => ['Facturado'],
+                'from' => $statusDate->copy()->subDay()->toDateString(),
+                'to' => $statusDate->copy()->subDay()->toDateString(),
+                'only_pending' => 1,
+            ]))
+            ->assertOk()
+            ->assertJsonMissing(['id' => $budget->id]);
+    }
+
     public function test_index_summary_includes_commissions(): void
     {
         $budget = Budget::factory()->create();

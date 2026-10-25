@@ -68,6 +68,7 @@ final class AttendanceDaySummary
         public readonly ?float $incidentPayPercentage = null,
         public readonly ?string $holidayName = null,
         public readonly ?string $notes = null,
+        public readonly bool $earlyLeaveIgnored = false,
     ) {}
 
     public function hasPunches(): bool
@@ -78,6 +79,11 @@ final class AttendanceDaySummary
     public function expectedLateMinutes(): int
     {
         return $this->lateIgnored ? 0 : $this->lateMinutes;
+    }
+
+    public function expectedEarlyLeaveMinutes(): int
+    {
+        return $this->earlyLeaveIgnored ? 0 : $this->earlyLeaveMinutes;
     }
 
     public function statusLabel(): string

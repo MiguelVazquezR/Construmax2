@@ -134,6 +134,7 @@ const historySummary = computed(() => {
         count: days.length,
         worked: days.reduce((total, day) => total + Number(day.worked_minutes || 0), 0),
         late: days.reduce((total, day) => total + (day.late_ignored ? 0 : Number(day.late_minutes || 0)), 0),
+        early: days.reduce((total, day) => total + (day.early_leave_ignored ? 0 : Number(day.early_leave_minutes || 0)), 0),
         overtime: days.reduce((total, day) => total + Number(day.overtime_minutes || 0), 0),
     };
 });
@@ -763,7 +764,7 @@ onBeforeUnmount(() => {
 
                         <div class="p-6 space-y-6">
                             <!-- Same summary tiles as the payroll detail -->
-                            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
                                 <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50 dark:bg-[#252529]/60 px-4 py-3">
                                     <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Días del periodo</p>
                                     <p class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ historySummary.count }}</p>
@@ -776,6 +777,12 @@ onBeforeUnmount(() => {
                                     <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Retardos</p>
                                     <p class="text-lg font-bold" :class="historySummary.late > 0 ? 'text-red-500' : 'text-gray-800 dark:text-gray-100'">
                                         {{ historySummary.late }} min
+                                    </p>
+                                </div>
+                                <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50 dark:bg-[#252529]/60 px-4 py-3">
+                                    <p class="text-xs uppercase tracking-wider text-gray-400 font-bold">Salida anticipada</p>
+                                    <p class="text-lg font-bold" :class="historySummary.early > 0 ? 'text-red-500' : 'text-gray-800 dark:text-gray-100'">
+                                        {{ historySummary.early }} min
                                     </p>
                                 </div>
                                 <div class="rounded-xl border border-gray-100 dark:border-[#2b2b2e] bg-gray-50 dark:bg-[#252529]/60 px-4 py-3">
@@ -837,10 +844,20 @@ onBeforeUnmount(() => {
                                         </template>
                                     </el-table-column>
 
-                                    <el-table-column label="Salida" min-width="90" align="center">
+                                    <el-table-column label="Salida" min-width="100" align="center">
                                         <template #default="scope">
                                             <p v-if="scope.row.last_out" class="font-medium text-gray-700 dark:text-gray-200">{{ scope.row.last_out }}</p>
                                             <span v-else class="text-gray-400">—</span>
+                                            <p
+                                                v-if="scope.row.last_out && scope.row.early_leave_minutes > 0"
+                                                class="text-xs mt-0.5"
+                                                :class="scope.row.early_leave_ignored ? 'text-gray-400 line-through' : 'text-red-500'"
+                                                :title="scope.row.early_leave_ignored
+                                                    ? 'Salida antes del horario permitida: no se descuenta del pago'
+                                                    : 'Minutos antes de la hora de salida'"
+                                            >
+                                                {{ scope.row.early_leave_minutes }} min antes
+                                            </p>
                                         </template>
                                     </el-table-column>
 

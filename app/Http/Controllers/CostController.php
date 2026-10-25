@@ -91,7 +91,8 @@ class CostController extends Controller
 
         // Update ticket status to Pendiente de aprobación
         if ($budget->ticket_id) {
-            \App\Models\Ticket::where('id', $budget->ticket_id)->update(['status' => 'Pendiente de aprobación']);
+            // Model update (not a mass update) so status_changed_at is stamped.
+            $budget->ticket?->update(['status' => 'Pendiente de aprobación']);
         }
 
         return back()->with('success', 'Nueva versión del catálogo guardada correctamente. Queda pendiente de aprobación.');
