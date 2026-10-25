@@ -30,6 +30,13 @@ class Ticket extends Model implements HasMedia
      */
     protected static function booted(): void
     {
+        // Keep track of when the ticket moved to its current status.
+        static::saving(function (Ticket $ticket) {
+            if ($ticket->isDirty('status') && !$ticket->isDirty('status_changed_at')) {
+                $ticket->status_changed_at = now();
+            }
+        });
+
         static::updated(function (Ticket $ticket) {
             if ($ticket->wasChanged('status')) {
                 $action = app(DispatchNotificationAction::class);
@@ -54,6 +61,7 @@ class Ticket extends Model implements HasMedia
         'technicians',
         'assistant_technicians',
         'status',
+        'status_changed_at',
         'priority',
         'scheduled_start',
         'scheduled_end',
@@ -63,6 +71,7 @@ class Ticket extends Model implements HasMedia
     ];
 
     protected $casts = [
+        'status_changed_at' => 'datetime',
         'scheduled_start' => 'date',
         'scheduled_end' => 'date',
         'technicians' => 'array',

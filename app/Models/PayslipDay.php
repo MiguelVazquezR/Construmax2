@@ -20,6 +20,7 @@ class PayslipDay extends Model
         'last_out',
         'worked_minutes',
         'late_minutes',
+        'early_leave_minutes',
         'overtime_minutes',
         'notes',
     ];
@@ -28,6 +29,7 @@ class PayslipDay extends Model
         'date' => 'date',
         'worked_minutes' => 'integer',
         'late_minutes' => 'integer',
+        'early_leave_minutes' => 'integer',
         'overtime_minutes' => 'integer',
     ];
 

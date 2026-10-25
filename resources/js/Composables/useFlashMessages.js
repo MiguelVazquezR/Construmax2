@@ -3,7 +3,7 @@ import { usePage } from '@inertiajs/vue3';
 import { ElMessage } from 'element-plus';
 
 /**
- * Show the server flash messages ("success" / "error") as toasts.
+ * Show the server flash messages ("success" / "error" / "warning") as toasts.
  */
 export function useFlashMessages() {
     const page = usePage();
@@ -19,6 +19,13 @@ export function useFlashMessages() {
         () => page.props.flash?.error,
         (value) => {
             if (value) ElMessage.error(value);
+        }
+    );
+
+    watch(
+        () => page.props.flash?.warning,
+        (value) => {
+            if (value) ElMessage.warning(value);
         }
     );
 }

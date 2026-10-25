@@ -375,6 +375,8 @@ class MyAttendanceController extends Controller
             'expected_minutes' => $summary->expectedMinutes,
             'late_minutes' => $summary->lateMinutes,
             'late_ignored' => $summary->lateIgnored,
+            'early_leave_minutes' => $summary->earlyLeaveMinutes,
+            'early_leave_ignored' => $summary->earlyLeaveIgnored,
             'overtime_minutes' => $summary->overtimeMinutes,
             'first_in' => $summary->firstIn?->format('H:i'),
             'lunch_start' => $summary->lunchStart?->format('H:i'),

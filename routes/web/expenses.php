@@ -15,6 +15,10 @@ Route::middleware(['auth', 'verified'])->prefix('expenses')->name('expenses.')->
     // Budget expenses: manage the payments of a budget breakdown
     Route::prefix('budgets')->name('budgets.')->group(function () {
         Route::get('/search', [BudgetExpenseController::class, 'search'])->name('search');
+
+        // Pay breakdown concepts of one or more budgets in a single movement
+        Route::post('/concepts/bulk-payment', [BudgetExpenseController::class, 'storeBulkConceptPayments'])->name('concepts.bulk-payment');
+
         Route::get('/{budget}', [BudgetExpenseController::class, 'show'])->name('show');
         Route::post('/{budget}/concepts/mark-paid', [BudgetExpenseController::class, 'markConceptsPaid'])->name('concepts.mark-paid');
         Route::post('/{budget}/concepts/{concept}/payment', [BudgetExpenseController::class, 'storeConceptPayment'])->name('concepts.payment');

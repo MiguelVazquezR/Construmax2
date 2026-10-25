@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Payroll;
 
+use App\Models\AttendanceDayOverride;
 use App\Models\AttendanceLog;
 use App\Models\Holiday;
 use App\Models\Incident;
@@ -307,8 +308,43 @@ class PayrollCalculatorServiceTest extends TestCase
         $this->assertEqualsWithDelta(375.0, $totals['total_net'], 0.01);
     }
 
-    public function test_a_missing_day_is_not_paid(): void
+    public function test_early_leave_is_discounted_unless_the_day_is_flagged(): void
     {
+        // Leaves one hour before the scheduled exit (17:00).
+        $this->punch($this->user, AttendanceLog::TYPE_CHECK_IN, '2026-09-07 08:00:00');
+        $this->punch($this->user, AttendanceLog::TYPE_LUNCH_START, '2026-09-07 13:00:00');
+        $this->punch($this->user, AttendanceLog::TYPE_LUNCH_END, '2026-09-07 14:00:00');
+        $this->punch($this->user, AttendanceLog::TYPE_CHECK_OUT, '2026-09-07 16:00:00');
+
+        $result = $this->calculator->calculateFor($this->user, $this->period);
+        $totals = $result['totals'];
+
+        $this->assertSame(60, $totals['early_leave_minutes']);
+        // 60 minutes * (400 / 480).
+        $this->assertEqualsWithDelta(50.0, $totals['early_leave_discount'], 0.01);
+        $this->assertEqualsWithDelta(350.0, $totals['total_net'], 0.01);
+
+        $line = collect($result['lines'])->firstWhere('concept', 'Salida antes del horario');
+        $this->assertNotNull($line);
+        $this->assertEqualsWithDelta(50.0, $line['amount'], 0.01);
+
+        // Flagging the day as an allowed early leave removes the discount.
+        AttendanceDayOverride::create([
+            'user_id' => $this->user->id,
+            'date' => '2026-09-07',
+            'early_leave_ignored' => true,
+        ]);
+
+        $result = $this->calculator->calculateFor($this->user, $this->period);
+        $totals = $result['totals'];
+
+        $this->assertSame(60, $totals['early_leave_minutes']);
+        $this->assertEqualsWithDelta(0, $totals['early_leave_discount'], 0.01);
+        $this->assertEqualsWithDelta(400.0, $totals['total_net'], 0.01);
+        $this->assertNull(collect($result['lines'])->firstWhere('concept', 'Salida antes del horario'));
+    }
+
+    public function test_a_missing_day_is_not_paid(): void    {
         foreach (['2026-09-07', '2026-09-09', '2026-09-10', '2026-09-11'] as $date) {
             $this->regularDay($this->user, $date);
         }
