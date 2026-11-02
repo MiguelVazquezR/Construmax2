@@ -130,8 +130,8 @@ Route::prefix('attendance/kiosk')->name('attendance.kiosk.')->group(function () 
         ->middleware(['attendance.device', 'throttle:120,1'])->name('bootstrap');
 
     Route::post('/punch', [KioskController::class, 'punch'])
-        ->middleware(['attendance.device', 'throttle:30,1'])->name('punch');
+        ->middleware(['attendance.device', 'throttle:60,1'])->name('punch');
 
     Route::post('/face-punch', [KioskController::class, 'facePunch'])
-        ->middleware(['attendance.device', 'throttle:30,1'])->name('face-punch');
+        ->middleware(['attendance.device', 'throttle:60,1'])->name('face-punch');
 });

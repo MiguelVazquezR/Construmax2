@@ -72,6 +72,15 @@ class KioskAttendanceTest extends TestCase
             ->assertInertia(fn ($page) => $page->where('employeeNumberEnabled', false));
     }
 
+    public function test_kiosk_page_exposes_the_device_registration_url(): void
+    {
+        $this->get(route('attendance.kiosk.show'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('registrationUrl', route('attendance.devices.register'))
+            );
+    }
+
     public function test_bootstrap_requires_a_valid_device_token(): void
     {
         $this->postJson(route('attendance.kiosk.bootstrap'))
@@ -184,6 +193,13 @@ class KioskAttendanceTest extends TestCase
             ->assertStatus(422);
 
         $this->assertDatabaseCount('attendance_logs', 0);
+    }
+
+    public function test_kiosk_errors_are_returned_as_json_instead_of_the_error_page(): void
+    {
+        $this->postJson(route('attendance.kiosk.bootstrap'), [], ['X-Attendance-Device' => 'invalid-token'])
+            ->assertForbidden()
+            ->assertJsonPath('message', 'Dispositivo no autorizado.');
     }
 
     public function test_punch_requires_a_registered_device(): void

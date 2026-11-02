@@ -5,6 +5,13 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Monitor, VideoCamera, Delete, RefreshRight, CircleClose, CopyDocument, Edit, Key } from '@element-plus/icons-vue';
 import axios from 'axios';
+import {
+    forgetDeviceToken,
+    kioskUrlWithToken,
+    readDeviceToken,
+    saveDeviceToken,
+} from '@/Utils/attendanceDeviceToken';
+import { copyText } from '@/Utils/clipboard';
 
 const props = defineProps({
     devices: Array,
@@ -16,8 +23,6 @@ const props = defineProps({
     },
     registrationPasswordConfigured: Boolean,
 });
-
-const TOKEN_KEY = 'attendance_device_token';
 
 const currentDevice = ref(null);
 const checkingCurrent = ref(true);
@@ -73,7 +78,7 @@ const formatDateTime = (value) => {
 
 const resolveCurrentDevice = async () => {
     checkingCurrent.value = true;
-    const token = localStorage.getItem(TOKEN_KEY);
+    const token = readDeviceToken();
 
     if (!token) {
         currentDevice.value = null;
@@ -86,10 +91,12 @@ const resolveCurrentDevice = async () => {
             headers: { 'X-Attendance-Device': token },
         });
         currentDevice.value = data.device;
-    } catch {
-        // Token revoked or invalid: forget it in this browser.
-        localStorage.removeItem(TOKEN_KEY);
-        currentDevice.value = null;
+    } catch (error) {
+        if ([401, 403].includes(error?.response?.status)) {
+            // Token revoked or invalid: forget it in this browser.
+            forgetDeviceToken();
+            currentDevice.value = null;
+        }
     } finally {
         checkingCurrent.value = false;
     }
@@ -119,7 +126,7 @@ const register = async () => {
             notes: form.notes || null,
         });
 
-        localStorage.setItem(TOKEN_KEY, data.token);
+        saveDeviceToken(data.token);
         currentDevice.value = data.device;
         dialogVisible.value = false;
         ElMessage.success('Dispositivo registrado correctamente en este navegador.');
@@ -150,7 +157,7 @@ const revoke = (device) => {
             await axios.patch(route('payroll.devices.revoke', device.id));
 
             if (currentDevice.value?.id === device.id) {
-                localStorage.removeItem(TOKEN_KEY);
+                forgetDeviceToken();
                 currentDevice.value = null;
             }
 
@@ -188,7 +195,7 @@ const remove = (device) => {
             await axios.delete(route('payroll.devices.destroy', device.id));
 
             if (currentDevice.value?.id === device.id) {
-                localStorage.removeItem(TOKEN_KEY);
+                forgetDeviceToken();
                 currentDevice.value = null;
             }
 
@@ -201,16 +208,22 @@ const remove = (device) => {
 };
 
 const openKiosk = () => {
-    window.open(props.kioskUrl, '_blank');
+    const url = kioskUrlWithToken(props.kioskUrl, readDeviceToken());
+    // Safari may ignore the new tab: fall back to the current one.
+    const opened = window.open(url, '_blank');
+
+    if (!opened) {
+        window.location.href = url;
+    }
 };
 
 const copyRegistrationLink = async () => {
-    try {
-        await navigator.clipboard.writeText(props.registrationUrl);
+    if (await copyText(props.registrationUrl)) {
         ElMessage.success('Link de registro copiado.');
-    } catch {
-        ElMessage.warning('No se pudo copiar el link. Cópialo manualmente.');
+        return;
     }
+
+    ElMessage.warning('No se pudo copiar el link. Cópialo manualmente.');
 };
 
 const openEditDialog = (device) => {
