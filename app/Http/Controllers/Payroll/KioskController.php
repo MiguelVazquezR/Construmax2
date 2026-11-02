@@ -40,6 +40,7 @@ class KioskController extends Controller
             // page whether the biometric provider is ready to identify faces.
             'faceRecognitionEnabled' => $this->faceRecognition->isConfigured(),
             'employeeNumberEnabled' => (bool) $settings->kiosk_employee_number_enabled,
+            'registrationUrl' => route('attendance.devices.register'),
             'appName' => config('app.name'),
         ]);
     }

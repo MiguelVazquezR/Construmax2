@@ -4,6 +4,13 @@ import { Head } from '@inertiajs/vue3';
 import { ElMessage } from 'element-plus';
 import { CircleCheck, CopyDocument, Monitor, VideoCamera, WarningFilled } from '@element-plus/icons-vue';
 import axios from 'axios';
+import {
+    forgetDeviceToken,
+    kioskUrlWithToken,
+    readDeviceToken,
+    saveDeviceToken,
+} from '@/Utils/attendanceDeviceToken';
+import { copyText } from '@/Utils/clipboard';
 
 const props = defineProps({
     appName: String,
@@ -11,10 +18,9 @@ const props = defineProps({
     passwordConfigured: Boolean,
 });
 
-const TOKEN_KEY = 'attendance_device_token';
-
 const checking = ref(true);
 const registeredDevice = ref(null);
+const registeredToken = ref(readDeviceToken());
 const saving = ref(false);
 const errorMessage = ref('');
 
@@ -36,10 +42,12 @@ const clearErrors = () => {
     Object.keys(errors).forEach((key) => (errors[key] = ''));
 };
 
+const isDeviceRejectionError = (error) => [401, 403].includes(error?.response?.status);
+
 const checkCurrentDevice = async () => {
     checking.value = true;
 
-    const token = localStorage.getItem(TOKEN_KEY);
+    const token = readDeviceToken();
 
     if (!token) {
         checking.value = false;
@@ -52,9 +60,17 @@ const checkCurrentDevice = async () => {
         });
 
         registeredDevice.value = data.device;
-    } catch {
-        localStorage.removeItem(TOKEN_KEY);
-        registeredDevice.value = null;
+        registeredToken.value = token;
+    } catch (error) {
+        if (isDeviceRejectionError(error)) {
+            // The server rejected the token: this browser is no longer authorized.
+            forgetDeviceToken();
+            registeredDevice.value = null;
+            registeredToken.value = null;
+        } else {
+            // A network or server failure must not lose a valid registration.
+            ElMessage.warning('No se pudo verificar el dispositivo. Revisa la conexión.');
+        }
     } finally {
         checking.value = false;
     }
@@ -84,7 +100,8 @@ const register = async () => {
             password: form.password,
         });
 
-        localStorage.setItem(TOKEN_KEY, data.token);
+        saveDeviceToken(data.token);
+        registeredToken.value = data.token;
         registeredDevice.value = data.device;
         form.password = '';
         ElMessage.success('Dispositivo registrado correctamente.');
@@ -102,17 +119,22 @@ const register = async () => {
     }
 };
 
+// The token travels in the link because iOS in-app browsers, private mode and
+// home-screen apps do not share the web storage of the registration page.
 const openKiosk = () => {
-    window.location.href = props.kioskUrl;
+    window.location.href = kioskUrlWithToken(props.kioskUrl, registeredToken.value);
 };
 
 const copyKioskLink = async () => {
-    try {
-        await navigator.clipboard.writeText(props.kioskUrl);
-        ElMessage.success('Link del kiosco copiado.');
-    } catch {
-        ElMessage.warning('No se pudo copiar el link. Cópialo manualmente.');
+    if (await copyText(kioskUrlWithToken(props.kioskUrl, registeredToken.value))) {
+        ElMessage.success(registeredToken.value
+            ? 'Link del kiosco copiado. Incluye el acceso de este dispositivo: ábrelo en la tablet.'
+            : 'Link del kiosco copiado. Registra primero este dispositivo para que el kiosco quede autorizado.');
+
+        return;
     }
+
+    ElMessage.warning('No se pudo copiar el link. Cópialo manualmente.');
 };
 
 onMounted(checkCurrentDevice);

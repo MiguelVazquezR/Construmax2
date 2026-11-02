@@ -4,21 +4,31 @@ import { Head } from '@inertiajs/vue3';
 import { Camera, CircleCheck, Location, WarningFilled } from '@element-plus/icons-vue';
 import axios from 'axios';
 import AttendanceKeypad from '@/Components/Payroll/AttendanceKeypad.vue';
+import { attendanceErrorMessage, isDeviceRejection } from '@/Utils/attendanceRequestError';
+import {
+    forgetDeviceToken,
+    readDeviceToken,
+    readDeviceTokenFromUrl,
+    saveDeviceToken,
+} from '@/Utils/attendanceDeviceToken';
 
 const props = defineProps({
     punchTypes: Object,
     faceRecognitionEnabled: Boolean,
     employeeNumberEnabled: Boolean,
+    registrationUrl: String,
     appName: String,
 });
 
-const TOKEN_KEY = 'attendance_device_token';
 const SESSION_RESET_MS = 7000;
+const BOOTSTRAP_RETRY_MS = 15000;
 
 const token = ref(null);
 const device = ref(null);
-const status = ref('checking'); // checking | authorized | unauthorized
+const status = ref('checking'); // checking | authorized | unreachable | unauthorized
 const clock = ref(new Date());
+const online = ref(typeof navigator === 'undefined' ? true : navigator.onLine);
+const connectionMessage = ref(null);
 
 const selectedType = ref(null);
 // Face capture is always offered. With both methods enabled the collaborator
@@ -28,6 +38,7 @@ const employeeNumber = ref('');
 const employeeNumberSubmitting = ref(false);
 const faceSubmitting = ref(false);
 const errorMessage = ref('');
+const errorDetail = ref('');
 const result = ref(null);
 const locationStatus = ref('idle'); // idle | loading | ready | unavailable
 const cameraReady = ref(false);
@@ -37,6 +48,7 @@ const photoInputRef = ref(null);
 let stream = null;
 let clockTimer = null;
 let resultTimer = null;
+let bootstrapRetryTimer = null;
 
 // The on-screen keypad replaces the native keyboard only when the employee
 // number is the selected method: it keeps the whole kiosk on a single screen.
@@ -73,6 +85,7 @@ const changeSelection = () => {
     // With a single identification method there is no chooser to return to.
     method.value = props.employeeNumberEnabled ? null : 'face';
     errorMessage.value = '';
+    errorDetail.value = '';
 };
 
 const timeLabel = computed(() =>
@@ -83,8 +96,29 @@ const dateLabel = computed(() =>
     clock.value.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 );
 
+/**
+ * Forget the device token: only a device rejection from the server requires a
+ * new registration, so a network or server failure never wipes it.
+ */
+const clearDeviceToken = () => {
+    forgetDeviceToken();
+    token.value = null;
+    device.value = null;
+    status.value = 'unauthorized';
+};
+
 const bootstrap = async () => {
-    token.value = localStorage.getItem(TOKEN_KEY);
+    clearTimeout(bootstrapRetryTimer);
+
+    // The registration page hands the token through the link: iOS in-app
+    // browsers and home-screen apps do not share web storage.
+    const tokenFromLink = readDeviceTokenFromUrl();
+
+    if (tokenFromLink) {
+        saveDeviceToken(tokenFromLink);
+    }
+
+    token.value = tokenFromLink || readDeviceToken();
 
     if (!token.value) {
         status.value = 'unauthorized';
@@ -97,11 +131,19 @@ const bootstrap = async () => {
         });
 
         device.value = data.device;
+        connectionMessage.value = null;
         status.value = 'authorized';
-    } catch {
-        localStorage.removeItem(TOKEN_KEY);
-        token.value = null;
-        status.value = 'unauthorized';
+    } catch (error) {
+        if (isDeviceRejection(error)) {
+            clearDeviceToken();
+            return;
+        }
+
+        // The kiosk stays usable on its own: it keeps retrying in the
+        // background so nobody has to reload the page.
+        connectionMessage.value = attendanceErrorMessage(error);
+        status.value = 'unreachable';
+        bootstrapRetryTimer = setTimeout(bootstrap, BOOTSTRAP_RETRY_MS);
     }
 };
 
@@ -274,6 +316,7 @@ const onPhotoSelected = async (event) => {
 
 const submitFace = async (capturedPhoto = null) => {
     errorMessage.value = '';
+    errorDetail.value = '';
 
     if (!selectedType.value) {
         errorMessage.value = 'Selecciona el tipo de registro.';
@@ -316,10 +359,14 @@ const submitFace = async (capturedPhoto = null) => {
             result.value = null;
         }, SESSION_RESET_MS);
     } catch (error) {
-        const errors = error.response?.data?.errors;
-        errorMessage.value = errors
-            ? Object.values(errors).flat()[0]
-            : 'No se pudo guardar el registro. Intenta de nuevo.';
+        if (isDeviceRejection(error)) {
+            clearDeviceToken();
+            return;
+        }
+
+        const { message, detail } = attendanceErrorMessage(error);
+        errorMessage.value = message;
+        errorDetail.value = detail;
     } finally {
         faceSubmitting.value = false;
     }
@@ -327,6 +374,7 @@ const submitFace = async (capturedPhoto = null) => {
 
 const submitEmployeeNumber = async () => {
     errorMessage.value = '';
+    errorDetail.value = '';
 
     if (!selectedType.value) {
         errorMessage.value = 'Selecciona el tipo de registro.';
@@ -363,10 +411,14 @@ const submitEmployeeNumber = async () => {
             result.value = null;
         }, SESSION_RESET_MS);
     } catch (error) {
-        const errors = error.response?.data?.errors;
-        errorMessage.value = errors
-            ? Object.values(errors).flat()[0]
-            : 'No se pudo guardar el registro. Intenta de nuevo.';
+        if (isDeviceRejection(error)) {
+            clearDeviceToken();
+            return;
+        }
+
+        const { message, detail } = attendanceErrorMessage(error);
+        errorMessage.value = message;
+        errorDetail.value = detail;
     } finally {
         employeeNumberSubmitting.value = false;
     }
@@ -388,6 +440,29 @@ const closeResult = () => {
     selectedType.value = null;
     employeeNumber.value = '';
     errorMessage.value = '';
+    errorDetail.value = '';
+};
+
+// The kiosk recovers by itself when the network comes back, so nobody has to
+// reload the page or register the tablet again.
+const handleOnline = () => {
+    online.value = true;
+
+    if (status.value === 'unreachable') {
+        bootstrap();
+    }
+};
+
+const handleOffline = () => {
+    online.value = false;
+};
+
+// Opens the public registration page in the same browsing context, so the new
+// token is stored where the kiosk can read it.
+const openRegistration = () => {
+    if (props.registrationUrl) {
+        window.location.href = props.registrationUrl;
+    }
 };
 
 // The camera is requested only while the face method is selected: choosing
@@ -405,6 +480,9 @@ onMounted(async () => {
         clock.value = new Date();
     }, 1000);
 
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
     await bootstrap();
 
     if (status.value === 'authorized' && method.value === 'face') {
@@ -415,6 +493,9 @@ onMounted(async () => {
 onBeforeUnmount(() => {
     clearInterval(clockTimer);
     clearTimeout(resultTimer);
+    clearTimeout(bootstrapRetryTimer);
+    window.removeEventListener('online', handleOnline);
+    window.removeEventListener('offline', handleOffline);
     releaseCamera();
 });
 </script>
@@ -430,7 +511,7 @@ onBeforeUnmount(() => {
                 <span class="hidden sm:inline text-xs uppercase tracking-widest text-gray-400">Kiosco de asistencia</span>
             </div>
             <div v-if="device" class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span class="inline-block w-2 h-2 rounded-full" :class="online ? 'bg-emerald-500' : 'bg-amber-500'"></span>
                 {{ device.name }}<span v-if="device.location"> · {{ device.location }}</span>
             </div>
         </header>
@@ -454,6 +535,25 @@ onBeforeUnmount(() => {
                     Pide al administrador que abra <span class="font-semibold text-gray-600 dark:text-gray-300">Recursos Humanos → Dispositivos de asistencia</span>
                     en este mismo equipo y use la opción "Registrar este dispositivo".
                 </p>
+                <el-button v-if="registrationUrl" class="mt-5" type="primary" color="#f26c17" @click="openRegistration">
+                    Registrar este dispositivo
+                </el-button>
+            </div>
+        </main>
+
+        <!-- Server unreachable: the kiosk keeps retrying on its own -->
+        <main v-else-if="status === 'unreachable'" class="flex-1 flex items-center justify-center px-6">
+            <div class="max-w-xl text-center bg-white dark:bg-[#1e1e20] border border-gray-100 dark:border-[#2b2b2e] rounded-2xl p-10 shadow-sm">
+                <div class="w-16 h-16 mx-auto rounded-full bg-red-50 dark:bg-red-500/10 text-red-500 flex items-center justify-center">
+                    <el-icon :size="30"><WarningFilled /></el-icon>
+                </div>
+                <h1 class="text-2xl font-bold mt-4">No hay conexión con el sistema</h1>
+                <p class="text-gray-500 mt-3">{{ connectionMessage?.message }}</p>
+                <p v-if="connectionMessage?.detail" class="text-gray-400 text-sm mt-2">{{ connectionMessage.detail }}</p>
+                <p class="text-gray-400 text-sm mt-4">
+                    El kiosco seguirá intentando conectarse; no es necesario recargar la página.
+                </p>
+                <el-button class="mt-5" type="primary" @click="bootstrap">Reintentar ahora</el-button>
             </div>
         </main>
 
@@ -464,6 +564,10 @@ onBeforeUnmount(() => {
                 :class="[method ? 'lg:col-span-3' : 'lg:col-span-5', employeeNumberMode ? 'lg:order-2' : 'lg:order-1']"
                 class="order-first flex min-h-0 flex-col"
             >
+                <p v-if="!online" class="text-xs text-amber-700 dark:text-amber-200 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-400/30 rounded-lg px-3 py-2 mb-3">
+                    Sin conexión a internet. Vuelve a intentar cuando se restablezca la red.
+                </p>
+
                 <div class="text-center mb-3 lg:mb-5">
                     <p class="text-2xl sm:text-4xl lg:text-5xl font-bold tabular-nums tracking-tight text-gray-800 dark:text-white">{{ timeLabel }}</p>
                     <p class="hidden sm:block text-gray-400 capitalize mt-1">{{ dateLabel }}</p>
@@ -471,6 +575,7 @@ onBeforeUnmount(() => {
 
                 <p v-if="errorMessage" class="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-400/30 rounded-lg px-3 py-2 mb-3">
                     {{ errorMessage }}
+                    <span v-if="errorDetail" class="block mt-1 text-xs font-medium opacity-70">{{ errorDetail }}</span>
                 </p>
 
                 <!-- Phone: compact summary so the keypad or the camera gets the full screen -->
