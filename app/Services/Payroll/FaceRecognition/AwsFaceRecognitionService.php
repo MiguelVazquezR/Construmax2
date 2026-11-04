@@ -84,16 +84,92 @@ class AwsFaceRecognitionService implements FaceRecognitionService
         ];
     }
 
+    /**
+     * Every face indexed in the collection, following the provider pagination.
+     * A missing collection is reported as empty instead of as an error.
+     *
+     * @return array<int, array{face_id: string, external_image_id: string, image_id: string}>
+     */
+    public function listFaces(): array
+    {
+        $faces = [];
+        $nextToken = null;
+
+        do {
+            $request = [
+                'CollectionId' => $this->collectionId(),
+                'MaxResults' => 1000,
+            ];
+
+            if ($nextToken !== null) {
+                $request['NextToken'] = $nextToken;
+            }
+
+            try {
+                $result = $this->client()->listFaces($request);
+            } catch (RekognitionException $exception) {
+                if ($exception->getAwsErrorCode() === 'ResourceNotFoundException') {
+                    return $faces;
+                }
+
+                throw $exception;
+            }
+
+            foreach ($result['Faces'] ?? [] as $face) {
+                $faces[] = [
+                    'face_id' => (string) ($face['FaceId'] ?? ''),
+                    'external_image_id' => (string) ($face['ExternalImageId'] ?? ''),
+                    'image_id' => (string) ($face['ImageId'] ?? ''),
+                ];
+            }
+
+            $nextToken = $result['NextToken'] ?? null;
+        } while (filled($nextToken));
+
+        return $faces;
+    }
+
     public function removeFace(string $faceId): void
     {
         if ($faceId === '') {
             return;
         }
 
-        $this->client()->deleteFaces([
-            'CollectionId' => $this->collectionId(),
-            'FaceIds' => [$faceId],
-        ]);
+        $this->removeFaces([$faceId]);
+    }
+
+    /**
+     * Delete the faces in batches: the provider accepts up to 1000 ids per call
+     * and answers with the ones it actually removed.
+     *
+     * @param  array<int, string>  $faceIds
+     * @return array<int, string>
+     */
+    public function removeFaces(array $faceIds): array
+    {
+        $faceIds = array_values(array_filter(
+            array_map('strval', $faceIds),
+            fn (string $faceId) => $faceId !== '',
+        ));
+
+        if ($faceIds === []) {
+            return [];
+        }
+
+        $deleted = [];
+
+        foreach (array_chunk($faceIds, 1000) as $chunk) {
+            $result = $this->client()->deleteFaces([
+                'CollectionId' => $this->collectionId(),
+                'FaceIds' => $chunk,
+            ]);
+
+            foreach ($result['DeletedFaces'] ?? [] as $faceId) {
+                $deleted[] = (string) $faceId;
+            }
+        }
+
+        return $deleted;
     }
 
     private function client(): RekognitionClient

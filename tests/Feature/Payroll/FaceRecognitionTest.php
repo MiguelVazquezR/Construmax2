@@ -62,6 +62,15 @@ class FaceRecognitionTest extends TestCase
         return ['X-Attendance-Device' => $this->plainToken];
     }
 
+    /**
+     * Kiosk punches always store the device coordinates, so every valid request
+     * must include them.
+     */
+    private function locationPayload(): array
+    {
+        return ['latitude' => 20.676, 'longitude' => -103.347, 'location_accuracy' => 12.5];
+    }
+
     private function enableFaceRecognition(): void
     {
         PayrollSetting::current()->update(['face_recognition_enabled' => true]);
@@ -83,6 +92,7 @@ class FaceRecognitionTest extends TestCase
         $this->postJson(route('attendance.kiosk.face-punch'), [
             'type' => AttendanceLog::TYPE_CHECK_IN,
             'photo' => 'data:image/jpeg;base64,/9j/AAAA',
+            ...$this->locationPayload(),
         ], $this->deviceHeaders())
             ->assertOk()
             ->assertJsonPath('user_name', 'Ana López')
@@ -110,6 +120,7 @@ class FaceRecognitionTest extends TestCase
         $this->postJson(route('attendance.kiosk.face-punch'), [
             'type' => AttendanceLog::TYPE_CHECK_IN,
             'photo' => 'data:image/jpeg;base64,/9j/AAAA',
+            ...$this->locationPayload(),
         ], $this->deviceHeaders())
             ->assertStatus(422)
             ->assertJsonValidationErrors('face');
@@ -129,6 +140,7 @@ class FaceRecognitionTest extends TestCase
         $this->postJson(route('attendance.kiosk.face-punch'), [
             'type' => AttendanceLog::TYPE_CHECK_IN,
             'photo' => 'data:image/jpeg;base64,/9j/AAAA',
+            ...$this->locationPayload(),
         ], $this->deviceHeaders())
             ->assertStatus(422)
             ->assertJsonPath(
@@ -153,6 +165,7 @@ class FaceRecognitionTest extends TestCase
         $this->postJson(route('attendance.kiosk.face-punch'), [
             'type' => AttendanceLog::TYPE_CHECK_IN,
             'photo' => 'data:image/jpeg;base64,/9j/AAAA',
+            ...$this->locationPayload(),
         ], $this->deviceHeaders())
             ->assertStatus(422)
             ->assertJsonPath(
@@ -168,7 +181,30 @@ class FaceRecognitionTest extends TestCase
         $this->postJson(route('attendance.kiosk.face-punch'), [
             'type' => AttendanceLog::TYPE_CHECK_IN,
             'photo' => 'data:image/jpeg;base64,/9j/AAAA',
+            ...$this->locationPayload(),
         ])->assertForbidden();
+    }
+
+    public function test_kiosk_face_punch_requires_the_device_location(): void
+    {
+        $this->enableFaceRecognition();
+
+        $this->mock(FaceRecognitionService::class, function (MockInterface $mock) {
+            $mock->shouldReceive('isConfigured')->andReturn(true);
+            $mock->shouldNotReceive('search');
+        });
+
+        $this->postJson(route('attendance.kiosk.face-punch'), [
+            'type' => AttendanceLog::TYPE_CHECK_IN,
+            'photo' => 'data:image/jpeg;base64,/9j/AAAA',
+        ], $this->deviceHeaders())
+            ->assertStatus(422)
+            ->assertJsonPath(
+                'errors.latitude.0',
+                'No se pudo obtener la ubicación del dispositivo. Activa la ubicación e intenta de nuevo.'
+            );
+
+        $this->assertDatabaseCount('attendance_logs', 0);
     }
 
     public function test_admin_can_enroll_the_faces_of_a_collaborator(): void

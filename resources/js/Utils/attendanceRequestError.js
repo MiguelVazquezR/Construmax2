@@ -6,7 +6,7 @@
 const STATUS_MESSAGES = {
     400: 'La solicitud no se pudo procesar. Intenta de nuevo.',
     401: 'La sesión del kiosco expiró. Recarga la página e intenta de nuevo.',
-    403: 'Este dispositivo ya no está autorizado para registrar asistencia. Pide al administrador que lo registre de nuevo.',
+    403: 'Este dispositivo no está autorizado para registrar asistencia. Pide al administrador que lo reactive en Dispositivos de asistencia.',
     404: 'No se encontró el servicio de asistencia en el servidor. Avisa al administrador.',
     405: 'El servidor rechazó la solicitud. Avisa al administrador.',
     408: 'El servidor tardó demasiado en responder. Revisa la conexión e intenta de nuevo.',

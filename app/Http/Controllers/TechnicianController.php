@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Actions\Payroll\AssignUserShiftAction;
 use App\Actions\Payroll\EnrollProfilePhotoAction;
 use App\Actions\Payroll\RemoveProfilePhotoAction;
+use App\Actions\Payroll\RemoveUserFacesAction;
 use App\Actions\Payroll\SyncPayrollProfileAction;
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
@@ -34,6 +35,7 @@ class TechnicianController extends Controller
         private readonly SyncPayrollProfileAction $syncPayrollProfileAction,
         private readonly EnrollProfilePhotoAction $enrollProfilePhotoAction,
         private readonly RemoveProfilePhotoAction $removeProfilePhotoAction,
+        private readonly RemoveUserFacesAction $removeUserFacesAction,
         private readonly AssignUserShiftAction $assignUserShiftAction,
         private readonly ScheduleResolverService $scheduleResolver,
     ) {}
@@ -344,6 +346,8 @@ class TechnicianController extends Controller
                 $userData['password'] = Hash::make($validated['password']);
             }
 
+            $wasActive = (bool) $technician->user->is_active;
+
             $technician->user->update($userData);
 
             $optimizedPhotoPath = $request->hasFile('photo')
@@ -392,6 +396,10 @@ class TechnicianController extends Controller
             // The profile photo doubles as the face reference of the attendance kiosk.
             if ($optimizedPhotoPath !== null) {
                 $this->enrollProfilePhotoAction->execute($technician->user, $optimizedPhotoPath, $request->user());
+            } elseif (! $wasActive && $technician->user->is_active) {
+                // Re-enabled from the edit form: their face was removed when
+                // they were dismissed, so it is indexed again from the photo.
+                $this->enrollProfilePhotoAction->enrollFromStoredPhoto($technician->user, $request->user());
             }
 
             // CORRECCIÓN 2: Lógica para guardar la constancia fiscal si se adjuntó
@@ -682,9 +690,15 @@ class TechnicianController extends Controller
                 $technician->update(['status' => 'Inactivo']);
             });
 
+            // A dismissed technician no longer registers attendance: their face
+            // leaves the Rekognition collection (every stored face is billed).
+            $this->removeUserFacesAction->execute($technician->user);
+
             return redirect()->route('technicians.index')
                 ->with('success', 'Técnico dado de baja el '.CarbonImmutable::parse($terminationDate)->format('d/m/Y').'. Ya no aparecerá en los periodos de nómina posteriores y puede reactivarse desde el listado.');
         }
+
+        $this->removeUserFacesAction->execute($technician->user);
 
         $technician->update(['status' => 'Eliminado']);
         $technician->user->delete(); // Soft delete gracias al trait SoftDeletes en User
@@ -693,7 +707,7 @@ class TechnicianController extends Controller
             ->with('success', 'Técnico dado de baja correctamente. Su historial y trazabilidad se conservan.');
     }
 
-    public function restore($id)
+    public function restore(Request $request, $id)
     {
         $technician = Technician::where('id', $id)->firstOrFail();
         $user = User::withTrashed()->findOrFail($technician->user_id);
@@ -703,6 +717,9 @@ class TechnicianController extends Controller
         $user->update(['is_active' => (bool) $technician->is_internal]);
         $user->payrollProfile?->update(['termination_date' => null]);
         $technician->update(['status' => 'Activo']);
+
+        // Hiring again restores the face reference from the profile photo.
+        $this->enrollProfilePhotoAction->enrollFromStoredPhoto($user, $request->user());
 
         return redirect()->route('technicians.index')
             ->with('success', 'Técnico reactivado correctamente.');

@@ -8,6 +8,7 @@ use App\Models\CustomerContact;
 use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 use ZipArchive;
 
@@ -21,13 +22,22 @@ class TicketControllerTest extends TestCase
     {
         parent::setUp();
         $this->user = User::factory()->create(['is_active' => true]);
+
+        // Users without this permission only see the tickets they sell.
+        Permission::create([
+            'name' => 'tickets.index-all',
+            'guard_name' => 'web',
+            'category' => 'Tickets',
+            'description' => 'Ver todos los tickets',
+        ]);
+        $this->user->givePermissionTo('tickets.index-all');
     }
 
     // --- index ---
 
     public function test_index_renders_tickets_page(): void
     {
-        Ticket::factory()->count(3)->create();
+        Ticket::factory()->count(3)->withStatus('Borrador')->create();
 
         $this->actingAs($this->user)
             ->get(route('tickets.index'))
@@ -40,8 +50,8 @@ class TicketControllerTest extends TestCase
     public function test_index_filters_by_customer(): void
     {
         $customer = Customer::factory()->create();
-        Ticket::factory()->create(['customer_id' => $customer->id]);
-        Ticket::factory()->create();
+        Ticket::factory()->withStatus('Borrador')->create(['customer_id' => $customer->id]);
+        Ticket::factory()->withStatus('Borrador')->create();
 
         $this->actingAs($this->user)
             ->get(route('tickets.index', ['customer' => $customer->id]))
@@ -52,7 +62,7 @@ class TicketControllerTest extends TestCase
 
     public function test_index_filters_by_folio(): void
     {
-        $ticket = Ticket::factory()->create();
+        $ticket = Ticket::factory()->withStatus('Borrador')->create();
 
         $this->actingAs($this->user)
             ->get(route('tickets.index', ['folio' => (string) $ticket->id]))
@@ -326,8 +336,11 @@ class TicketControllerTest extends TestCase
 
     public function test_export_only_includes_the_acting_seller_tickets(): void
     {
+        // A seller without the index-all permission only exports their own tickets.
+        $seller = User::factory()->create(['is_active' => true]);
+
         Ticket::factory()->create([
-            'seller_id' => $this->user->id,
+            'seller_id' => $seller->id,
             'status' => 'Borrador',
             'name' => 'Ticket propio',
         ]);
@@ -337,7 +350,7 @@ class TicketControllerTest extends TestCase
             'name' => 'Ticket de otro asesor',
         ]);
 
-        $response = $this->actingAs($this->user)->get(route('tickets.export'));
+        $response = $this->actingAs($seller)->get(route('tickets.export'));
 
         $response->assertOk();
 

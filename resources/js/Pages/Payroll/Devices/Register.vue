@@ -4,6 +4,7 @@ import { Head } from '@inertiajs/vue3';
 import { ElMessage } from 'element-plus';
 import { CircleCheck, CopyDocument, Monitor, VideoCamera, WarningFilled } from '@element-plus/icons-vue';
 import axios from 'axios';
+import { readDeviceKey } from '@/Utils/attendanceDeviceKey';
 import {
     forgetDeviceToken,
     kioskUrlWithToken,
@@ -21,8 +22,18 @@ const props = defineProps({
 const checking = ref(true);
 const registeredDevice = ref(null);
 const registeredToken = ref(readDeviceToken());
+// Device already registered from this browser that only needs a new token.
+const recoverableDevice = ref(null);
+const forceNewRegistration = ref(false);
+const deviceOptions = ref([]);
+const selectedDeviceId = ref(null);
+const reactivatePassword = ref('');
+const reactivateError = ref('');
+const reactivating = ref(false);
 const saving = ref(false);
 const errorMessage = ref('');
+
+const deviceKey = readDeviceKey();
 
 const form = reactive({
     name: '',
@@ -49,30 +60,109 @@ const checkCurrentDevice = async () => {
 
     const token = readDeviceToken();
 
-    if (!token) {
-        checking.value = false;
+    if (token) {
+        try {
+            const { data } = await axios.post(route('attendance.kiosk.bootstrap'), {
+                device_key: deviceKey,
+            }, {
+                headers: { 'X-Attendance-Device': token },
+            });
+
+            registeredDevice.value = data.device;
+            registeredToken.value = token;
+            checking.value = false;
+
+            return;
+        } catch (error) {
+            if (isDeviceRejectionError(error)) {
+                // The server rejected the token: this browser is no longer authorized.
+                forgetDeviceToken();
+                registeredDevice.value = null;
+                registeredToken.value = null;
+            } else {
+                // A network or server failure must not lose a valid registration.
+                ElMessage.warning('No se pudo verificar el dispositivo. Revisa la conexión.');
+                checking.value = false;
+
+                return;
+            }
+        }
+    }
+
+    // Without a token the device may still be registered: the server recognizes
+    // it by its fingerprint, so it is never registered twice.
+    await recognizeRegisteredDevice();
+    checking.value = false;
+};
+
+const recognizeRegisteredDevice = async () => {
+    if (!deviceKey) {
+        recoverableDevice.value = null;
+
         return;
     }
 
     try {
-        const { data } = await axios.post(route('attendance.kiosk.bootstrap'), {}, {
-            headers: { 'X-Attendance-Device': token },
+        const { data } = await axios.post(route('attendance.kiosk.recover'), {
+            device_key: deviceKey,
         });
 
-        registeredDevice.value = data.device;
-        registeredToken.value = token;
-    } catch (error) {
-        if (isDeviceRejectionError(error)) {
-            // The server rejected the token: this browser is no longer authorized.
-            forgetDeviceToken();
-            registeredDevice.value = null;
-            registeredToken.value = null;
-        } else {
-            // A network or server failure must not lose a valid registration.
-            ElMessage.warning('No se pudo verificar el dispositivo. Revisa la conexión.');
+        if (data.status === 'authorized') {
+            saveDeviceToken(data.token);
+            registeredToken.value = data.token;
+            registeredDevice.value = data.device;
+
+            return;
         }
+
+        recoverableDevice.value = data.device ?? null;
+    } catch {
+        recoverableDevice.value = null;
+    }
+};
+
+/**
+ * Give this browser a new token for the device it already is. The registration
+ * password is required, so an unknown browser cannot claim a device.
+ */
+const reactivate = async () => {
+    reactivateError.value = '';
+
+    if (!reactivatePassword.value) {
+        reactivateError.value = 'Escribe la contraseña de registro.';
+        return;
+    }
+
+    reactivating.value = true;
+
+    try {
+        const { data } = await axios.post(route('attendance.kiosk.recover'), {
+            device_key: deviceKey,
+            password: reactivatePassword.value,
+            device_id: selectedDeviceId.value ?? recoverableDevice.value?.id ?? null,
+        });
+
+        if (data.status === 'authorized') {
+            saveDeviceToken(data.token);
+            registeredToken.value = data.token;
+            registeredDevice.value = data.device;
+            recoverableDevice.value = null;
+            reactivatePassword.value = '';
+            ElMessage.success('Dispositivo reactivado correctamente.');
+
+            return;
+        }
+
+        // The fingerprint does not identify a single device: pick one.
+        deviceOptions.value = data.devices ?? [];
+        recoverableDevice.value = data.device ?? null;
+        reactivateError.value = data.message || '';
+    } catch (error) {
+        reactivateError.value = error.response?.data?.errors?.password?.[0]
+            || error.response?.data?.errors?.device_id?.[0]
+            || 'No se pudo reactivar el dispositivo.';
     } finally {
-        checking.value = false;
+        reactivating.value = false;
     }
 };
 
@@ -98,6 +188,7 @@ const register = async () => {
             location: form.location || null,
             notes: form.notes || null,
             password: form.password,
+            device_key: deviceKey,
         });
 
         saveDeviceToken(data.token);
@@ -191,6 +282,70 @@ onMounted(checkCurrentDevice);
                         </el-button>
                         <el-button size="large" :icon="CopyDocument" @click="copyKioskLink">
                             Copiar link del kiosco
+                        </el-button>
+                    </div>
+                </template>
+
+                <template v-else-if="recoverableDevice && !forceNewRegistration">
+                    <div class="rounded-xl border border-amber-200 dark:border-amber-400/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-4">
+                        <p class="flex items-center gap-2 font-semibold text-amber-700 dark:text-amber-200">
+                            <el-icon><WarningFilled /></el-icon>
+                            Este dispositivo ya está registrado
+                        </p>
+                        <p class="text-sm text-amber-700/80 dark:text-amber-200/80 mt-1">
+                            {{ recoverableDevice.name }}<template v-if="recoverableDevice.location"> · {{ recoverableDevice.location }}</template>
+                        </p>
+                        <p class="text-sm text-amber-700/80 dark:text-amber-200/80 mt-2">
+                            Este navegador perdió su acceso (por ejemplo, al borrar los datos de navegación).
+                            Escribe la contraseña de registro para reactivarlo, sin registrarlo otra vez.
+                        </p>
+                    </div>
+
+                    <el-form label-position="top" size="default" autocomplete="off" class="mt-5" @submit.prevent="reactivate">
+                        <el-form-item v-if="deviceOptions.length" label="Dispositivo">
+                            <el-select v-model="selectedDeviceId" class="w-full" placeholder="Selecciona el dispositivo">
+                                <el-option
+                                    v-for="option in deviceOptions"
+                                    :key="option.id"
+                                    :label="option.location ? `${option.name} · ${option.location}` : option.name"
+                                    :value="option.id"
+                                />
+                            </el-select>
+                        </el-form-item>
+
+                        <el-form-item label="Contraseña de registro">
+                            <el-input
+                                v-model="reactivatePassword"
+                                type="password"
+                                name="device_registration_password"
+                                autocomplete="off"
+                                show-password
+                                placeholder="Contraseña proporcionada por el administrador"
+                                maxlength="100"
+                                @keyup.enter="reactivate"
+                            />
+                        </el-form-item>
+
+                        <p v-if="reactivateError" class="text-sm text-red-600 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-400/30 rounded-lg px-4 py-3 mb-4">
+                            {{ reactivateError }}
+                        </p>
+
+                        <el-button
+                            type="primary"
+                            color="#f26c17"
+                            size="large"
+                            class="w-full"
+                            :loading="reactivating"
+                            :disabled="!passwordConfigured"
+                            @click="reactivate"
+                        >
+                            Reactivar este dispositivo
+                        </el-button>
+                    </el-form>
+
+                    <div class="text-center mt-4">
+                        <el-button text class="!text-xs !font-semibold !text-gray-500" @click="forceNewRegistration = true">
+                            Es un dispositivo distinto, registrarlo como nuevo
                         </el-button>
                     </div>
                 </template>

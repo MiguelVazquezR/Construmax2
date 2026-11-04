@@ -6,6 +6,7 @@ use App\Models\AttendanceDevice;
 use App\Models\PayrollSetting;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 class AttendanceDeviceService
@@ -14,17 +15,25 @@ class AttendanceDeviceService
      * Register a new authorized kiosk device.
      *
      * The plain token is returned only once: it must be stored in the device
-     * browser (localStorage) and is kept hashed in the database.
+     * browser (localStorage) and is kept hashed in the database. The browser
+     * fingerprint is kept hashed too, so the device can be recognized again
+     * when its local storage is cleared.
      *
      * @return array{device: AttendanceDevice, token: string}
      */
-    public function register(string $name, ?string $location, ?string $notes, ?User $actor = null): array
-    {
+    public function register(
+        string $name,
+        ?string $location,
+        ?string $notes,
+        ?User $actor = null,
+        ?string $fingerprint = null,
+    ): array {
         $token = Str::random(64);
 
         $device = AttendanceDevice::create([
             'name' => $name,
             'token_hash' => $this->hashToken($token),
+            'fingerprint_hash' => $this->hashFingerprint($fingerprint),
             'location' => $location,
             'notes' => $notes,
             'registered_by' => $actor?->id,
@@ -85,6 +94,109 @@ class AttendanceDeviceService
     }
 
     /**
+     * Active devices registered from the same browser fingerprint, the most
+     * recently used first.
+     *
+     * @return \Illuminate\Support\Collection<int, AttendanceDevice>
+     */
+    public function findByFingerprint(?string $fingerprint): Collection
+    {
+        $hash = $this->hashFingerprint($fingerprint);
+
+        if ($hash === null) {
+            return collect();
+        }
+
+        return AttendanceDevice::active()
+            ->where('fingerprint_hash', $hash)
+            ->orderByDesc('last_seen_at')
+            ->orderByDesc('id')
+            ->get();
+    }
+
+    /**
+     * The device that most likely belongs to the browser asking for a token:
+     * the same network is preferred (removes most collisions between identical
+     * tablets), otherwise the most recently used one.
+     */
+    public function bestMatchForFingerprint(?string $fingerprint, ?string $ip): ?AttendanceDevice
+    {
+        $matches = $this->findByFingerprint($fingerprint);
+
+        if ($ip !== null && $ip !== '') {
+            $sameNetwork = $matches->first(
+                fn (AttendanceDevice $device) => $device->last_ip === $ip
+            );
+
+            if ($sameNetwork) {
+                return $sameNetwork;
+            }
+        }
+
+        return $matches->first();
+    }
+
+    /**
+     * Active devices an operator can pick from when the fingerprint does not
+     * identify a single device (for example after a browser update).
+     *
+     * @return array<int, array{id: int, name: string, location: string|null}>
+     */
+    public function authorizableDevices(): array
+    {
+        return AttendanceDevice::active()
+            ->orderBy('name')
+            ->limit(100)
+            ->get(['id', 'name', 'location'])
+            ->map(fn (AttendanceDevice $device) => [
+                'id' => $device->id,
+                'name' => $device->name,
+                'location' => $device->location,
+            ])
+            ->all();
+    }
+
+    /**
+     * Replace the device token and return the new plain value. The previous
+     * token stops working, so a lost token can never be replayed.
+     */
+    public function issueToken(AttendanceDevice $device): string
+    {
+        $token = Str::random(64);
+
+        $device->forceFill(['token_hash' => $this->hashToken($token)])->save();
+
+        return $token;
+    }
+
+    /**
+     * Keep the fingerprint of an authorized device up to date: browser updates
+     * change it slightly, and an outdated fingerprint would stop recognizing
+     * the device.
+     */
+    public function syncFingerprint(AttendanceDevice $device, ?string $fingerprint): void
+    {
+        $hash = $this->hashFingerprint($fingerprint);
+
+        if ($hash === null || $device->fingerprint_hash === $hash) {
+            return;
+        }
+
+        $device->forceFill(['fingerprint_hash' => $hash])->save();
+    }
+
+    /**
+     * The device is on the same network it used before, so it is safe to
+     * recognize it again without asking for the shared password.
+     */
+    public function isOnKnownNetwork(AttendanceDevice $device, ?string $ip): bool
+    {
+        return filled($device->last_ip)
+            && filled($ip)
+            && $device->last_ip === $ip;
+    }
+
+    /**
      * Keep track of every device that talks to the kiosk API.
      */
     public function touch(AttendanceDevice $device, Request $request): void
@@ -136,5 +248,19 @@ class AttendanceDeviceService
     private function hashToken(string $token): string
     {
         return hash('sha256', $token);
+    }
+
+    /**
+     * The fingerprint never reaches the database in plain text.
+     */
+    private function hashFingerprint(?string $fingerprint): ?string
+    {
+        $fingerprint = trim((string) $fingerprint);
+
+        if ($fingerprint === '') {
+            return null;
+        }
+
+        return hash('sha256', 'attendance-device:'.$fingerprint);
     }
 }

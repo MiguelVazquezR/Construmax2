@@ -2,10 +2,16 @@
 
 namespace Tests\Feature;
 
+use App\Models\FaceEnrollment;
 use App\Models\PayrollProfile;
+use App\Models\PayrollSetting;
 use App\Models\Technician;
 use App\Models\User;
+use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Mockery\MockInterface;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -436,5 +442,75 @@ class TechnicianControllerTest extends TestCase
         $this->assertTrue((bool) $techUser->fresh()->is_active);
         $this->assertNull($profile->fresh()->termination_date);
         $this->assertSame('Activo', $technician->fresh()->status);
+    }
+
+    public function test_dismissing_an_internal_technician_removes_the_face_reference(): void
+    {
+        $techUser = User::factory()->internalTechnician()->create();
+        $technician = $techUser->technician;
+
+        PayrollProfile::create([
+            'user_id' => $techUser->id,
+            'is_attendance_subject' => true,
+        ]);
+
+        $enrollment = FaceEnrollment::create([
+            'user_id' => $techUser->id,
+            'collection_id' => 'empleados_construmax',
+            'face_id' => 'face-to-remove',
+            'external_image_id' => (string) $techUser->id,
+            'status' => FaceEnrollment::STATUS_ACTIVE,
+            'enrolled_at' => now(),
+        ]);
+
+        $this->mock(FaceRecognitionService::class, function (MockInterface $mock) {
+            $mock->shouldReceive('removeFace')->once()->with('face-to-remove');
+        });
+
+        $this->actingAs($this->user)
+            ->delete(route('technicians.destroy', $technician), ['termination_date' => '2026-09-20'])
+            ->assertRedirect(route('technicians.index'));
+
+        $this->assertDatabaseHas('face_enrollments', [
+            'id' => $enrollment->id,
+            'status' => FaceEnrollment::STATUS_REMOVED,
+        ]);
+    }
+
+    public function test_reactivating_a_technician_indexes_the_profile_photo_again(): void
+    {
+        Storage::fake('public');
+
+        PayrollSetting::current()->update(['face_recognition_enabled' => true]);
+
+        $techUser = User::factory()->internalTechnician()->create();
+        $technician = $techUser->technician;
+
+        PayrollProfile::create([
+            'user_id' => $techUser->id,
+            'is_attendance_subject' => true,
+            'termination_date' => '2026-09-20',
+        ]);
+
+        $techUser->update(['is_active' => false]);
+        $technician->update(['status' => 'Inactivo']);
+        $techUser->updateProfilePhoto(UploadedFile::fake()->image('rostro.jpg', 300, 300));
+
+        $this->mock(FaceRecognitionService::class, function (MockInterface $mock) {
+            $mock->shouldReceive('isConfigured')->andReturn(true);
+            $mock->shouldReceive('collectionId')->andReturn('empleados_construmax');
+            $mock->shouldReceive('indexFace')->once()->andReturn(['face_id' => 'new-face', 'quality' => 98.0]);
+            $mock->shouldNotReceive('removeFace');
+        });
+
+        $this->actingAs($this->user)
+            ->patch(route('technicians.restore', $technician->id))
+            ->assertRedirect(route('technicians.index'));
+
+        $this->assertDatabaseHas('face_enrollments', [
+            'user_id' => $techUser->id,
+            'face_id' => 'new-face',
+            'status' => FaceEnrollment::STATUS_ACTIVE,
+        ]);
     }
 }
