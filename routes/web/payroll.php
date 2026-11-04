@@ -126,6 +126,11 @@ Route::prefix('attendance/devices/register')->name('attendance.devices.')->group
 Route::prefix('attendance/kiosk')->name('attendance.kiosk.')->group(function () {
     Route::get('/', [KioskController::class, 'show'])->name('show');
 
+    // Recognize this browser again when its stored token is gone, so a device
+    // whose browsing data was cleared does not have to be registered twice.
+    Route::post('/recover', [KioskController::class, 'recover'])
+        ->middleware('throttle:20,1')->name('recover');
+
     Route::post('/bootstrap', [KioskController::class, 'bootstrap'])
         ->middleware(['attendance.device', 'throttle:120,1'])->name('bootstrap');
 

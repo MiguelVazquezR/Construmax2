@@ -69,6 +69,14 @@ class RegisterAttendancePunchAction
         $latitude = $data['latitude'] ?? null;
         $longitude = $data['longitude'] ?? null;
 
+        // Kiosk punches always keep the coordinates of the device: they are the
+        // evidence of where the collaborator registered.
+        if ($source === AttendanceLog::SOURCE_KIOSK && ($latitude === null || $longitude === null)) {
+            throw ValidationException::withMessages([
+                'location' => 'No se pudo obtener la ubicación del dispositivo. Activa la ubicación e intenta de nuevo.',
+            ]);
+        }
+
         if ($source === AttendanceLog::SOURCE_REMOTE) {
             $settings = PayrollSetting::current();
 

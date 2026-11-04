@@ -11,12 +11,12 @@ use App\Models\User;
 class RemoveProfilePhotoAction
 {
     public function __construct(
-        private readonly EnrollUserFacesAction $enrollUserFacesAction,
+        private readonly RemoveUserFacesAction $removeUserFacesAction,
     ) {}
 
     public function execute(User $user): void
     {
-        $this->enrollUserFacesAction->removeActive($user);
+        $this->removeUserFacesAction->execute($user);
 
         $user->deleteProfilePhoto();
     }

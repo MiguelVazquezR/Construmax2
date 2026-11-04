@@ -61,6 +61,7 @@ class CustomerControllerTest extends TestCase
     public function test_store_creates_customer_with_branches_and_contacts(): void
     {
         $data = [
+            'type' => 'customer',
             'name' => 'Test Customer',
             'business_name' => 'Test Customer SA de CV',
             'rfc' => 'TST010101ABC',
@@ -69,7 +70,7 @@ class CustomerControllerTest extends TestCase
             'invoice_usage' => 'Gastos generales',
             'currency' => 'MXN',
             'branches' => [
-                ['country' => 'México', 'region' => 'Nuevo León', 'unit' => 'Oficina', 'branch_name' => 'Sucursal Monterrey'],
+                ['country' => 'México', 'region' => 'Nuevo León', 'city' => 'Monterrey', 'unit' => 'Oficina', 'branch_name' => 'Sucursal Monterrey'],
             ],
             'contacts' => [
                 [
@@ -96,6 +97,13 @@ class CustomerControllerTest extends TestCase
     {
         $this->actingAs($this->user)
             ->post(route('customers.store'), [])
+            ->assertSessionHasErrors(['type', 'name', 'business_name', 'contacts']);
+    }
+
+    public function test_store_requires_the_invoicing_fields_of_a_customer(): void
+    {
+        $this->actingAs($this->user)
+            ->post(route('customers.store'), ['type' => 'customer'])
             ->assertSessionHasErrors([
                 'name', 'business_name', 'rfc', 'payment_condition',
                 'payment_method', 'invoice_usage', 'currency',
@@ -103,15 +111,34 @@ class CustomerControllerTest extends TestCase
             ]);
     }
 
-    public function test_store_requires_unique_rfc(): void
+    public function test_store_allows_the_same_rfc_for_different_customers(): void
     {
+        // The generic RFC (XAXX010101000) is shared by "público en general",
+        // so duplicate RFCs are allowed on purpose.
         Customer::factory()->create(['rfc' => 'DUP010101ABC']);
 
         $this->actingAs($this->user)
             ->post(route('customers.store'), [
+                'type' => 'prospect',
+                'name' => 'Prospecto Duplicado',
+                'business_name' => 'Prospecto Duplicado SA de CV',
                 'rfc' => 'DUP010101ABC',
+                'contacts' => [
+                    [
+                        'name' => 'Jane Doe',
+                        'email' => 'jane@test.com',
+                        'phone' => '5512345678',
+                        'position' => 'Directora',
+                    ],
+                ],
             ])
-            ->assertSessionHasErrors('rfc');
+            ->assertRedirect(route('customers.index'))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('customers', [
+            'name' => 'Prospecto Duplicado',
+            'rfc' => 'DUP010101ABC',
+        ]);
     }
 
     // --- show ---
@@ -149,6 +176,7 @@ class CustomerControllerTest extends TestCase
         $customer = Customer::factory()->create(['name' => 'Old Name']);
 
         $data = [
+            'type' => 'customer',
             'name' => 'New Name',
             'business_name' => 'New Name SA de CV',
             'rfc' => $customer->rfc,
@@ -157,7 +185,7 @@ class CustomerControllerTest extends TestCase
             'invoice_usage' => 'Gastos de operación',
             'currency' => 'USD',
             'branches' => [
-                ['country' => 'México', 'region' => 'CDMX', 'unit' => 'Oficina', 'branch_name' => 'Principal'],
+                ['country' => 'México', 'region' => 'CDMX', 'city' => 'Ciudad de México', 'unit' => 'Oficina', 'branch_name' => 'Principal'],
             ],
             'contacts' => [
                 [

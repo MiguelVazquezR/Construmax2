@@ -24,7 +24,8 @@ class CostControllerTest extends TestCase
         parent::setUp();
         $this->user = User::factory()->create(['is_active' => true]);
         Permission::create(['name' => 'costs.index', 'guard_name' => 'web', 'category' => 'Costs', 'description' => 'Access costs']);
-        $this->user->givePermissionTo('costs.index');
+        Permission::create(['name' => 'costs.create', 'guard_name' => 'web', 'category' => 'Costs', 'description' => 'Create cost catalog versions']);
+        $this->user->givePermissionTo(['costs.index', 'costs.create']);
     }
 
     // --- index ---
@@ -64,12 +65,12 @@ class CostControllerTest extends TestCase
             'country' => 'Estados Unidos',
         ]);
 
-        $ticketA = Ticket::factory()->create([
+        $ticketA = Ticket::factory()->withStatus('Borrador')->create([
             'customer_branch_id' => $branchA->id,
             'name'               => 'Proyecto Alpha',
         ]);
 
-        $ticketB = Ticket::factory()->create([
+        $ticketB = Ticket::factory()->withStatus('Borrador')->create([
             'customer_branch_id' => $branchB->id,
             'name'               => 'Proyecto Beta',
         ]);

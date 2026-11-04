@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\TaskTemplate;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
 class TaskTemplateControllerTest extends TestCase
@@ -17,6 +18,25 @@ class TaskTemplateControllerTest extends TestCase
     {
         parent::setUp();
         $this->user = User::factory()->create(['is_active' => true]);
+
+        foreach ([
+            'tickets.create-tasks-template' => 'Crear plantillas de tareas',
+            'tickets.edit-tasks-template' => 'Editar plantillas de tareas',
+            'tickets.delete-tasks-template' => 'Eliminar plantillas de tareas',
+        ] as $name => $description) {
+            Permission::create([
+                'name' => $name,
+                'guard_name' => 'web',
+                'category' => 'Tickets',
+                'description' => $description,
+            ]);
+        }
+
+        $this->user->givePermissionTo([
+            'tickets.create-tasks-template',
+            'tickets.edit-tasks-template',
+            'tickets.delete-tasks-template',
+        ]);
     }
 
     // --- store ---

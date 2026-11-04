@@ -30,8 +30,18 @@ class NullFaceRecognitionService implements FaceRecognitionService
         throw new RuntimeException('AWS Rekognition is not configured.');
     }
 
+    public function listFaces(): array
+    {
+        return [];
+    }
+
     public function removeFace(string $faceId): void
     {
         // Nothing to remove without a provider.
+    }
+
+    public function removeFaces(array $faceIds): array
+    {
+        return [];
     }
 }

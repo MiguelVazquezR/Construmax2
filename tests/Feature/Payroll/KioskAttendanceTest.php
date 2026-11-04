@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Payroll;
 
+use App\Actions\Payroll\RegisterAttendancePunchAction;
 use App\Models\AttendanceDevice;
 use App\Models\AttendanceLog;
 use App\Models\PayrollProfile;
@@ -9,6 +10,7 @@ use App\Models\PayrollSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class KioskAttendanceTest extends TestCase
@@ -44,6 +46,15 @@ class KioskAttendanceTest extends TestCase
     private function deviceHeaders(): array
     {
         return ['X-Attendance-Device' => $this->plainToken];
+    }
+
+    /**
+     * Kiosk punches always store the device coordinates, so every valid request
+     * must include them.
+     */
+    private function locationPayload(): array
+    {
+        return ['latitude' => 20.676, 'longitude' => -103.347, 'location_accuracy' => 12.5];
     }
 
     public function test_kiosk_page_renders_without_device_token(): void
@@ -104,6 +115,7 @@ class KioskAttendanceTest extends TestCase
         $this->postJson(route('attendance.kiosk.punch'), [
             'employee_number' => 'EMP-0100',
             'type' => AttendanceLog::TYPE_CHECK_IN,
+            ...$this->locationPayload(),
         ], $this->deviceHeaders())
             ->assertOk()
             ->assertJsonPath('user_name', 'Juan Pérez')
@@ -125,9 +137,37 @@ class KioskAttendanceTest extends TestCase
         $this->postJson(route('attendance.kiosk.punch'), [
             'employee_number' => ' emp-0100 ',
             'type' => AttendanceLog::TYPE_CHECK_IN,
+            ...$this->locationPayload(),
         ], $this->deviceHeaders())
             ->assertOk()
             ->assertJsonPath('user_name', 'Juan Pérez');
+    }
+
+    public function test_punch_requires_the_device_location(): void
+    {
+        $this->postJson(route('attendance.kiosk.punch'), [
+            'employee_number' => 'EMP-0100',
+            'type' => AttendanceLog::TYPE_CHECK_IN,
+        ], $this->deviceHeaders())
+            ->assertStatus(422)
+            ->assertJsonPath(
+                'errors.latitude.0',
+                'No se pudo obtener la ubicación del dispositivo. Activa la ubicación e intenta de nuevo.'
+            );
+
+        $this->assertDatabaseCount('attendance_logs', 0);
+    }
+
+    public function test_the_punch_action_rejects_a_kiosk_punch_without_location(): void
+    {
+        // The rule lives in the action too, so a future kiosk caller cannot skip it.
+        $this->expectException(ValidationException::class);
+
+        app(RegisterAttendancePunchAction::class)->execute($this->employee, [
+            'type' => AttendanceLog::TYPE_CHECK_IN,
+            'source' => AttendanceLog::SOURCE_KIOSK,
+            'identifier_method' => AttendanceLog::IDENTIFIER_EMPLOYEE_NUMBER,
+        ], $this->device);
     }
 
     public function test_punch_stores_the_device_location(): void
@@ -153,6 +193,7 @@ class KioskAttendanceTest extends TestCase
         $this->postJson(route('attendance.kiosk.punch'), [
             'employee_number' => 'EMP-9999',
             'type' => AttendanceLog::TYPE_CHECK_IN,
+            ...$this->locationPayload(),
         ], $this->deviceHeaders())
             ->assertStatus(422)
             ->assertJsonValidationErrors('employee_number');
@@ -165,6 +206,7 @@ class KioskAttendanceTest extends TestCase
         $payload = [
             'employee_number' => 'EMP-0100',
             'type' => AttendanceLog::TYPE_CHECK_IN,
+            ...$this->locationPayload(),
         ];
 
         $this->postJson(route('attendance.kiosk.punch'), $payload, $this->deviceHeaders())->assertOk();
@@ -189,6 +231,7 @@ class KioskAttendanceTest extends TestCase
         $this->postJson(route('attendance.kiosk.punch'), [
             'employee_number' => 'EMP-0200',
             'type' => AttendanceLog::TYPE_CHECK_IN,
+            ...$this->locationPayload(),
         ], $this->deviceHeaders())
             ->assertStatus(422);
 
@@ -207,6 +250,7 @@ class KioskAttendanceTest extends TestCase
         $this->postJson(route('attendance.kiosk.punch'), [
             'employee_number' => 'EMP-0100',
             'type' => AttendanceLog::TYPE_CHECK_IN,
+            ...$this->locationPayload(),
         ])->assertForbidden();
     }
 
@@ -219,6 +263,7 @@ class KioskAttendanceTest extends TestCase
         $this->postJson(route('attendance.kiosk.punch'), [
             'employee_number' => 'EMP-0100',
             'type' => AttendanceLog::TYPE_CHECK_IN,
+            ...$this->locationPayload(),
         ], $this->deviceHeaders())
             ->assertStatus(422)
             ->assertJsonValidationErrors('user');
@@ -237,6 +282,7 @@ class KioskAttendanceTest extends TestCase
         $this->postJson(route('attendance.kiosk.punch'), [
             'employee_number' => 'EMP-0100',
             'type' => AttendanceLog::TYPE_CHECK_IN,
+            ...$this->locationPayload(),
         ], $this->deviceHeaders())
             ->assertOk();
 

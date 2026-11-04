@@ -13,6 +13,7 @@ class EnrollUserFacesAction
 {
     public function __construct(
         private readonly FaceRecognitionService $faceRecognition,
+        private readonly RemoveUserFacesAction $removeUserFacesAction,
     ) {}
 
     /**
@@ -65,7 +66,7 @@ class EnrollUserFacesAction
         }
 
         // Replace the previous references only after a successful capture.
-        $this->removeActive($user);
+        $this->removeUserFacesAction->execute($user);
 
         $collection = $this->faceRecognition->collectionId();
 
@@ -83,28 +84,5 @@ class EnrollUserFacesAction
         }
 
         return count($indexed);
-    }
-
-    /**
-     * Remove the active enrollments (both in Rekognition and locally).
-     */
-    public function removeActive(User $user): void
-    {
-        FaceEnrollment::query()
-            ->forUser($user->id)
-            ->active()
-            ->get()
-            ->each(function (FaceEnrollment $enrollment) {
-                try {
-                    $this->faceRecognition->removeFace($enrollment->face_id);
-                } catch (\Throwable $exception) {
-                    Log::warning('No se pudo eliminar una referencia facial remota.', [
-                        'face_id' => $enrollment->face_id,
-                        'error' => $exception->getMessage(),
-                    ]);
-                }
-
-                $enrollment->update(['status' => FaceEnrollment::STATUS_REMOVED]);
-            });
     }
 }

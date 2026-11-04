@@ -49,13 +49,32 @@ class AttendanceDeviceController extends Controller
             'name' => ['required', 'string', 'max:100'],
             'location' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:500'],
+            'device_key' => ['nullable', 'string', 'max:255'],
         ]);
+
+        // A browser that already holds a valid token is an authorized device:
+        // registering it again would create a duplicate.
+        $currentDevice = $this->deviceService->findByToken(
+            $request->header('X-Attendance-Device')
+        );
+
+        if ($currentDevice) {
+            return response()->json([
+                'message' => "Este dispositivo ya está autorizado como «{$currentDevice->name}». No es necesario registrarlo de nuevo.",
+                'device' => [
+                    'id' => $currentDevice->id,
+                    'name' => $currentDevice->name,
+                    'location' => $currentDevice->location,
+                ],
+            ], 409);
+        }
 
         ['device' => $device, 'token' => $token] = $this->deviceService->register(
             $validated['name'],
             $validated['location'] ?? null,
             $validated['notes'] ?? null,
             $request->user(),
+            $validated['device_key'] ?? null,
         );
 
         return response()->json([

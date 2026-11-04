@@ -2,11 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Models\FaceEnrollment;
 use App\Models\PayrollProfile;
+use App\Models\PayrollSetting;
 use App\Models\User;
 use App\Models\VacationAdjustment;
+use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
+use Mockery\MockInterface;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -298,6 +304,74 @@ class UserControllerTest extends TestCase
             ->assertSessionHas('success');
 
         $this->assertNull(PayrollProfile::where('user_id', $user->id)->first()->termination_date);
+    }
+
+    public function test_dismissing_a_user_removes_the_face_reference(): void
+    {
+        $user = User::factory()->create(['is_active' => true]);
+
+        PayrollProfile::create([
+            'user_id' => $user->id,
+            'is_attendance_subject' => true,
+        ]);
+
+        $enrollment = FaceEnrollment::create([
+            'user_id' => $user->id,
+            'collection_id' => 'empleados_construmax',
+            'face_id' => 'face-to-remove',
+            'external_image_id' => (string) $user->id,
+            'status' => FaceEnrollment::STATUS_ACTIVE,
+            'enrolled_at' => now(),
+        ]);
+
+        $this->mock(FaceRecognitionService::class, function (MockInterface $mock) {
+            $mock->shouldReceive('removeFace')->once()->with('face-to-remove');
+        });
+
+        $this->actingAs($this->admin)
+            ->put(route('users.toggle-status', $user), ['termination_date' => '2026-09-15'])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('face_enrollments', [
+            'id' => $enrollment->id,
+            'status' => FaceEnrollment::STATUS_REMOVED,
+        ]);
+    }
+
+    public function test_reactivating_a_user_indexes_the_profile_photo_again(): void
+    {
+        Storage::fake('public');
+
+        PayrollSetting::current()->update(['face_recognition_enabled' => true]);
+
+        $user = User::factory()->create(['is_active' => false]);
+
+        PayrollProfile::create([
+            'user_id' => $user->id,
+            'is_attendance_subject' => true,
+            'termination_date' => '2026-09-15',
+        ]);
+
+        $user->updateProfilePhoto(UploadedFile::fake()->image('rostro.jpg', 300, 300));
+
+        $this->mock(FaceRecognitionService::class, function (MockInterface $mock) {
+            $mock->shouldReceive('isConfigured')->andReturn(true);
+            $mock->shouldReceive('collectionId')->andReturn('empleados_construmax');
+            $mock->shouldReceive('indexFace')->once()->andReturn(['face_id' => 'new-face', 'quality' => 98.0]);
+            $mock->shouldNotReceive('removeFace');
+        });
+
+        $this->actingAs($this->admin)
+            ->put(route('users.toggle-status', $user))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('face_enrollments', [
+            'user_id' => $user->id,
+            'face_id' => 'new-face',
+            'status' => FaceEnrollment::STATUS_ACTIVE,
+        ]);
     }
 
     public function test_termination_date_cannot_be_before_the_hire_date(): void
