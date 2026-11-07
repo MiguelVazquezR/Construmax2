@@ -45,6 +45,43 @@ class AttendanceDeviceService
     }
 
     /**
+     * Resolve the device row of a tablet running the Android kiosk app,
+     * creating it on first contact.
+     *
+     * The app needs no authorization at all: it is installed manually from a
+     * controlled APK, so the tablet is recognized by its Android ID and the row
+     * exists only to keep every punch traceable. The random token of that row
+     * is never handed out, so it cannot be used to reach the web kiosk.
+     */
+    public function findOrCreateForApp(?string $deviceKey, ?string $deviceName = null): ?AttendanceDevice
+    {
+        $hash = $this->hashFingerprint($deviceKey);
+
+        if ($hash === null) {
+            return null;
+        }
+
+        $device = AttendanceDevice::query()
+            ->where('fingerprint_hash', $hash)
+            ->orderByDesc('last_seen_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($device) {
+            return $device;
+        }
+
+        return AttendanceDevice::create([
+            'name' => $this->appDeviceName($deviceName),
+            'token_hash' => $this->hashToken(Str::random(64)),
+            'fingerprint_hash' => $hash,
+            'notes' => 'Registrado automáticamente por la app de kiosco.',
+            'registered_at' => now(),
+            'is_active' => true,
+        ]);
+    }
+
+    /**
      * Public registration is only possible while the shared password is set.
      */
     public function registrationPasswordIsConfigured(): bool
@@ -243,6 +280,17 @@ class AttendanceDeviceService
     public function delete(AttendanceDevice $device): void
     {
         $device->delete();
+    }
+
+    /**
+     * Name for a tablet that registered itself: the model reported by the app,
+     * prefixed so the administrator recognizes it in the devices module.
+     */
+    private function appDeviceName(?string $deviceName): string
+    {
+        $deviceName = trim((string) $deviceName);
+
+        return $deviceName === '' ? 'Tablet Android' : Str::limit('Tablet '.$deviceName, 100, '');
     }
 
     private function hashToken(string $token): string

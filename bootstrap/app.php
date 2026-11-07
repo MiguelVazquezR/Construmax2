@@ -23,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'attendance.device' => \App\Http\Middleware\EnsureAttendanceDevice::class,
+            'attendance.device.optional' => \App\Http\Middleware\ResolveAttendanceDevice::class,
         ]);
 
         // The kiosk identifies itself with the device token header, not with
@@ -50,8 +51,9 @@ return Application::configure(basePath: dirname(__DIR__))
             $status = $e->getStatusCode();
 
             // Kiosk calls must receive JSON, so the tablet can show the real
-            // reason instead of the Inertia error page.
-            if ($request->hasHeader('X-Attendance-Device') || $request->is('attendance/kiosk/*')) {
+            // reason instead of the Inertia error page. The API group always
+            // answers JSON.
+            if ($request->hasHeader('X-Attendance-Device') || $request->is('attendance/kiosk/*') || $request->is('api/*')) {
                 return null;
             }
 

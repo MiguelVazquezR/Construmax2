@@ -37,9 +37,9 @@
 | Migrations | `database/migrations/2026_09_19_000001_create_payroll_module_tables.php` | **Consolidated (sep 27 2026) into one migration**: settings → profiles → devices → logs → overrides → shifts (incl. `day_schedules`, `pays_rest_days`) → assignments → holidays → vacation requests/adjustments/periods → incidents → periods (incl. `reopened_at`) → adjustments → payslips (3 tables) → face enrollments → payroll notes → `expenses.payroll_period_id` (+ `created_by` nullable) |
 | Permissions | `database/seeders/PermissionSeeder.php` (category *Nómina*) | `payroll.settings.manage`, `payroll.profiles.manage`, `payroll.remote-attendance.manage`, `payroll.devices.manage`, `payroll.shifts.manage`, `payroll.incidents.manage`, `payroll.vacations.manage`, `payroll.vacations.approve`, `payroll.holidays.manage`, `payroll.periods.index`, `payroll.periods.manage`, `payroll.periods.close`, `payroll.payslips.view`, `payroll.faces.manage` |
 | Notifications | `app/Notifications/VacationRequested.php`, `VacationReviewed.php`, `PayrollPeriodClosed.php` | Approval requests (permission-based), review results (direct to requester) and period closures (subscribers of `payroll.period-closed`) |
-| Routes | `routes/web/payroll.php` (registered from `routes/web.php`) | Authenticated routes + the public kiosk group |
+| Routes | `routes/web/payroll.php` (registered from `routes/web.php`) + `routes/api-kiosk.php` | Authenticated routes + the public kiosk group + the `/api/v1/kiosk` JSON API used by the Android app |
 | Menu | `resources/js/Layouts/AppSidebar.vue` | "Recursos Humanos" submenu (permission-gated; the shifts screen entry is labeled *Horarios del personal*) + "Mi asistencia" for collaborators with a payroll profile (`attendance_portal` shared prop) |
-| Tests | `tests/Feature/Payroll/` (26 files, 292 tests) | See the Test coverage section below |
+| Tests | `tests/Feature/Payroll/` (30 files, 359 tests) | See the Test coverage section below |
 
 ---
 
@@ -79,6 +79,11 @@ All routes are authenticated (`auth`, `verified`) unless noted. Payroll routes u
 | GET/POST | `/attendance/devices/register` | `attendance.devices.register*` | **Public** device registration page protected by the shared password (throttled 10/min) |
 | GET | `/attendance/kiosk` | `attendance.kiosk.show` | **Public** kiosk page |
 | POST | `/attendance/kiosk/bootstrap` / `punch` / `face-punch` | `attendance.kiosk.*` | Public but restricted by `attendance.device` middleware + throttle (bootstrap 120/min, punches 60/min); excluded from CSRF validation because the device token header is the credential, and errors are returned as JSON. The punches require `latitude`/`longitude` |
+| GET | `/api/v1/kiosk/ping` | `api.kiosk.ping` | **Android app only.** Device token required; connectivity + token check and clock sync (240/min) |
+| POST | `/api/v1/kiosk/bootstrap` | `api.kiosk.bootstrap` | Device token required; device + punch types + settings (120/min) |
+| POST | `/api/v1/kiosk/punch` / `face-punch` | `api.kiosk.punch` / `.face-punch` | Device token required; same rules as the web kiosk (60/min each) |
+| POST | `/api/v1/kiosk/recover` | `api.kiosk.recover` | **Public** (device token lost): fingerprint + registration password (20/min) |
+| POST | `/api/v1/kiosk/devices/register` | `api.kiosk.devices.register` | **Public**: authorizes a new device with the shared password (10/min) |
 
 ---
 
@@ -117,6 +122,13 @@ All routes are authenticated (`auth`, `verified`) unless noted. Payroll routes u
 - The period panel pre-selects the **recommended next punch** of the day (entry → lunch start → lunch end → exit) in the *Agregar registro* dialog and shows a hint with the suggestion; the same recommendation label travels in the day payload (`suggested_next`, computed by `AttendanceLog::nextSuggestedType`).
 - Captures older than `attendance_capture_retention_months` are purged weekly by `payroll:prune-captures`.
 - The **kiosk screen** follows the app theme and palette (brand orange `#f26c17`, system cards) instead of the old slate/black look: numbered flow (1 · choose the punch type, 2 · identify — face or employee number — where the camera only renders and starts for the face method), device chip in the header, camera card with its status notice and a clear success overlay with the suggested next punch.
+
+### API for the Android kiosk app
+- A native Android (Flutter) kiosk app replaces the browser kiosk with the **same features**. The JSON contract lives in `routes/api-kiosk.php` (prefix `api/v1/kiosk`) and is fully specified for the client in **`docs/kiosk-android-app.md`** (endpoints, payloads, error codes, throttles, state machine, Spanish texts, lock-task/wakelock/auto-relaunch rules, Flutter packages).
+- **The app needs no device authorization**: the APK is installed manually (controlled distribution), so the API group uses the optional `attendance.device.optional` middleware (`ResolveAttendanceDevice`) instead of the strict `attendance.device` one used by the web kiosk — it only *tries* to recognize the tablet and **never answers 403**. The tablet reports its **Android ID** as `device_key` and its model as `device_name`; `AttendanceDeviceService::findOrCreateForApp()` (called by `ResolveKioskDeviceAction`) reuses or creates the `attendance_devices` row named *Tablet <model>* on first contact, so every punch keeps its device (the generated token of that row is never handed out). Punches without `device_key` are accepted too, with `attendance_device_id` empty. The devices module still lets an administrator rename or revoke those rows, but neither blocks the app.
+- Both clients share the same use cases: `BootstrapKioskAction`, `ResolveKioskDeviceAction`, `RecoverKioskDeviceAction`, `RegisterKioskDeviceAction`, `RegisterEmployeeNumberPunchAction`, `RegisterFacePunchAction` and `BuildPunchResponseAction` (all in `app/Actions/Payroll/`), on top of `RegisterAttendancePunchAction` — the web `KioskController` and `Api\V1\KioskController` are thin and contain no business logic. Validation lives in the Form Requests `app/Http/Requests/Payroll/*Kiosk*Request.php`.
+- `ForceJsonResponse` (`app/Http/Middleware/ForceJsonResponse.php`) forces `Accept: application/json` on the API group, and `bootstrap/app.php` skips the Inertia error page for `api/*`, so the app always receives JSON (422 with an `errors` map, 429 when throttled, 500 on failures).
+- `/devices/register` and `/recover` remain available on the API for the web kiosk flow (shared password, `authorized` / `password_required` / `choose_device` / `unavailable` statuses); the Android app ignores them.
 
 ### Schedules & attendance calculation
 - Schedule resolution precedence: individual assignment → department assignment. Rotations advance one shift per completed week from `start_date`. Flexible shifts use `required_daily_hours`. **Per-day shifts** (`type = per_day`) take the start time, end time and meal minutes of the configured weekday (`day_schedules`), so a collaborator can work Monday–Friday 09:00–18:00 and Saturday 09:00–13:00 with its own meal time; days without an entry are rest days and the expected daily minutes are computed per day. The shift form builds **per-day shifts only**: the fixed and flexible types stay as legacy (old records still resolve and render with their type tag and tooltip — `Shift::TYPE_DESCRIPTIONS` is exposed as `shiftTypeDescriptions` — but opening one translates it to the day editor with its worked days pre-filled). The form adds the **Pagar días de descanso** toggle (`pays_rest_days`): when on, the weekdays without a schedule pay as rest days (see the paid rest days bullet). The **assignments panel** of this screen was retired and kept as legacy (the `payroll.shift-assignments.*` endpoints and the data they fed remain available for a future re-enable): shifts are assigned from the collaborator forms instead, and the screen keeps only the assignment count per shift plus an info alert pointing to the forms.
@@ -177,10 +189,11 @@ All routes are authenticated (`auth`, `verified`) unless noted. Payroll routes u
 
 ---
 
-## Test coverage (`tests/Feature/Payroll/`, 28 files, 316 tests)
+## Test coverage (`tests/Feature/Payroll/`, 30 files, 359 tests)
 
 - Settings & profiles: `PayrollSettingsControllerTest` (6), `PayrollProfileTest` (17)
-- Attendance: `AttendanceDeviceControllerTest` (5), `KioskAttendanceTest` (11), `AttendanceDayServiceTest` (12), `ScheduleResolverServiceTest` (7)
+- Attendance: `AttendanceDeviceControllerTest` (5), `KioskAttendanceTest` (17), `AttendanceDayServiceTest` (12), `ScheduleResolverServiceTest` (7)
+- Android kiosk API: `ApiKioskTest` (24) — ping, bootstrap (with and without `device_key`), automatic registration of the tablet, punch by employee number, face punch, the “no device token and no 403” rule, recovery and device registration, including the JSON error contract
 - Shifts: `ShiftControllerTest` (15), `AssignUserShiftActionTest` (6)
 - Holidays: `HolidayServiceTest` (5), `HolidayControllerTest` (7)
 - Vacations: `VacationServiceTest` (13), `VacationControllerTest` (10), `VacationAdjustmentControllerTest` (8)
