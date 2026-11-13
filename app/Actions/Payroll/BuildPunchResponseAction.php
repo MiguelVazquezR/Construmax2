@@ -3,6 +3,7 @@
 namespace App\Actions\Payroll;
 
 use App\Models\AttendanceLog;
+use App\Services\Payroll\AttendancePunchPolicy;
 use App\Services\Payroll\AttendanceService;
 
 /**
@@ -15,6 +16,7 @@ class BuildPunchResponseAction
 {
     public function __construct(
         private readonly AttendanceService $attendanceService,
+        private readonly AttendancePunchPolicy $punchPolicy,
     ) {}
 
     /**
@@ -28,6 +30,13 @@ class BuildPunchResponseAction
      *     similarity?: float,
      *     suggested_next: string|null,
      *     suggested_next_label: string|null,
+     *     options: array<int, array{
+     *         type: string,
+     *         label: string,
+     *         allowed: bool,
+     *         reason: string|null,
+     *         last_registered_at: string|null
+     *     }>
      * }
      */
     public function execute(AttendanceLog $log, ?float $similarity = null): array
@@ -54,6 +63,9 @@ class BuildPunchResponseAction
             ...$payload,
             'suggested_next' => $suggestedNext,
             'suggested_next_label' => $suggestedNext ? (AttendanceLog::TYPES[$suggestedNext] ?? null) : null,
+            'options' => $log->user
+                ? $this->punchPolicy->optionsFor($log->user)
+                : [],
         ];
     }
 }

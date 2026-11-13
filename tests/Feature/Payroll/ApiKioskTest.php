@@ -255,6 +255,34 @@ class ApiKioskTest extends TestCase
             ->assertJsonPath('type', AttendanceLog::TYPE_CHECK_IN);
     }
 
+    public function test_punch_rejects_a_movement_already_registered_and_returns_the_options(): void
+    {
+        $payload = [
+            'employee_number' => 'EMP-0100',
+            'type' => AttendanceLog::TYPE_CHECK_IN,
+            ...$this->locationPayload(),
+        ];
+
+        $registeredAt = $this->postJson(route('api.kiosk.punch'), $payload, $this->deviceHeaders())
+            ->assertOk()
+            ->assertJsonPath('options.0.type', AttendanceLog::TYPE_CHECK_IN)
+            ->assertJsonPath('options.0.allowed', false)
+            ->assertJsonPath('options.1.type', AttendanceLog::TYPE_LUNCH_START)
+            ->assertJsonPath('options.1.allowed', true)
+            ->json('punched_at');
+
+        $this->postJson(route('api.kiosk.punch'), $payload, $this->deviceHeaders())
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'attendance_punch_not_allowed')
+            ->assertJsonPath('type', AttendanceLog::TYPE_CHECK_IN)
+            ->assertJsonPath('last_registered_at', $registeredAt)
+            ->assertJsonValidationErrors('type')
+            ->assertJsonPath('options.0.allowed', false)
+            ->assertJsonPath('options.0.last_registered_at', $registeredAt);
+
+        $this->assertDatabaseCount('attendance_logs', 1);
+    }
+
     public function test_face_punch_registers_the_attendance_log_with_face_identification(): void
     {
         $this->mock(FaceRecognitionService::class, function (MockInterface $mock) {
@@ -281,6 +309,34 @@ class ApiKioskTest extends TestCase
             'identifier_method' => AttendanceLog::IDENTIFIER_FACE,
             'source' => AttendanceLog::SOURCE_KIOSK,
         ]);
+    }
+
+    public function test_face_punch_rejects_a_movement_already_registered(): void
+    {
+        $this->mock(FaceRecognitionService::class, function (MockInterface $mock) {
+            $mock->shouldReceive('isConfigured')->andReturn(true);
+            $mock->shouldReceive('search')->twice()->andReturn([
+                'external_image_id' => (string) $this->employee->id,
+                'face_id' => 'aws-face-1',
+                'similarity' => 98.42,
+            ]);
+        });
+
+        $payload = [
+            'type' => AttendanceLog::TYPE_CHECK_IN,
+            'photo' => 'data:image/jpeg;base64,'.base64_encode('fake-photo'),
+            ...$this->locationPayload(),
+        ];
+
+        $this->postJson(route('api.kiosk.face-punch'), $payload, $this->deviceHeaders())->assertOk();
+
+        $this->postJson(route('api.kiosk.face-punch'), $payload, $this->deviceHeaders())
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'attendance_punch_not_allowed')
+            ->assertJsonPath('type', AttendanceLog::TYPE_CHECK_IN)
+            ->assertJsonValidationErrors('type');
+
+        $this->assertDatabaseCount('attendance_logs', 1);
     }
 
     public function test_face_punch_reports_when_no_face_matches(): void
