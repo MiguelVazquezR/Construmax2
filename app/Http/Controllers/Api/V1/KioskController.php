@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Actions\Payroll\BootstrapKioskAction;
+use App\Actions\Payroll\BuildPunchNotAllowedResponseAction;
 use App\Actions\Payroll\BuildPunchResponseAction;
 use App\Actions\Payroll\RecoverKioskDeviceAction;
 use App\Actions\Payroll\RegisterEmployeeNumberPunchAction;
@@ -16,6 +17,7 @@ use App\Http\Requests\Payroll\KioskPunchRequest;
 use App\Http\Requests\Payroll\RecoverKioskDeviceRequest;
 use App\Http\Requests\Payroll\RegisterKioskDeviceRequest;
 use App\Models\AttendanceDevice;
+use App\Services\Payroll\Exceptions\AttendancePunchNotAllowedException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -37,6 +39,7 @@ class KioskController extends Controller
         private readonly RegisterEmployeeNumberPunchAction $employeeNumberPunchAction,
         private readonly RegisterFacePunchAction $facePunchAction,
         private readonly BuildPunchResponseAction $buildPunchResponseAction,
+        private readonly BuildPunchNotAllowedResponseAction $buildPunchNotAllowedResponseAction,
         private readonly ResolveKioskDeviceAction $resolveKioskDeviceAction,
     ) {}
 
@@ -80,15 +83,26 @@ class KioskController extends Controller
 
     /**
      * Register a punch identified with the collaborator's employee number.
+     *
+     * A punch that does not follow the daily sequence answers 422 with the
+     * reason and the state of the six punch types, so the app can show the
+     * "already registered" dialog instead of a network error.
      */
     public function punch(KioskPunchRequest $request): JsonResponse
     {
         $data = $request->validated();
 
-        $log = $this->employeeNumberPunchAction->execute(
-            $data,
-            $this->resolveDevice($request, $data['device_key'] ?? null, $data['device_name'] ?? null),
-        );
+        try {
+            $log = $this->employeeNumberPunchAction->execute(
+                $data,
+                $this->resolveDevice($request, $data['device_key'] ?? null, $data['device_name'] ?? null),
+            );
+        } catch (AttendancePunchNotAllowedException $exception) {
+            return response()->json(
+                $this->buildPunchNotAllowedResponseAction->execute($exception),
+                422,
+            );
+        }
 
         return response()->json($this->buildPunchResponseAction->execute($log));
     }
@@ -100,10 +114,17 @@ class KioskController extends Controller
     {
         $data = $request->validated();
 
-        ['log' => $log, 'similarity' => $similarity] = $this->facePunchAction->execute(
-            $data,
-            $this->resolveDevice($request, $data['device_key'] ?? null, $data['device_name'] ?? null),
-        );
+        try {
+            ['log' => $log, 'similarity' => $similarity] = $this->facePunchAction->execute(
+                $data,
+                $this->resolveDevice($request, $data['device_key'] ?? null, $data['device_name'] ?? null),
+            );
+        } catch (AttendancePunchNotAllowedException $exception) {
+            return response()->json(
+                $this->buildPunchNotAllowedResponseAction->execute($exception),
+                422,
+            );
+        }
 
         return response()->json($this->buildPunchResponseAction->execute($log, $similarity));
     }
