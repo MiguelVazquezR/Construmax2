@@ -12,6 +12,7 @@ const props = defineProps({
         default: 50,
     },
     loading: Boolean,
+    submitDisabled: Boolean,
     submitLabel: {
         type: String,
         default: 'Registrar',
@@ -102,6 +103,7 @@ const toggleLayout = () => {
             size="large"
             class="!mt-3 !h-14 !text-base w-full"
             :loading="loading"
+            :disabled="submitDisabled"
             @click="emit('submit')"
         >
             <span class="lg:hidden">{{ compactSubmitLabel }}</span>

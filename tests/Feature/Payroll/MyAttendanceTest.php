@@ -422,6 +422,73 @@ class MyAttendanceTest extends TestCase
         $this->assertDatabaseCount('attendance_logs', 0);
     }
 
+    public function test_portal_exposes_the_available_punch_options(): void
+    {
+        Carbon::setTestNow('2026-11-12 09:00:00');
+
+        AttendanceLog::create([
+            'user_id' => $this->employee->id,
+            'type' => AttendanceLog::TYPE_CHECK_IN,
+            'punched_at' => now()->setTime(8, 0),
+            'source' => AttendanceLog::SOURCE_REMOTE,
+            'identifier_method' => AttendanceLog::IDENTIFIER_MANUAL,
+        ]);
+
+        $this->actingAs($this->employee)
+            ->get(route('payroll.my-attendance.index'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('allowedTypes.0.type', AttendanceLog::TYPE_CHECK_IN)
+                ->where('allowedTypes.0.allowed', false)
+                ->where('allowedTypes.0.last_registered_at', '08:00')
+                ->where('allowedTypes.1.type', AttendanceLog::TYPE_LUNCH_START)
+                ->where('allowedTypes.1.allowed', true)
+            );
+
+        Carbon::setTestNow();
+    }
+
+    public function test_remote_punch_rejects_a_second_entry_and_returns_the_options(): void
+    {
+        $payload = [
+            'type' => AttendanceLog::TYPE_CHECK_IN,
+            'latitude' => 20.67,
+            'longitude' => -103.34,
+        ];
+
+        $this->actingAs($this->employee)
+            ->postJson(route('payroll.my-attendance.punch'), $payload)
+            ->assertOk();
+
+        $this->actingAs($this->employee)
+            ->postJson(route('payroll.my-attendance.punch'), $payload)
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'attendance_punch_not_allowed')
+            ->assertJsonValidationErrors('type')
+            ->assertJsonPath('allowed_types.0.allowed', false);
+
+        $this->assertDatabaseCount('attendance_logs', 1);
+    }
+
+    public function test_remote_punch_allows_a_new_entry_after_the_exit(): void
+    {
+        foreach ([
+            AttendanceLog::TYPE_CHECK_IN,
+            AttendanceLog::TYPE_CHECK_OUT,
+            AttendanceLog::TYPE_CHECK_IN,
+        ] as $type) {
+            $this->actingAs($this->employee)
+                ->postJson(route('payroll.my-attendance.punch'), [
+                    'type' => $type,
+                    'latitude' => 20.67,
+                    'longitude' => -103.34,
+                ])
+                ->assertOk();
+        }
+
+        $this->assertDatabaseCount('attendance_logs', 3);
+    }
+
     public function test_collaborator_can_print_their_own_payslip(): void
     {
         [$period] = $this->closedPeriodWithPayslip();

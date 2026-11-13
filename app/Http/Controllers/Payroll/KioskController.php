@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Payroll;
 
+use App\Actions\Payroll\IdentifyAttendanceSubjectAction;
 use App\Actions\Payroll\RegisterAttendancePunchAction;
 use App\Http\Controllers\Controller;
 use App\Models\AttendanceDevice;
@@ -9,9 +10,10 @@ use App\Models\AttendanceLog;
 use App\Models\PayrollProfile;
 use App\Models\PayrollSetting;
 use App\Services\Payroll\AttendanceDeviceService;
+use App\Services\Payroll\AttendanceIdentificationTokenService;
+use App\Services\Payroll\AttendancePunchPolicy;
 use App\Services\Payroll\AttendanceService;
-use App\Services\Payroll\FaceRecognition\Exceptions\FaceNotDetectedException;
-use App\Services\Payroll\FaceRecognition\Exceptions\MultipleFacesDetectedException;
+use App\Services\Payroll\Exceptions\AttendancePunchNotAllowedException;
 use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -37,7 +39,10 @@ class KioskController extends Controller
 
     public function __construct(
         private readonly RegisterAttendancePunchAction $registerPunchAction,
+        private readonly IdentifyAttendanceSubjectAction $identifyAction,
         private readonly AttendanceService $attendanceService,
+        private readonly AttendancePunchPolicy $punchPolicy,
+        private readonly AttendanceIdentificationTokenService $identificationTokens,
         private readonly AttendanceDeviceService $deviceService,
         private readonly FaceRecognitionService $faceRecognition,
     ) {}
@@ -56,6 +61,38 @@ class KioskController extends Controller
             'recoveryPasswordConfigured' => $this->deviceService->registrationPasswordIsConfigured(),
             'appName' => config('app.name'),
         ]);
+    }
+
+    /**
+     * Recognize the collaborator once and return the movements they can
+     * register today. The identification is kept in a short-lived token, so
+     * the following punches do not search the face again in Amazon.
+     */
+    public function identify(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'method' => ['required', 'string', 'in:face,employee_number'],
+            'photo' => ['required_if:method,face', 'nullable', 'string', 'max:2000000'],
+            'employee_number' => ['required_if:method,employee_number', 'nullable', 'string', 'max:50'],
+        ]);
+
+        $device = $request->attributes->get('attendance_device');
+        $identity = $this->identifyAction->execute($validated);
+        $profile = $identity['profile'];
+
+        $token = $this->identificationTokens->issue(
+            $profile->user,
+            $device,
+            $identity['identifier_method'],
+            $identity['similarity'],
+        );
+
+        return response()->json($this->identificationPayload(
+            $profile,
+            $identity['identifier_method'],
+            $identity['similarity'],
+            $token,
+        ));
     }
 
     /**
@@ -207,12 +244,14 @@ class KioskController extends Controller
     }
 
     /**
-     * Register a punch identified with the collaborator's employee number.
+     * Register a punch. The collaborator is identified by the token issued by
+     * "identify"; the employee number is still accepted for compatibility.
      */
     public function punch(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'employee_number' => ['required', 'string', 'max:50'],
+            'identification_token' => ['nullable', 'string', 'max:2000'],
+            'employee_number' => ['required_without:identification_token', 'nullable', 'string', 'max:50'],
             'type' => ['required', 'string', 'in:'.implode(',', array_keys(AttendanceLog::TYPES))],
             'latitude' => ['required', 'numeric', 'between:-90,90'],
             'longitude' => ['required', 'numeric', 'between:-180,180'],
@@ -220,125 +259,207 @@ class KioskController extends Controller
             'photo' => ['nullable', 'string', 'max:2000000'],
         ], self::LOCATION_MESSAGES);
 
-        $profile = $this->findProfileByEmployeeNumber($validated['employee_number']);
+        $device = $request->attributes->get('attendance_device');
+        $identification = $this->resolveEmployeeNumberIdentification($validated, $device);
 
-        if (! $profile) {
-            throw ValidationException::withMessages([
-                'employee_number' => 'Número de empleado no encontrado. Verifícalo o pide ayuda al administrador.',
-            ]);
+        if ($identification instanceof JsonResponse) {
+            return $identification;
         }
 
-        $log = $this->registerPunchAction->execute($profile->user, [
-            'type' => $validated['type'],
-            'source' => AttendanceLog::SOURCE_KIOSK,
-            'identifier_method' => AttendanceLog::IDENTIFIER_EMPLOYEE_NUMBER,
-            'latitude' => $validated['latitude'] ?? null,
-            'longitude' => $validated['longitude'] ?? null,
-            'location_accuracy' => $validated['location_accuracy'] ?? null,
-            'photo' => $validated['photo'] ?? null,
-        ], $request->attributes->get('attendance_device'));
+        [$profile, $identifierMethod, $similarity] = $identification;
 
-        return response()->json([
-            'user_name' => $profile->user->name,
-            'employee_number' => $profile->employee_number,
-            'type' => $log->type,
-            'type_label' => $log->type_label,
-            'punched_at' => $log->punched_at->format('H:i'),
-            'date_label' => $log->punched_at->format('d/m/Y'),
-            'suggested_next' => $this->attendanceService->suggestedTypeFor($profile->user),
-            'suggested_next_label' => AttendanceLog::TYPES[$this->attendanceService->suggestedTypeFor($profile->user)] ?? null,
-        ]);
+        try {
+            $log = $this->registerPunchAction->execute($profile->user, [
+                'type' => $validated['type'],
+                'source' => AttendanceLog::SOURCE_KIOSK,
+                'identifier_method' => $identifierMethod,
+                'face_similarity' => $similarity,
+                'latitude' => $validated['latitude'] ?? null,
+                'longitude' => $validated['longitude'] ?? null,
+                'location_accuracy' => $validated['location_accuracy'] ?? null,
+                'photo' => $validated['photo'] ?? null,
+            ], $device);
+        } catch (AttendancePunchNotAllowedException $exception) {
+            return $this->punchNotAllowedResponse($exception);
+        }
+
+        return response()->json($this->punchPayload($profile, $log, $device, $identifierMethod, $similarity));
     }
 
     /**
-     * Find the collaborator whose employee number matches (case-insensitive).
-     */
-    private function findProfileByEmployeeNumber(string $employeeNumber): ?PayrollProfile
-    {
-        return PayrollProfile::query()
-            ->whereRaw('LOWER(employee_number) = ?', [mb_strtolower(trim($employeeNumber))])
-            ->with('user')
-            ->get()
-            ->first(fn (PayrollProfile $profile) => $profile->user !== null);
-    }
-
-    /**
-     * Register a punch identified with facial recognition (1:N search).
+     * Register a punch identified with facial recognition. The photo is only
+     * searched in the biometric provider when the request has no token.
      */
     public function facePunch(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'identification_token' => ['nullable', 'string', 'max:2000'],
             'type' => ['required', 'string', 'in:'.implode(',', array_keys(AttendanceLog::TYPES))],
             'latitude' => ['required', 'numeric', 'between:-90,90'],
             'longitude' => ['required', 'numeric', 'between:-180,180'],
             'location_accuracy' => ['nullable', 'numeric', 'min:0'],
-            'photo' => ['required', 'string', 'max:2000000'],
+            'photo' => ['required_without:identification_token', 'nullable', 'string', 'max:2000000'],
         ], self::LOCATION_MESSAGES);
 
-        if (! $this->faceRecognition->isConfigured()) {
-            throw ValidationException::withMessages([
-                'face' => 'El reconocimiento facial no está configurado. Pide ayuda al administrador.',
-            ]);
+        $device = $request->attributes->get('attendance_device');
+        $identification = $this->resolveFaceIdentification($validated, $device);
+
+        if ($identification instanceof JsonResponse) {
+            return $identification;
         }
+
+        [$profile, $identifierMethod, $similarity] = $identification;
 
         try {
-            $match = $this->faceRecognition->search($validated['photo']);
-        } catch (FaceNotDetectedException) {
-            throw ValidationException::withMessages([
-                'face' => 'No se detectó un rostro en la foto. Colócate de frente a la cámara, con buena iluminación, e intenta de nuevo.',
-            ]);
-        } catch (MultipleFacesDetectedException) {
-            throw ValidationException::withMessages([
-                'face' => 'La foto muestra más de un rostro. Asegúrate de estar solo frente a la cámara e intenta de nuevo.',
-            ]);
-        } catch (\Throwable $exception) {
-            Log::warning('Facial kiosk search failed.', [
-                'error' => $exception->getMessage(),
-                'exception' => $exception::class,
-            ]);
-
-            throw ValidationException::withMessages([
-                'face' => 'No se pudo procesar el rostro. Intenta de nuevo.',
-            ]);
+            $log = $this->registerPunchAction->execute($profile->user, [
+                'type' => $validated['type'],
+                'source' => AttendanceLog::SOURCE_KIOSK,
+                'identifier_method' => $identifierMethod,
+                'face_similarity' => $similarity,
+                'latitude' => $validated['latitude'] ?? null,
+                'longitude' => $validated['longitude'] ?? null,
+                'location_accuracy' => $validated['location_accuracy'] ?? null,
+                'photo' => $validated['photo'] ?? null,
+            ], $device);
+        } catch (AttendancePunchNotAllowedException $exception) {
+            return $this->punchNotAllowedResponse($exception);
         }
 
-        if (! $match || $match['external_image_id'] === '') {
-            throw ValidationException::withMessages([
-                'face' => 'Tu rostro no coincide con ningún rostro registrado. Mira de frente a la cámara e intenta de nuevo; si el problema continúa, pide al administrador que actualice tu registro facial.',
-            ]);
+        return response()->json($this->punchPayload($profile, $log, $device, $identifierMethod, $similarity));
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array{0: PayrollProfile, 1: string, 2: float|null}|JsonResponse
+     */
+    private function resolveEmployeeNumberIdentification(array $validated, AttendanceDevice $device): array|JsonResponse
+    {
+        if (filled($validated['identification_token'] ?? null)) {
+            return $this->resolveTokenIdentification((string) $validated['identification_token'], $device);
         }
 
-        $profile = PayrollProfile::where('user_id', (int) $match['external_image_id'])
-            ->with('user')
-            ->first();
+        $identity = $this->identifyAction->execute([
+            'method' => 'employee_number',
+            'employee_number' => $validated['employee_number'] ?? '',
+        ]);
 
-        if (! $profile?->user || ! $profile->is_attendance_subject) {
-            throw ValidationException::withMessages([
-                'face' => 'El rostro no corresponde a un colaborador con asistencia activa.',
-            ]);
+        return [$identity['profile'], $identity['identifier_method'], $identity['similarity']];
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array{0: PayrollProfile, 1: string, 2: float|null}|JsonResponse
+     */
+    private function resolveFaceIdentification(array $validated, AttendanceDevice $device): array|JsonResponse
+    {
+        if (filled($validated['identification_token'] ?? null)) {
+            return $this->resolveTokenIdentification((string) $validated['identification_token'], $device);
         }
 
-        $log = $this->registerPunchAction->execute($profile->user, [
-            'type' => $validated['type'],
-            'source' => AttendanceLog::SOURCE_KIOSK,
-            'identifier_method' => AttendanceLog::IDENTIFIER_FACE,
-            'face_similarity' => $match['similarity'],
-            'latitude' => $validated['latitude'] ?? null,
-            'longitude' => $validated['longitude'] ?? null,
-            'location_accuracy' => $validated['location_accuracy'] ?? null,
-            'photo' => $validated['photo'],
-        ], $request->attributes->get('attendance_device'));
+        $identity = $this->identifyAction->execute([
+            'method' => 'face',
+            'photo' => $validated['photo'] ?? '',
+        ]);
 
-        return response()->json([
+        return [$identity['profile'], $identity['identifier_method'], $identity['similarity']];
+    }
+
+    /**
+     * @return array{0: PayrollProfile, 1: string, 2: float|null}|JsonResponse
+     */
+    private function resolveTokenIdentification(string $token, AttendanceDevice $device): array|JsonResponse
+    {
+        $identification = $this->identificationTokens->resolve($token, $device);
+
+        if (! $identification) {
+            return response()->json([
+                'message' => 'Tu identificación expiró. Vuelve a identificarte para continuar.',
+                'code' => 'identification_expired',
+            ], 422);
+        }
+
+        $profile = $identification['user']->payrollProfile;
+
+        if (! $profile || ! $profile->is_attendance_subject) {
+            return response()->json([
+                'message' => 'El colaborador no tiene la asistencia habilitada.',
+                'code' => 'identification_expired',
+            ], 422);
+        }
+
+        return [$profile, $identification['identifier_method'], $identification['similarity']];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function identificationPayload(
+        PayrollProfile $profile,
+        string $identifierMethod,
+        ?float $similarity,
+        string $token,
+    ): array {
+        $suggested = $this->attendanceService->suggestedTypeFor($profile->user);
+
+        return [
+            'identification_token' => $token,
+            'expires_in' => $this->identificationTokens->expiresInSeconds(),
+            'user_name' => $profile->user->name,
+            'employee_number' => $profile->employee_number,
+            'identifier_method' => $identifierMethod,
+            'similarity' => $similarity !== null ? round($similarity, 2) : null,
+            'options' => $this->punchPolicy->optionsFor($profile->user),
+            'suggested_next' => $suggested,
+            'suggested_next_label' => AttendanceLog::TYPES[$suggested] ?? null,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function punchPayload(
+        PayrollProfile $profile,
+        AttendanceLog $log,
+        AttendanceDevice $device,
+        string $identifierMethod,
+        ?float $similarity,
+    ): array {
+        $token = $this->identificationTokens->issue(
+            $profile->user,
+            $device,
+            $identifierMethod,
+            $similarity,
+        );
+        $suggested = $this->attendanceService->suggestedTypeFor($profile->user);
+
+        return [
+            'identification_token' => $token,
+            'expires_in' => $this->identificationTokens->expiresInSeconds(),
             'user_name' => $profile->user->name,
             'employee_number' => $profile->employee_number,
             'type' => $log->type,
             'type_label' => $log->type_label,
             'punched_at' => $log->punched_at->format('H:i'),
             'date_label' => $log->punched_at->format('d/m/Y'),
-            'similarity' => round($match['similarity'], 2),
-            'suggested_next' => $this->attendanceService->suggestedTypeFor($profile->user),
-            'suggested_next_label' => AttendanceLog::TYPES[$this->attendanceService->suggestedTypeFor($profile->user)] ?? null,
-        ]);
+            'identifier_method' => $identifierMethod,
+            'similarity' => $similarity !== null ? round($similarity, 2) : null,
+            'options' => $this->punchPolicy->optionsFor($profile->user),
+            'suggested_next' => $suggested,
+            'suggested_next_label' => AttendanceLog::TYPES[$suggested] ?? null,
+        ];
+    }
+
+    private function punchNotAllowedResponse(AttendancePunchNotAllowedException $exception): JsonResponse
+    {
+        return response()->json([
+            'message' => $exception->getMessage(),
+            'code' => 'attendance_punch_not_allowed',
+            'type' => $exception->punchType,
+            'last_registered_at' => $exception->lastRegisteredAt,
+            'options' => $exception->options,
+            'errors' => [
+                'type' => [$exception->getMessage()],
+            ],
+        ], 422);
     }
 }

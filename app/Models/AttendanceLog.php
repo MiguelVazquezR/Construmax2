@@ -158,27 +158,28 @@ class AttendanceLog extends Model implements HasMedia
      */
     public static function nextSuggestedType(Collection $logs): string
     {
-        $completed = $logs->pluck('type')->all();
+        $ordered = $logs->sortBy('punched_at')->values();
+        $last = $ordered->last();
+        $completed = $ordered->pluck('type')->all();
+
+        if (! $last || $last->type === self::TYPE_CHECK_OUT) {
+            // A new entry also starts a new work session after an exit.
+            return self::TYPE_CHECK_IN;
+        }
+
+        if ($last->type === self::TYPE_LUNCH_START) {
+            return self::TYPE_LUNCH_END;
+        }
+
+        if ($last->type === self::TYPE_BREAK_START) {
+            return self::TYPE_BREAK_END;
+        }
 
         if (! in_array(self::TYPE_CHECK_IN, $completed, true)) {
             return self::TYPE_CHECK_IN;
         }
 
-        $hasLunchStart = in_array(self::TYPE_LUNCH_START, $completed, true);
-        $hasLunchEnd = in_array(self::TYPE_LUNCH_END, $completed, true);
-
-        if ($hasLunchStart && ! $hasLunchEnd) {
-            return self::TYPE_LUNCH_END;
-        }
-
-        $hasBreakStart = in_array(self::TYPE_BREAK_START, $completed, true);
-        $hasBreakEnd = in_array(self::TYPE_BREAK_END, $completed, true);
-
-        if ($hasBreakStart && ! $hasBreakEnd) {
-            return self::TYPE_BREAK_END;
-        }
-
-        if (! $hasLunchStart) {
+        if (! in_array(self::TYPE_LUNCH_START, $completed, true)) {
             return self::TYPE_LUNCH_START;
         }
 

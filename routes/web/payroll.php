@@ -134,6 +134,12 @@ Route::prefix('attendance/kiosk')->name('attendance.kiosk.')->group(function () 
     Route::post('/bootstrap', [KioskController::class, 'bootstrap'])
         ->middleware(['attendance.device', 'throttle:120,1'])->name('bootstrap');
 
+    // Recognize the collaborator once and return the movements available today.
+    // The following punches reuse the identification token, so the face is not
+    // searched again in the biometric provider.
+    Route::post('/identify', [KioskController::class, 'identify'])
+        ->middleware(['attendance.device', 'throttle:30,1'])->name('identify');
+
     Route::post('/punch', [KioskController::class, 'punch'])
         ->middleware(['attendance.device', 'throttle:60,1'])->name('punch');
 
