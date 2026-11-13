@@ -3,6 +3,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { Head } from '@inertiajs/vue3';
 import { Camera, CircleCheck, Location, WarningFilled } from '@element-plus/icons-vue';
 import axios from 'axios';
+import AttendanceAlreadyRegisteredDialog from '@/Components/Payroll/AttendanceAlreadyRegisteredDialog.vue';
+import AttendanceRegistrationSuccessDialog from '@/Components/Payroll/AttendanceRegistrationSuccessDialog.vue';
 import AttendanceKeypad from '@/Components/Payroll/AttendanceKeypad.vue';
 import { attendanceErrorMessage, isDeviceRejection } from '@/Utils/attendanceRequestError';
 import { readDeviceKey } from '@/Utils/attendanceDeviceKey';
@@ -24,6 +26,11 @@ const props = defineProps({
 
 const SESSION_RESET_MS = 7000;
 const BOOTSTRAP_RETRY_MS = 15000;
+// The face is recognized once. The collaborator keeps the same identification
+// while registering movements; it ends when they choose not to register
+// anything or after this inactivity period, so the kiosk is ready for the next
+// person.
+const IDENTIFICATION_IDLE_MS = 3 * 60 * 1000;
 
 const token = ref(null);
 const device = ref(null);
@@ -48,8 +55,19 @@ const selectedType = ref(null);
 // chooses first, so the camera is not requested from the start.
 const method = ref(props.employeeNumberEnabled ? null : 'face');
 const employeeNumber = ref('');
-const employeeNumberSubmitting = ref(false);
-const faceSubmitting = ref(false);
+// Identification returned by the server: the person's name, the movement
+// options available today and the token reused by the following punches.
+const identification = ref(null);
+const pendingIdentification = ref(null);
+const identificationPhoto = ref(null);
+const identifying = ref(false);
+const submittingPunch = ref(false);
+const processing = ref(false);
+const alreadyRegisteredDialogVisible = ref(false);
+const alreadyRegisteredTitle = ref('Ese registro ya se realizó');
+const alreadyRegisteredMessage = ref('');
+const alreadyRegisteredTypeLabel = ref('');
+const alreadyRegisteredTime = ref('');
 const errorMessage = ref('');
 const errorDetail = ref('');
 const result = ref(null);
@@ -74,43 +92,74 @@ let stream = null;
 let clockTimer = null;
 let resultTimer = null;
 let bootstrapRetryTimer = null;
+let identificationTimer = null;
 
 // The on-screen keypad replaces the native keyboard only when the employee
 // number is the selected method: it keeps the whole kiosk on a single screen.
-const employeeNumberMode = computed(() => props.employeeNumberEnabled && method.value === 'employee_number');
+const employeeNumberMode = computed(
+    () => props.employeeNumberEnabled && method.value === 'employee_number' && !identification.value
+);
 
-const stepTwoTitle = computed(() => {
-    if (method.value === 'employee_number') return 'Identifícate con tu número de empleado';
-    if (method.value === 'face') return 'Identifícate con tu rostro';
-
-    return 'Identifícate';
-});
-
-const typeEntries = computed(() =>
+const initialTypeEntries = computed(() =>
     Object.entries(props.punchTypes || {}).map(([value, label]) => ({ value, label }))
 );
 
-const selectedTypeLabel = computed(
-    () => typeEntries.value.find((entry) => entry.value === selectedType.value)?.label ?? ''
-);
+const currentOptions = computed(() => identification.value?.options ?? []);
 
-// On phones the setup card is replaced by a compact summary once the method is
-// chosen: the keypad or the camera gets the whole screen without scrolling.
-const phoneCompact = computed(() => Boolean(method.value) && Boolean(selectedType.value));
+const selectedTypeLabel = computed(() => {
+    const options = identification.value ? currentOptions.value : initialTypeEntries.value;
+    const match = options.find((entry) => (entry.type ?? entry.value) === selectedType.value);
 
-const methodLabel = computed(() => {
-    if (method.value === 'employee_number') return 'Con número de empleado';
-    if (method.value === 'face') return 'Con mi rostro';
+    return match?.label ?? '';
+});
+
+const identificationMethodLabel = computed(() => {
+    if (!identification.value) return '';
+    if (identification.value.identifier_method === 'face') return 'Identificado por rostro';
+    if (identification.value.identifier_method === 'employee_number') return 'Identificado con número de empleado';
 
     return '';
 });
 
-const changeSelection = () => {
+const clearIdentificationTimer = () => {
+    clearTimeout(identificationTimer);
+    identificationTimer = null;
+};
+
+const startIdentificationTimer = () => {
+    clearIdentificationTimer();
+    identificationTimer = setTimeout(() => {
+        if (!identification.value) return;
+
+        finishIdentification();
+        errorMessage.value = 'La sesión de registro se cerró por inactividad. Vuelve a identificarte.';
+    }, IDENTIFICATION_IDLE_MS);
+};
+
+const resetIdentificationTimer = () => {
+    if (identification.value) startIdentificationTimer();
+};
+
+const finishIdentification = () => {
+    clearIdentificationTimer();
+    clearTimeout(resultTimer);
+    result.value = null;
+    identification.value = null;
+    pendingIdentification.value = null;
+    identificationPhoto.value = null;
     selectedType.value = null;
-    // With a single identification method there is no chooser to return to.
+    employeeNumber.value = '';
+    alreadyRegisteredDialogVisible.value = false;
+    processing.value = false;
+    // Start the next registration from scratch: no identification method
+    // selected (when both are available) and no employee number typed.
     method.value = props.employeeNumberEnabled ? null : 'face';
     errorMessage.value = '';
     errorDetail.value = '';
+
+    if (method.value === 'face' && status.value === 'authorized') {
+        initCamera();
+    }
 };
 
 const timeLabel = computed(() =>
@@ -669,13 +718,19 @@ const onPhotoSelected = async (event) => {
     if (!file) return;
 
     try {
-        await submitFace(await readPhotoFile(file));
+        method.value = 'face';
+        await identify(await readPhotoFile(file));
     } catch {
         errorMessage.value = 'La foto no se pudo leer. Intenta de nuevo.';
     }
 };
 
-const submitFace = async (capturedPhoto = null) => {
+/**
+ * Recognize the collaborator once. The server returns the movements available
+ * today and a token that the following punches reuse, so the face is not
+ * searched again in Amazon.
+ */
+const identify = async (capturedPhoto = null) => {
     errorMessage.value = '';
     errorDetail.value = '';
 
@@ -684,48 +739,71 @@ const submitFace = async (capturedPhoto = null) => {
         return;
     }
 
-    const photo = capturedPhoto || await capturePhoto();
-
-    if (!photo) {
-        if (cameraReady.value) {
-            errorMessage.value = 'La cámara todavía se está activando. Espera un momento e intenta de nuevo.';
-            return;
-        }
-
-        pickPhoto();
+    if (method.value === 'employee_number' && !employeeNumber.value.trim()) {
+        errorMessage.value = 'Escribe tu número de empleado.';
         return;
     }
 
-    faceSubmitting.value = true;
+    if (method.value !== 'face' && method.value !== 'employee_number') {
+        errorMessage.value = 'Elige cómo quieres identificarte.';
+        return;
+    }
 
-    try {
-        const position = await captureLocation();
+    let photo = null;
 
-        if (!position) {
-            errorMessage.value = locationIssueMessage.value;
-            lastLocationError.value = errorMessage.value;
-            errorDetail.value = null;
+    if (method.value === 'face') {
+        photo = capturedPhoto || await capturePhoto();
+
+        if (!photo) {
+            if (cameraReady.value) {
+                errorMessage.value = 'La cámara todavía se está activando. Espera un momento e intenta de nuevo.';
+                return;
+            }
+
+            pickPhoto();
             return;
         }
+    }
 
-        const { data } = await axios.post(route('attendance.kiosk.face-punch'), {
-            type: selectedType.value,
-            photo,
-            latitude: position.latitude,
-            longitude: position.longitude,
-            location_accuracy: position.location_accuracy,
-        }, {
+    identifying.value = true;
+    processing.value = true;
+
+    try {
+        const payload = method.value === 'face'
+            ? { method: 'face', photo }
+            : { method: 'employee_number', employee_number: employeeNumber.value.trim() };
+
+        const { data } = await axios.post(route('attendance.kiosk.identify'), payload, {
             headers: { 'X-Attendance-Device': token.value },
         });
 
-        result.value = data;
-        selectedType.value = null;
+        const requestedType = selectedType.value;
+        const requestedOption = (data.options || []).find((option) => option.type === requestedType);
+
+        identificationPhoto.value = photo;
+        employeeNumber.value = '';
         blurActiveElement();
 
-        clearTimeout(resultTimer);
-        resultTimer = setTimeout(() => {
-            result.value = null;
-        }, SESSION_RESET_MS);
+        if (requestedOption?.allowed) {
+            // Keep the initial view and register with the token that was just
+            // issued. The options view is not rendered for a valid first
+            // registration; the loading overlay covers both requests.
+            pendingIdentification.value = data;
+            selectedType.value = requestedType;
+            await submitPunch();
+            return;
+        }
+
+        // The person already registered that movement (or it does not follow
+        // the daily sequence): only now switch to the options view so they
+        // choose another one without identifying again.
+        releaseCamera();
+        pendingIdentification.value = null;
+        identification.value = data;
+        selectedType.value = null;
+        startIdentificationTimer();
+        processing.value = false;
+        showAlreadyRegisteredDialog(requestedOption);
     } catch (error) {
         if (isDeviceRejection(error)) {
             // The token may have been replaced by another browsing context:
@@ -739,25 +817,66 @@ const submitFace = async (capturedPhoto = null) => {
         errorMessage.value = message;
         errorDetail.value = detail;
     } finally {
-        faceSubmitting.value = false;
+        identifying.value = false;
+        processing.value = false;
     }
 };
 
-const submitEmployeeNumber = async () => {
+const showAlreadyRegisteredDialog = (option = null) => {
+    alreadyRegisteredTitle.value = option?.last_registered_at
+        ? 'Ese registro ya se realizó'
+        : 'No se pudo registrar ese movimiento';
+    alreadyRegisteredMessage.value = option?.reason
+        ?? 'Ese registro ya se realizó o no está disponible en este momento.';
+    alreadyRegisteredTypeLabel.value = option?.label ?? '';
+    alreadyRegisteredTime.value = option?.last_registered_at
+        ? `Registrado a las ${option.last_registered_at}`
+        : '';
+    alreadyRegisteredDialogVisible.value = true;
+};
+
+const onAlreadyRegisteredDialogClosed = () => {
+    // The dialog also closes when the kiosk session ends; in that case the
+    // initial screen must stay clean.
+    if (!identification.value) return;
+
+    selectedType.value = null;
     errorMessage.value = '';
     errorDetail.value = '';
+};
+
+const handleOptionClick = (option) => {
+    errorMessage.value = '';
+    errorDetail.value = '';
+    resetIdentificationTimer();
+
+    if (!option.allowed) {
+        selectedType.value = null;
+        showAlreadyRegisteredDialog(option);
+        return;
+    }
+
+    selectedType.value = selectedType.value === option.type ? null : option.type;
+};
+
+const submitPunch = async () => {
+    errorMessage.value = '';
+    errorDetail.value = '';
+
+    const identificationToken = pendingIdentification.value?.identification_token
+        ?? identification.value?.identification_token;
+
+    if (!identificationToken) {
+        errorMessage.value = 'Primero identifícate para continuar.';
+        return;
+    }
 
     if (!selectedType.value) {
         errorMessage.value = 'Selecciona el tipo de registro.';
         return;
     }
 
-    if (!employeeNumber.value.trim()) {
-        errorMessage.value = 'Escribe tu número de empleado.';
-        return;
-    }
-
-    employeeNumberSubmitting.value = true;
+    submittingPunch.value = true;
 
     try {
         const position = await captureLocation();
@@ -770,8 +889,9 @@ const submitEmployeeNumber = async () => {
         }
 
         const { data } = await axios.post(route('attendance.kiosk.punch'), {
-            employee_number: employeeNumber.value.trim(),
+            identification_token: identificationToken,
             type: selectedType.value,
+            photo: identificationPhoto.value,
             latitude: position.latitude,
             longitude: position.longitude,
             location_accuracy: position.location_accuracy,
@@ -780,13 +900,32 @@ const submitEmployeeNumber = async () => {
         });
 
         result.value = data;
+        processing.value = false;
+
+        if (identification.value) {
+            identification.value = {
+                ...identification.value,
+                identification_token: data.identification_token,
+                user_name: data.user_name,
+                employee_number: data.employee_number,
+                identifier_method: data.identifier_method,
+                similarity: data.similarity,
+                options: data.options,
+            };
+        }
+
+        // The identification photo is stored as evidence of the first punch only.
+        pendingIdentification.value = null;
+        identificationPhoto.value = null;
         selectedType.value = null;
-        employeeNumber.value = '';
         blurActiveElement();
+        resetIdentificationTimer();
 
         clearTimeout(resultTimer);
         resultTimer = setTimeout(() => {
-            result.value = null;
+            // A successful registration returns to the initial screen; the
+            // options view only stays open when the movement was repeated.
+            finishIdentification();
         }, SESSION_RESET_MS);
     } catch (error) {
         if (isDeviceRejection(error)) {
@@ -797,11 +936,47 @@ const submitEmployeeNumber = async () => {
             return;
         }
 
+        const data = error.response?.data;
+
+        if (data?.code === 'identification_expired') {
+            finishIdentification();
+            errorMessage.value = data.message || 'Tu identificación expiró. Vuelve a identificarte.';
+            return;
+        }
+
+        if (data?.code === 'attendance_punch_not_allowed') {
+            const base = pendingIdentification.value ?? identification.value;
+
+            if (base) {
+                identification.value = {
+                    ...base,
+                    options: data.options ?? base.options,
+                };
+            }
+
+            releaseCamera();
+            pendingIdentification.value = null;
+            selectedType.value = null;
+            startIdentificationTimer();
+            processing.value = false;
+
+            const option = (data.options || []).find((entry) => entry.type === data.type)
+                ?? { reason: data.message, type: data.type, last_registered_at: data.last_registered_at };
+
+            showAlreadyRegisteredDialog(option);
+            return;
+        }
+
+        if (data?.options && identification.value) {
+            identification.value = { ...identification.value, options: data.options };
+        }
+
         const { message, detail } = attendanceErrorMessage(error);
         errorMessage.value = message;
         errorDetail.value = detail;
     } finally {
-        employeeNumberSubmitting.value = false;
+        submittingPunch.value = false;
+        processing.value = false;
     }
 };
 
@@ -811,17 +986,6 @@ const blurActiveElement = () => {
     if (document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
     }
-};
-
-// Closes the success dialog immediately instead of waiting for the automatic
-// reset, so the next collaborator can register right away.
-const closeResult = () => {
-    clearTimeout(resultTimer);
-    result.value = null;
-    selectedType.value = null;
-    employeeNumber.value = '';
-    errorMessage.value = '';
-    errorDetail.value = '';
 };
 
 // The kiosk recovers by itself when the network comes back, so nobody has to
@@ -849,6 +1013,8 @@ const openRegistration = () => {
 // The camera is requested only while the face method is selected: choosing
 // the employee number releases it so no camera access stays active.
 watch(method, (value) => {
+    if (identification.value) return;
+
     if (value === 'face' && status.value === 'authorized') {
         initCamera();
     } else {
@@ -873,6 +1039,7 @@ onBeforeUnmount(() => {
     clearInterval(clockTimer);
     clearTimeout(resultTimer);
     clearTimeout(bootstrapRetryTimer);
+    clearIdentificationTimer();
     window.removeEventListener('online', handleOnline);
     window.removeEventListener('offline', handleOffline);
 
@@ -1015,7 +1182,10 @@ onBeforeUnmount(() => {
         <main v-else class="flex-1 min-h-0 overflow-y-auto px-4 py-3 lg:overflow-hidden lg:px-8 lg:py-6 grid grid-cols-1 gap-3 lg:grid-cols-5 lg:gap-6">
             <!-- Clock + form -->
             <section
-                :class="[method ? 'lg:col-span-3' : 'lg:col-span-5', employeeNumberMode ? 'lg:order-2' : 'lg:order-1']"
+                :class="[
+                    identification ? 'lg:col-span-5 lg:order-1' : (method ? 'lg:col-span-3' : 'lg:col-span-5'),
+                    employeeNumberMode ? 'lg:order-2' : 'lg:order-1',
+                ]"
                 class="order-first flex min-h-0 flex-col"
             >
                 <p v-if="!online" class="text-xs text-amber-700 dark:text-amber-200 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-400/30 rounded-lg px-3 py-2 mb-3">
@@ -1043,162 +1213,243 @@ onBeforeUnmount(() => {
                     </el-button>
                 </div>
 
-                <!-- Phone: compact summary so the keypad or the camera gets the full screen -->
-                <div
-                    v-if="phoneCompact"
-                    class="lg:hidden flex items-center justify-between gap-3 rounded-2xl border border-gray-100 dark:border-[#2b2b2e] bg-white dark:bg-[#1e1e20] px-4 py-2.5 mb-3 shadow-sm"
-                >
-                    <div class="min-w-0">
-                        <p class="text-[10px] uppercase tracking-widest text-gray-400">Tipo de registro</p>
-                        <p class="truncate text-sm font-semibold text-gray-700 dark:text-gray-200">{{ selectedTypeLabel }}</p>
-                        <p class="truncate text-[11px] text-gray-400">{{ methodLabel }}</p>
-                    </div>
-                    <el-button text size="small" class="!text-xs !font-semibold !text-[#f26c17]" @click="changeSelection">
-                        Cambiar
-                    </el-button>
-                </div>
-
-                <div
-                    class="bg-white dark:bg-[#1e1e20] border border-gray-100 dark:border-[#2b2b2e] rounded-2xl p-4 lg:p-6 flex-1 flex-col shadow-sm min-h-0"
-                    :class="phoneCompact ? 'hidden lg:flex' : 'flex'"
-                >
-                    <div class="flex items-center gap-2 mb-3 lg:mb-4">
-                        <span class="w-6 h-6 lg:w-7 lg:h-7 rounded-full bg-[#f26c17] text-white text-xs lg:text-sm font-bold flex items-center justify-center shrink-0">1</span>
-                        <div>
-                            <h2 class="text-sm lg:text-base font-semibold text-gray-800 dark:text-white">Elige el tipo de registro</h2>
-                            <p class="hidden sm:block text-xs text-gray-400">¿Qué vas a registrar en este momento?</p>
-                        </div>
-                    </div>
-
-                    <!-- Punch type -->
-                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4 lg:mb-5">
-                        <button
-                            v-for="entry in typeEntries"
-                            :key="entry.value"
-                            type="button"
-                            class="rounded-xl border px-2 py-2.5 text-xs lg:text-sm font-semibold transition-all"
-                            :class="selectedType === entry.value
-                                ? 'bg-[#f26c17] border-[#f26c17] text-white shadow-md shadow-[#f26c17]/30'
-                                : 'bg-white dark:bg-[#252529] border-gray-200 dark:border-[#2b2b2e] text-gray-600 dark:text-gray-300 hover:border-[#f26c17]/60 hover:text-[#f26c17]'"
-                            @click="selectedType = entry.value"
-                        >
-                            {{ entry.label }}
-                        </button>
-                    </div>
-
-                    <div class="flex items-center gap-2 mb-3">
-                        <span class="w-6 h-6 lg:w-7 lg:h-7 rounded-full bg-[#f26c17] text-white text-xs lg:text-sm font-bold flex items-center justify-center shrink-0">2</span>
-                        <div>
-                            <h2 class="text-sm lg:text-base font-semibold text-gray-800 dark:text-white">
-                                {{ stepTwoTitle }}
-                            </h2>
-                            <p class="hidden sm:block text-xs text-gray-400">
-                                <template v-if="employeeNumberEnabled">Elige cómo quieres identificarte.</template>
-                                <template v-else-if="method === 'employee_number'">Escribe tu número de empleado.</template>
-                                <template v-else>Mira de frente a la cámara y presiona el botón.</template>
-                            </p>
-                        </div>
-                    </div>
-
-                    <!-- Identification method -->
-                    <div v-if="employeeNumberEnabled" class="grid grid-cols-2 gap-2 mb-3">
-                        <button
-                            type="button"
-                            class="rounded-xl border px-3 py-2.5 text-xs lg:text-sm font-semibold transition-all"
-                            :class="method === 'face'
-                                ? 'bg-[#f26c17] border-[#f26c17] text-white shadow-md shadow-[#f26c17]/30'
-                                : 'bg-white dark:bg-[#252529] border-gray-200 dark:border-[#2b2b2e] text-gray-600 dark:text-gray-300 hover:border-[#f26c17]/60 hover:text-[#f26c17]'"
-                            @click="method = 'face'"
-                        >
-                            Con mi rostro
-                        </button>
-                        <button
-                            type="button"
-                            class="rounded-xl border px-3 py-2.5 text-xs lg:text-sm font-semibold transition-all"
-                            :class="method === 'employee_number'
-                                ? 'bg-[#f26c17] border-[#f26c17] text-white shadow-md shadow-[#f26c17]/30'
-                                : 'bg-white dark:bg-[#252529] border-gray-200 dark:border-[#2b2b2e] text-gray-600 dark:text-gray-300 hover:border-[#f26c17]/60 hover:text-[#f26c17]'"
-                            @click="method = 'employee_number'"
-                        >
-                            Con número de empleado
-                        </button>
-                    </div>
-
-                    <!-- Identification -->
-                    <!-- Personal registration notice (only with the employee number: the face identifies the collaborator) -->
-                    <div v-if="method === 'employee_number'" class="flex items-start gap-2 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-400/30 px-3 py-2 mb-3 text-[11px] leading-snug text-amber-700 dark:text-amber-200">
-                        <el-icon class="mt-0.5 shrink-0"><WarningFilled /></el-icon>
-                        <p>
-                            El registro es personal e individual: no registres la asistencia de otra persona.
-                            Hacerlo afecta su nómina y puede generar penalizaciones.
-                        </p>
-                    </div>
-
-                    <div class="mt-auto space-y-3">
-                        <!-- Employee number: the submit button lives in the on-screen keypad -->
-                        <p
-                            v-if="employeeNumberMode"
-                            class="text-center text-xs text-gray-400 dark:text-gray-500"
-                        >
-                            Escribe tu número con el teclado en pantalla y presiona "Registrar con número de empleado".
-                        </p>
-
-                        <!-- Face -->
-                        <el-button
-                            v-else-if="method === 'face'"
-                            type="primary"
-                            color="#f26c17"
-                            size="large"
-                            class="!h-14 !text-base w-full"
-                            :loading="faceSubmitting"
-                            @click="submitFace()"
-                        >
-                            {{ cameraReady ? 'Registrar con rostro' : 'Tomar foto y registrar' }}
-                        </el-button>
-
-                        <div v-if="locationStatus !== 'idle'" class="space-y-2">
-                            <p
-                                class="flex items-center justify-center gap-1.5 text-xs text-center"
-                                :class="locationStatus === 'ready'
-                                    ? 'text-emerald-600 dark:text-emerald-300'
-                                    : locationStatus === 'loading'
-                                        ? 'text-gray-400 dark:text-gray-500'
-                                        : 'text-red-600 dark:text-red-400'"
-                            >
-                                <el-icon><Location /></el-icon>
-                                <template v-if="locationStatus === 'loading'">Obteniendo la ubicación del dispositivo…</template>
-                                <template v-else-if="locationStatus === 'ready'">Se registrará la ubicación de este dispositivo.</template>
-                                <template v-else>{{ locationIssueMessage }}</template>
-                            </p>
-
-                            <div v-if="locationStatus === 'unavailable'" class="flex justify-center">
-                                <el-button type="primary" plain size="default" :icon="Location" @click="requestLocation">
-                                    {{ locationActionLabel }}
-                                </el-button>
+                <div class="bg-white dark:bg-[#1e1e20] border border-gray-100 dark:border-[#2b2b2e] rounded-2xl p-4 lg:p-6 flex-1 flex-col flex shadow-sm min-h-0 overflow-y-auto">
+                    <!-- Step 1: choose the movement, then identify the collaborator -->
+                    <template v-if="!identification">
+                        <div class="flex items-center gap-2 mb-3 lg:mb-4">
+                            <span class="w-6 h-6 lg:w-7 lg:h-7 rounded-full bg-[#f26c17] text-white text-xs lg:text-sm font-bold flex items-center justify-center shrink-0">1</span>
+                            <div>
+                                <h2 class="text-sm lg:text-base font-semibold text-gray-800 dark:text-white">Elige el tipo de registro</h2>
+                                <p class="hidden sm:block text-xs text-gray-400">¿Qué vas a registrar en este momento?</p>
                             </div>
                         </div>
-                    </div>
 
-                    <p class="hidden sm:block text-xs text-gray-400 dark:text-gray-500 mt-3">
-                        <template v-if="!method">
-                            Elige cómo quieres identificarte para continuar.
-                        </template>
-                        <template v-else-if="method === 'employee_number'">
-                            Si no conoces tu número de empleado, pide ayuda al administrador.
-                        </template>
-                        <template v-else-if="!cameraReady">
-                            Presiona "Tomar foto y registrar" para capturar tu rostro con la cámara del dispositivo.
-                            <template v-if="employeeNumberEnabled"> También puedes registrar con tu número de empleado.</template>
-                        </template>
-                        <template v-else>
-                            Presiona "Registrar con rostro" y mira de frente a la cámara.
-                        </template>
-                    </p>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4 lg:mb-5">
+                            <button
+                                v-for="entry in initialTypeEntries"
+                                :key="entry.value"
+                                type="button"
+                                class="rounded-xl border px-2 py-2.5 text-xs lg:text-sm font-semibold transition-all"
+                                :class="selectedType === entry.value
+                                    ? 'bg-[#f26c17] border-[#f26c17] text-white shadow-md shadow-[#f26c17]/30'
+                                    : 'bg-white dark:bg-[#252529] border-gray-200 dark:border-[#2b2b2e] text-gray-600 dark:text-gray-300 hover:border-[#f26c17]/60 hover:text-[#f26c17]'"
+                                @click="selectedType = entry.value"
+                            >
+                                {{ entry.label }}
+                            </button>
+                        </div>
+
+                        <div class="flex items-center gap-2 mb-3">
+                            <span class="w-6 h-6 lg:w-7 lg:h-7 rounded-full bg-[#f26c17] text-white text-xs lg:text-sm font-bold flex items-center justify-center shrink-0">2</span>
+                            <div>
+                                <h2 class="text-sm lg:text-base font-semibold text-gray-800 dark:text-white">Identifícate</h2>
+                                <p class="hidden sm:block text-xs text-gray-400">
+                                    <template v-if="employeeNumberEnabled">Elige cómo quieres identificarte.</template>
+                                    <template v-else>Mira de frente a la cámara y presiona el botón.</template>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Identification method -->
+                        <div v-if="employeeNumberEnabled" class="grid grid-cols-2 gap-2 mb-3">
+                            <button
+                                type="button"
+                                class="rounded-xl border px-3 py-2.5 text-xs lg:text-sm font-semibold transition-all"
+                                :class="method === 'face'
+                                    ? 'bg-[#f26c17] border-[#f26c17] text-white shadow-md shadow-[#f26c17]/30'
+                                    : 'bg-white dark:bg-[#252529] border-gray-200 dark:border-[#2b2b2e] text-gray-600 dark:text-gray-300 hover:border-[#f26c17]/60 hover:text-[#f26c17]'"
+                                @click="method = 'face'"
+                            >
+                                Con mi rostro
+                            </button>
+                            <button
+                                type="button"
+                                class="rounded-xl border px-3 py-2.5 text-xs lg:text-sm font-semibold transition-all"
+                                :class="method === 'employee_number'
+                                    ? 'bg-[#f26c17] border-[#f26c17] text-white shadow-md shadow-[#f26c17]/30'
+                                    : 'bg-white dark:bg-[#252529] border-gray-200 dark:border-[#2b2b2e] text-gray-600 dark:text-gray-300 hover:border-[#f26c17]/60 hover:text-[#f26c17]'"
+                                @click="method = 'employee_number'"
+                            >
+                                Con número de empleado
+                            </button>
+                        </div>
+
+                        <!-- Personal registration notice (only with the employee number: the face identifies the collaborator) -->
+                        <div v-if="method === 'employee_number'" class="flex items-start gap-2 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-400/30 px-3 py-2 mb-3 text-[11px] leading-snug text-amber-700 dark:text-amber-200">
+                            <el-icon class="mt-0.5 shrink-0"><WarningFilled /></el-icon>
+                            <p>
+                                El registro es personal e individual: no registres la asistencia de otra persona.
+                                Hacerlo afecta su nómina y puede generar penalizaciones.
+                            </p>
+                        </div>
+
+                        <div class="mt-auto space-y-3">
+                            <p v-if="!selectedType" class="text-center text-xs text-amber-600 dark:text-amber-300">
+                                Primero elige el tipo de registro.
+                            </p>
+
+                            <!-- Employee number: the submit button lives in the on-screen keypad -->
+                            <p
+                                v-if="employeeNumberMode"
+                                class="text-center text-xs text-gray-400 dark:text-gray-500"
+                            >
+                                Escribe tu número con el teclado en pantalla y presiona "Identificarme".
+                            </p>
+
+                            <!-- Face -->
+                            <el-button
+                                v-else-if="method === 'face'"
+                                type="primary"
+                                color="#f26c17"
+                                size="large"
+                                class="!h-14 !text-base w-full"
+                                :loading="identifying"
+                                :disabled="!selectedType"
+                                @click="identify()"
+                            >
+                                {{ cameraReady ? 'Identificarme con mi rostro' : 'Tomar foto e identificarme' }}
+                            </el-button>
+
+                            <div v-if="locationStatus !== 'idle'" class="space-y-2">
+                                <p
+                                    class="flex items-center justify-center gap-1.5 text-xs text-center"
+                                    :class="locationStatus === 'ready'
+                                        ? 'text-emerald-600 dark:text-emerald-300'
+                                        : locationStatus === 'loading'
+                                            ? 'text-gray-400 dark:text-gray-500'
+                                            : 'text-red-600 dark:text-red-400'"
+                                >
+                                    <el-icon><Location /></el-icon>
+                                    <template v-if="locationStatus === 'loading'">Obteniendo la ubicación del dispositivo…</template>
+                                    <template v-else-if="locationStatus === 'ready'">Se registrará la ubicación de este dispositivo.</template>
+                                    <template v-else>{{ locationIssueMessage }}</template>
+                                </p>
+
+                                <div v-if="locationStatus === 'unavailable'" class="flex justify-center">
+                                    <el-button type="primary" plain size="default" :icon="Location" @click="requestLocation">
+                                        {{ locationActionLabel }}
+                                    </el-button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <p class="hidden sm:block text-xs text-gray-400 dark:text-gray-500 mt-3">
+                            <template v-if="!selectedType">
+                                Primero elige el tipo de registro.
+                            </template>
+                            <template v-else-if="!method">
+                                Elige cómo quieres identificarte para continuar.
+                            </template>
+                            <template v-else-if="method === 'employee_number'">
+                                Si no conoces tu número de empleado, pide ayuda al administrador.
+                            </template>
+                            <template v-else-if="!cameraReady">
+                                Presiona "Tomar foto e identificarme" para capturar tu rostro con la cámara del dispositivo.
+                                <template v-if="employeeNumberEnabled"> También puedes identificarte con tu número de empleado.</template>
+                            </template>
+                            <template v-else>
+                                Presiona "Identificarme con mi rostro" y mira de frente a la cámara.
+                            </template>
+                        </p>
+                    </template>
+
+                    <!-- Step 2: choose the movement, without recognizing the face again -->
+                    <template v-else>
+                        <div class="flex flex-wrap items-start justify-between gap-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-400/30 px-4 py-3 mb-4">
+                            <div class="min-w-0">
+                                <p class="text-[10px] uppercase tracking-widest text-emerald-600 dark:text-emerald-300">Colaborador identificado</p>
+                                <p class="truncate text-lg font-bold text-gray-800 dark:text-white">{{ identification.user_name }}</p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">
+                                    {{ identification.employee_number }} · {{ identificationMethodLabel }}
+                                    <template v-if="identification.similarity"> · {{ identification.similarity }}% de coincidencia</template>
+                                </p>
+                            </div>
+                            <el-button text size="small" class="!text-xs !font-semibold !text-[#f26c17]" @click="finishIdentification">
+                                No quiero hacer ningún registro
+                            </el-button>
+                        </div>
+
+                        <div class="flex items-center gap-2 mb-3">
+                            <span class="w-6 h-6 lg:w-7 lg:h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                                <el-icon :size="16"><CircleCheck /></el-icon>
+                            </span>
+                            <div>
+                                <h2 class="text-sm lg:text-base font-semibold text-gray-800 dark:text-white">Elige otro tipo de registro</h2>
+                                <p class="hidden sm:block text-xs text-gray-400">Los registros ya realizados aparecen deshabilitados.</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
+                            <button
+                                v-for="option in currentOptions"
+                                :key="option.type"
+                                type="button"
+                                class="rounded-xl border px-2 py-3 text-xs lg:text-sm font-semibold transition-all text-left"
+                                :class="[
+                                    selectedType === option.type
+                                        ? 'bg-[#f26c17] border-[#f26c17] text-white shadow-md shadow-[#f26c17]/30'
+                                        : option.allowed
+                                            ? 'bg-white dark:bg-[#252529] border-gray-200 dark:border-[#2b2b2e] text-gray-600 dark:text-gray-300 hover:border-[#f26c17]/60 hover:text-[#f26c17]'
+                                            : 'bg-gray-100 dark:bg-[#252529]/50 border-gray-200 dark:border-[#2b2b2e] text-gray-400 dark:text-gray-500 cursor-not-allowed',
+                                ]"
+                                :aria-disabled="!option.allowed"
+                                @click="handleOptionClick(option)"
+                            >
+                                <span class="block">{{ option.label }}</span>
+                                <span v-if="!option.allowed && option.last_registered_at" class="mt-0.5 block text-[10px] font-medium opacity-80">
+                                    Registrado {{ option.last_registered_at }}
+                                </span>
+                                <span v-else-if="!option.allowed" class="mt-0.5 block text-[10px] font-medium opacity-80">
+                                    No disponible
+                                </span>
+                            </button>
+                        </div>
+
+                        <div class="mt-auto space-y-3">
+                            <el-button
+                                v-if="selectedType"
+                                type="primary"
+                                color="#f26c17"
+                                size="large"
+                                class="!h-14 !text-base w-full"
+                                :loading="submittingPunch"
+                                @click="submitPunch"
+                            >
+                                Registrar {{ selectedTypeLabel.toLowerCase() }}
+                            </el-button>
+
+                            <div v-if="locationStatus !== 'idle'" class="space-y-2">
+                                <p
+                                    class="flex items-center justify-center gap-1.5 text-xs text-center"
+                                    :class="locationStatus === 'ready'
+                                        ? 'text-emerald-600 dark:text-emerald-300'
+                                        : locationStatus === 'loading'
+                                            ? 'text-gray-400 dark:text-gray-500'
+                                            : 'text-red-600 dark:text-red-400'"
+                                >
+                                    <el-icon><Location /></el-icon>
+                                    <template v-if="locationStatus === 'loading'">Obteniendo la ubicación del dispositivo…</template>
+                                    <template v-else-if="locationStatus === 'ready'">Se registrará la ubicación de este dispositivo.</template>
+                                    <template v-else>{{ locationIssueMessage }}</template>
+                                </p>
+
+                                <div v-if="locationStatus === 'unavailable'" class="flex justify-center">
+                                    <el-button type="primary" plain size="default" :icon="Location" @click="requestLocation">
+                                        {{ locationActionLabel }}
+                                    </el-button>
+                                </div>
+                            </div>
+
+                            <p v-else class="text-center text-xs text-gray-400 dark:text-gray-500">
+                                Puedes registrar varios movimientos sin volver a identificarte. Si no quieres continuar, usa "No quiero hacer ningún registro".
+                            </p>
+                        </div>
+                    </template>
                 </div>
             </section>
 
-            <!-- Right: camera (only when identifying with the face) -->
-            <section v-if="method === 'face'" class="lg:col-span-2 lg:order-2 flex min-h-0 flex-col gap-4">
+            <!-- Right: camera (only while identifying with the face) -->
+            <section v-if="method === 'face' && !identification" class="lg:col-span-2 lg:order-2 flex min-h-0 flex-col gap-4">
                 <div class="relative rounded-2xl overflow-hidden border border-gray-200 dark:border-[#2b2b2e] bg-gray-900 aspect-[4/3] max-h-full flex items-center justify-center shadow-sm">
                     <video
                         ref="videoRef"
@@ -1211,38 +1462,27 @@ onBeforeUnmount(() => {
                     <div v-if="!cameraReady" class="text-center text-gray-400 px-6">
                         <el-icon :size="40"><Camera /></el-icon>
                         <p class="text-sm mt-3">Cámara no disponible en este navegador</p>
-                        <p class="text-xs mt-1">Usa el botón "Tomar foto y registrar".</p>
+                        <p class="text-xs mt-1">Usa el botón "Tomar foto e identificarme".</p>
                     </div>
                 </div>
 
-                <!-- Phone: the register button lives here because the setup card is hidden -->
-                <el-button
-                    v-if="phoneCompact"
-                    type="primary"
-                    color="#f26c17"
-                    size="large"
-                    class="lg:hidden !h-14 !text-base w-full"
-                    :loading="faceSubmitting"
-                    @click="submitFace()"
-                >
-                    {{ cameraReady ? 'Registrar con rostro' : 'Tomar foto y registrar' }}
-                </el-button>
-
                 <div v-if="faceRecognitionEnabled" class="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-400/30 rounded-xl px-4 py-3 text-sm text-emerald-700 dark:text-emerald-200">
-                    Reconocimiento facial activo: presiona "Registrar con rostro" para identificarte.
+                    Reconocimiento facial activo: presiona "Identificarme con mi rostro" para comenzar.
                 </div>
                 <div v-else class="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-400/30 rounded-xl px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
                     El reconocimiento facial aún no está configurado en el servidor. Pide ayuda al administrador.
                 </div>
             </section>
 
-            <!-- Left: on-screen keypad (employee number only) -->
+            <!-- Left: on-screen keypad (employee number only, before identifying) -->
             <section v-if="employeeNumberMode" class="lg:col-span-2 lg:order-1 flex min-h-0 flex-col">
                 <AttendanceKeypad
                     v-model="employeeNumber"
-                    :loading="employeeNumberSubmitting"
-                    submit-label="Registrar con número de empleado"
-                    @submit="submitEmployeeNumber"
+                    :loading="identifying"
+                    :submit-disabled="!selectedType"
+                    submit-label="Identificarme con número de empleado"
+                    compact-submit-label="Identificarme"
+                    @submit="identify()"
                 />
             </section>
         </main>
@@ -1257,33 +1497,35 @@ onBeforeUnmount(() => {
             @change="onPhotoSelected"
         />
 
-        <!-- Success overlay -->
-        <div v-if="result" class="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-50 px-4 py-4">
-            <div class="bg-white dark:bg-[#1e1e20] border border-gray-100 dark:border-[#2b2b2e] rounded-3xl p-8 lg:p-10 text-center max-w-lg w-full max-h-full overflow-y-auto shadow-2xl">
-                <div class="w-20 h-20 mx-auto rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
-                    <el-icon :size="44"><CircleCheck /></el-icon>
+        <!-- Verification and registration in progress -->
+        <div v-if="processing" role="status" aria-live="polite" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 px-4 backdrop-blur-sm">
+            <div class="flex w-full max-w-xs flex-col items-center gap-4 rounded-3xl bg-white px-8 py-8 text-center shadow-2xl dark:bg-[#1e1e20]">
+                <span class="h-12 w-12 animate-spin rounded-full border-4 border-[#f26c17]/20 border-t-[#f26c17]"></span>
+                <div>
+                    <p class="text-base font-semibold text-gray-800 dark:text-white">Procesando tu registro…</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Esto tarda solo un momento.</p>
                 </div>
-                <h2 class="text-3xl font-bold mt-5 text-gray-800 dark:text-white">{{ result.user_name }}</h2>
-                <p class="mt-3">
-                    <span class="inline-flex items-center rounded-full bg-[#fdf0e7] dark:bg-[#3a2a1d] text-[#f26c17] font-semibold text-sm px-3 py-1">
-                        {{ result.type_label }}
-                    </span>
-                    <span class="ml-2 text-gray-500 font-medium tabular-nums">{{ result.punched_at }}</span>
-                </p>
-                <p v-if="result.similarity" class="text-emerald-600 dark:text-emerald-300 text-sm mt-2">
-                    Identificado por rostro · {{ result.similarity }}% de coincidencia
-                </p>
-                <p class="text-gray-500 text-sm mt-6">
-                    <template v-if="result.suggested_next_label">
-                        Siguiente registro sugerido: <span class="font-semibold text-gray-700 dark:text-gray-200">{{ result.suggested_next_label }}</span>
-                    </template>
-                </p>
-                <el-button class="!mt-8 !h-12 w-full !text-base" color="#f26c17" @click="closeResult">
-                    Cerrar
-                </el-button>
-                <p class="text-gray-400 text-xs mt-3">Si nadie lo cierra, el kiosco se reinicia solo en unos segundos.</p>
             </div>
         </div>
+
+        <AttendanceRegistrationSuccessDialog
+            :model-value="Boolean(result)"
+            :user-name="result?.user_name ?? ''"
+            :type-label="result?.type_label ?? ''"
+            :punched-at="result?.punched_at ?? ''"
+            :similarity="result?.similarity ?? null"
+            :suggested-next-label="result?.suggested_next_label ?? ''"
+            @update:model-value="finishIdentification"
+        />
+
+        <AttendanceAlreadyRegisteredDialog
+            v-model="alreadyRegisteredDialogVisible"
+            :title="alreadyRegisteredTitle"
+            :message="alreadyRegisteredMessage"
+            :type-label="alreadyRegisteredTypeLabel"
+            :registered-at="alreadyRegisteredTime"
+            @closed="onAlreadyRegisteredDialogClosed"
+        />
 
         <!-- Location guide: once the browser blocks the permission it never asks again -->
         <el-dialog v-model="locationHelpVisible" width="560px" top="6vh" :show-close="true">
