@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\Payroll;
 
+use App\Actions\Payroll\RegisterKioskDeviceAction;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Payroll\RegisterKioskDeviceRequest;
 use App\Services\Payroll\AttendanceDeviceService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -19,6 +19,7 @@ class AttendanceDeviceRegistrationController extends Controller
 {
     public function __construct(
         private readonly AttendanceDeviceService $deviceService,
+        private readonly RegisterKioskDeviceAction $registerKioskDeviceAction,
     ) {}
 
     public function show(): Response
@@ -30,61 +31,19 @@ class AttendanceDeviceRegistrationController extends Controller
         ]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(RegisterKioskDeviceRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:100'],
-            'location' => ['nullable', 'string', 'max:120'],
-            'notes' => ['nullable', 'string', 'max:500'],
-            'password' => ['required', 'string'],
-            'device_key' => ['nullable', 'string', 'max:255'],
-        ], [
-            'name.required' => 'Escribe el nombre del dispositivo.',
-            'password.required' => 'Escribe la contraseña de registro.',
-        ]);
-
-        if (! $this->deviceService->registrationPasswordIsConfigured()) {
-            throw ValidationException::withMessages([
-                'password' => 'El registro público no está activo. Pide al administrador que configure la contraseña de registro.',
-            ]);
-        }
-
-        if (! $this->deviceService->verifyRegistrationPassword($validated['password'])) {
-            throw ValidationException::withMessages([
-                'password' => 'Contraseña de registro incorrecta. Verifícala e intenta de nuevo.',
-            ]);
-        }
-
-        // A browser that already holds a valid token is an authorized device:
-        // registering it again would create a duplicate.
-        $currentDevice = $this->deviceService->findByToken(
-            $request->header('X-Attendance-Device')
+        $result = $this->registerKioskDeviceAction->execute(
+            $request->validated(),
+            $request->header('X-Attendance-Device'),
         );
 
-        if ($currentDevice) {
-            return response()->json([
-                'message' => "Este dispositivo ya está autorizado como «{$currentDevice->name}». No es necesario registrarlo de nuevo.",
-                'device' => [
-                    'id' => $currentDevice->id,
-                    'name' => $currentDevice->name,
-                    'location' => $currentDevice->location,
-                ],
-            ], 409);
-        }
-
-        ['device' => $device, 'token' => $token] = $this->deviceService->register(
-            $validated['name'],
-            $validated['location'] ?? null,
-            $validated['notes'] ?? null,
-            null,
-            $validated['device_key'] ?? null,
+        return response()->json(
+            [
+                ...$result,
+                'kioskUrl' => route('attendance.kiosk.show'),
+            ],
+            $result['status'] === 'already_authorized' ? 409 : 200,
         );
-
-        return response()->json([
-            'device' => $device,
-            'token' => $token,
-            'kioskUrl' => route('attendance.kiosk.show'),
-            'message' => 'Dispositivo registrado correctamente.',
-        ]);
     }
 }
