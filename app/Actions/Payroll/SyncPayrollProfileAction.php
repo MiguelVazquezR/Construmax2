@@ -7,6 +7,11 @@ use App\Models\User;
 
 class SyncPayrollProfileAction
 {
+    public function __construct(
+        private readonly RemoveUserFacesAction $removeUserFacesAction,
+        private readonly EnrollProfilePhotoAction $enrollProfilePhotoAction,
+    ) {}
+
     /**
      * Fields that require the payroll.profiles.manage permission.
      *
@@ -59,6 +64,9 @@ class SyncPayrollProfileAction
         }
 
         $profile = PayrollProfile::firstOrNew(['user_id' => $user->id]);
+        // A new profile has no previous face to sync with (the caller enrolls
+        // the uploaded photo itself), so only transitions are handled.
+        $wasAttendanceSubject = $profile->exists ? (bool) $profile->getOriginal('is_attendance_subject') : null;
 
         foreach ($attributes as $key => $value) {
             $profile->{$key} = $value;
@@ -77,6 +85,28 @@ class SyncPayrollProfileAction
 
         $profile->save();
 
+        $this->syncFaceReference($user, (bool) $profile->is_attendance_subject, $wasAttendanceSubject);
+
         return $profile;
+    }
+
+    /**
+     * The face reference follows the attendance flag: a collaborator who stops
+     * registering attendance loses their face in Rekognition (every stored face
+     * is billed) and gets it back from the profile photo when enabled again.
+     */
+    private function syncFaceReference(User $user, bool $isAttendanceSubject, ?bool $wasAttendanceSubject): void
+    {
+        if ($wasAttendanceSubject === null || $isAttendanceSubject === $wasAttendanceSubject) {
+            return;
+        }
+
+        if (! $isAttendanceSubject) {
+            $this->removeUserFacesAction->execute($user);
+
+            return;
+        }
+
+        $this->enrollProfilePhotoAction->enrollFromStoredPhoto($user);
     }
 }

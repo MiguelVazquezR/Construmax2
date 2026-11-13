@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Payroll;
 
 use App\Actions\Payroll\EnrollUserFacesAction;
+use App\Actions\Payroll\RemoveUserFacesAction;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -12,6 +13,7 @@ class FaceEnrollmentController extends Controller
 {
     public function __construct(
         private readonly EnrollUserFacesAction $enrollUserFacesAction,
+        private readonly RemoveUserFacesAction $removeUserFacesAction,
     ) {}
 
     /**
@@ -39,7 +41,7 @@ class FaceEnrollmentController extends Controller
             abort(403);
         }
 
-        $this->enrollUserFacesAction->removeActive($user);
+        $this->removeUserFacesAction->execute($user);
 
         return back()->with('success', 'Rostro eliminado. El colaborador podrá registrarlo de nuevo.');
     }

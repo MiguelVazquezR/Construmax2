@@ -14,6 +14,8 @@ use App\Models\User;
 use App\Models\VacationRequest;
 use App\Services\Payroll\AttendanceDayService;
 use App\Services\Payroll\AttendanceDaySummary;
+use App\Services\Payroll\AttendancePunchPolicy;
+use App\Services\Payroll\Exceptions\AttendancePunchNotAllowedException;
 use App\Services\Payroll\FaceRecognition\Exceptions\FaceNotDetectedException;
 use App\Services\Payroll\FaceRecognition\Exceptions\MultipleFacesDetectedException;
 use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
@@ -38,6 +40,7 @@ class MyAttendanceController extends Controller
         private readonly VacationService $vacationService,
         private readonly VacationPeriodService $vacationPeriodService,
         private readonly RegisterAttendancePunchAction $registerPunchAction,
+        private readonly AttendancePunchPolicy $punchPolicy,
         private readonly FaceRecognitionService $faceRecognition,
     ) {}
 
@@ -127,6 +130,7 @@ class MyAttendanceController extends Controller
             ],
             'today' => $this->mapDay($today),
             'suggestedNextType' => $this->suggestedNextType($user),
+            'allowedTypes' => $this->punchPolicy->optionsFor($user),
             'periodDays' => $periodDays->values()->all(),
             'historyRange' => [
                 'start_date' => $periodFrom->toDateString(),
@@ -233,16 +237,29 @@ class MyAttendanceController extends Controller
             ]);
         }
 
-        $log = $this->registerPunchAction->execute($user, [
-            'type' => $validated['type'],
-            'source' => AttendanceLog::SOURCE_REMOTE,
-            'identifier_method' => $identifierMethod,
-            'face_similarity' => $similarity,
-            'latitude' => $validated['latitude'] ?? null,
-            'longitude' => $validated['longitude'] ?? null,
-            'location_accuracy' => $validated['location_accuracy'] ?? null,
-            'photo' => $identifierMethod === AttendanceLog::IDENTIFIER_FACE ? ($validated['photo'] ?? null) : null,
-        ]);
+        try {
+            $log = $this->registerPunchAction->execute($user, [
+                'type' => $validated['type'],
+                'source' => AttendanceLog::SOURCE_REMOTE,
+                'identifier_method' => $identifierMethod,
+                'face_similarity' => $similarity,
+                'latitude' => $validated['latitude'] ?? null,
+                'longitude' => $validated['longitude'] ?? null,
+                'location_accuracy' => $validated['location_accuracy'] ?? null,
+                'photo' => $identifierMethod === AttendanceLog::IDENTIFIER_FACE ? ($validated['photo'] ?? null) : null,
+            ]);
+        } catch (AttendancePunchNotAllowedException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => 'attendance_punch_not_allowed',
+                'type' => $exception->punchType,
+                'last_registered_at' => $exception->lastRegisteredAt,
+                'allowed_types' => $exception->options,
+                'errors' => [
+                    'type' => [$exception->getMessage()],
+                ],
+            ], 422);
+        }
 
         return response()->json([
             'type' => $log->type,
@@ -253,6 +270,7 @@ class MyAttendanceController extends Controller
             'similarity' => $similarity !== null ? round($similarity, 2) : null,
             'suggested_next' => $this->suggestedNextType($user),
             'suggested_next_label' => AttendanceLog::TYPES[$this->suggestedNextType($user)] ?? null,
+            'allowed_types' => $this->punchPolicy->optionsFor($user),
         ]);
     }
 
@@ -319,18 +337,12 @@ class MyAttendanceController extends Controller
 
     private function suggestedNextType(User $user): ?string
     {
-        $lastPunch = AttendanceLog::forUser($user->id)
-            ->onDate(CarbonImmutable::today()->toDateString())
-            ->orderByDesc('punched_at')
-            ->first();
-
-        $lastType = $lastPunch?->type;
-        $order = array_keys(AttendanceLog::TYPES);
-        $currentIndex = $lastType ? array_search($lastType, $order, true) : false;
-
-        return $currentIndex === false
-            ? $order[0]
-            : ($order[$currentIndex + 1] ?? null);
+        return AttendanceLog::nextSuggestedType(
+            AttendanceLog::forUser($user->id)
+                ->onDate(CarbonImmutable::today()->toDateString())
+                ->orderBy('punched_at')
+                ->get()
+        );
     }
 
     /**

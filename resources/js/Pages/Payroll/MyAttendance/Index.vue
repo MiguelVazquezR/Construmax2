@@ -5,13 +5,16 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import DayRecordsDialog from '@/Components/Payroll/DayRecordsDialog.vue';
 import MyVacationPanel from '@/Components/Payroll/MyVacationPanel.vue';
 import { Camera, Calendar, CircleCheck, Clock, Document, Location, User } from '@element-plus/icons-vue';
-import { useFlashMessages } from '@/Composables/useFlashMessages';
 import axios from 'axios';
+import AttendanceAlreadyRegisteredDialog from '@/Components/Payroll/AttendanceAlreadyRegisteredDialog.vue';
+import AttendanceRegistrationSuccessDialog from '@/Components/Payroll/AttendanceRegistrationSuccessDialog.vue';
+import { useFlashMessages } from '@/Composables/useFlashMessages';
 
 const props = defineProps({
     profile: Object,
     today: Object,
     suggestedNextType: String,
+    allowedTypes: Array,
     periodDays: Array,
     historyRange: Object,
     vacationBalance: Object,
@@ -34,6 +37,12 @@ const activeTab = ref('my-day');
 const clock = ref(new Date());
 const selectedType = ref(null);
 const submitting = ref(false);
+const alreadyRegisteredDialogVisible = ref(false);
+const alreadyRegisteredTitle = ref('Ese registro ya se realizó');
+const alreadyRegisteredMessage = ref('');
+const alreadyRegisteredTypeLabel = ref('');
+const alreadyRegisteredTime = ref('');
+const reloadOptionsAfterDialog = ref(false);
 const errorMessage = ref('');
 const result = ref(null);
 const cameraReady = ref(false);
@@ -51,9 +60,25 @@ let stream = null;
 let clockTimer = null;
 let resultTimer = null;
 
-const typeEntries = computed(() =>
-    Object.entries(props.punchTypes || {}).map(([value, label]) => ({ value, label }))
-);
+const typeEntries = computed(() => {
+    if (Array.isArray(props.allowedTypes) && props.allowedTypes.length > 0) {
+        return props.allowedTypes.map((entry) => ({
+            value: entry.type,
+            label: entry.label,
+            allowed: entry.allowed === true,
+            reason: entry.reason,
+            lastRegisteredAt: entry.last_registered_at,
+        }));
+    }
+
+    return Object.entries(props.punchTypes || {}).map(([value, label]) => ({
+        value,
+        label,
+        allowed: true,
+        reason: null,
+        lastRegisteredAt: null,
+    }));
+});
 
 const canRemote = computed(() => props.profile?.can_remote_attendance === true);
 const canPunch = computed(() => props.profile?.can_punch !== false);
@@ -352,6 +377,46 @@ const locate = () =>
         });
     });
 
+const showAlreadyRegisteredDialog = ({ title, message, typeLabel = '', registeredAt = '', reloadOptions = false }) => {
+    alreadyRegisteredTitle.value = title;
+    alreadyRegisteredMessage.value = message;
+    alreadyRegisteredTypeLabel.value = typeLabel;
+    alreadyRegisteredTime.value = registeredAt ? `Registrado a las ${registeredAt}` : '';
+    reloadOptionsAfterDialog.value = reloadOptions;
+    alreadyRegisteredDialogVisible.value = true;
+};
+
+const onAlreadyRegisteredDialogClosed = () => {
+    errorMessage.value = '';
+
+    if (reloadOptionsAfterDialog.value) {
+        reloadOptionsAfterDialog.value = false;
+        router.reload({ only: ['today', 'periodDays', 'suggestedNextType', 'historyRange', 'allowedTypes'] });
+    }
+};
+
+const selectType = (entry) => {
+    errorMessage.value = '';
+
+    if (!entry.allowed) {
+        selectedType.value = null;
+        showAlreadyRegisteredDialog({
+            title: entry.lastRegisteredAt ? 'Ese registro ya se realizó' : 'No se pudo registrar ese movimiento',
+            message: entry.reason || 'Ese registro ya se realizó o no está disponible en este momento.',
+            typeLabel: entry.label,
+            registeredAt: entry.lastRegisteredAt,
+        });
+        return;
+    }
+
+    selectedType.value = selectedType.value === entry.value ? null : entry.value;
+};
+
+const closeResult = () => {
+    clearTimeout(resultTimer);
+    result.value = null;
+};
+
 const submitPunch = async () => {
     errorMessage.value = '';
 
@@ -416,9 +481,28 @@ const submitPunch = async () => {
             result.value = null;
         }, 6000);
 
-        router.reload({ only: ['today', 'periodDays', 'suggestedNextType', 'historyRange'] });
+        router.reload({ only: ['today', 'periodDays', 'suggestedNextType', 'historyRange', 'allowedTypes'] });
     } catch (error) {
-        const errors = error.response?.data?.errors;
+        const data = error.response?.data;
+
+        if (data?.code === 'attendance_punch_not_allowed') {
+            const option = (data.allowed_types || []).find((entry) => entry.type === data.type)
+                ?? { reason: data.message, type: data.type, last_registered_at: data.last_registered_at };
+
+            selectedType.value = null;
+            showAlreadyRegisteredDialog({
+                title: (option.last_registered_at || data.last_registered_at)
+                    ? 'Ese registro ya se realizó'
+                    : 'No se pudo registrar ese movimiento',
+                message: option.reason || 'Ese registro ya se realizó o no está disponible en este momento.',
+                typeLabel: option.label ?? '',
+                registeredAt: option.last_registered_at ?? data.last_registered_at,
+                reloadOptions: true,
+            });
+            return;
+        }
+
+        const errors = data?.errors;
         errorMessage.value = errors
             ? Object.values(errors).flat()[0]
             : 'No se pudo guardar el registro. Intenta de nuevo.';
@@ -585,20 +669,37 @@ onBeforeUnmount(() => {
                                     />
 
                                     <template v-else>
+                                        <p v-if="errorMessage" class="text-sm text-red-600 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-400/30 rounded-lg px-4 py-3 mb-4">
+                                            {{ errorMessage }}
+                                        </p>
+
                                         <p class="text-xs uppercase tracking-wider text-gray-400 font-bold mb-2">1 · ¿Qué registro harás?</p>
                                         <div class="grid grid-cols-2 md:grid-cols-3 gap-2.5">
                                             <button
                                                 v-for="entry in typeEntries"
                                                 :key="entry.value"
                                                 type="button"
-                                                class="rounded-xl border px-3 py-3.5 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
-                                                :class="selectedType === entry.value
-                                                    ? 'bg-orange-500 border-orange-400 text-white shadow-sm'
-                                                    : 'bg-white dark:bg-[#1e1e20] border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-orange-400'"
-                                                @click="selectedType = selectedType === entry.value ? null : entry.value"
+                                                class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors flex flex-col items-center justify-center gap-0.5"
+                                                :class="[
+                                                    selectedType === entry.value
+                                                        ? 'bg-orange-500 border-orange-400 text-white shadow-sm'
+                                                        : entry.allowed
+                                                            ? 'bg-white dark:bg-[#1e1e20] border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-orange-400'
+                                                            : 'bg-gray-100 dark:bg-[#252529]/50 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed',
+                                                ]"
+                                                :aria-disabled="!entry.allowed"
+                                                @click="selectType(entry)"
                                             >
-                                                <el-icon v-if="selectedType === entry.value" :size="16"><CircleCheck /></el-icon>
-                                                {{ entry.label }}
+                                                <span class="flex items-center gap-2">
+                                                    <el-icon v-if="selectedType === entry.value" :size="16"><CircleCheck /></el-icon>
+                                                    {{ entry.label }}
+                                                </span>
+                                                <span v-if="!entry.allowed && entry.lastRegisteredAt" class="text-[10px] font-normal opacity-80">
+                                                    Registrado {{ entry.lastRegisteredAt }}
+                                                </span>
+                                                <span v-else-if="!entry.allowed" class="text-[10px] font-normal opacity-80">
+                                                    No disponible
+                                                </span>
                                             </button>
                                         </div>
 
@@ -665,10 +766,6 @@ onBeforeUnmount(() => {
                                                         Se registrará tu ubicación como evidencia del registro.
                                                     </p>
 
-                                                    <p v-if="errorMessage" class="text-sm text-red-600 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-400/30 rounded-lg px-4 py-3 mb-3">
-                                                        {{ errorMessage }}
-                                                    </p>
-
                                                     <el-button
                                                         type="primary"
                                                         color="#f26c17"
@@ -700,10 +797,6 @@ onBeforeUnmount(() => {
                                                     Se registrará tu ubicación como evidencia del registro.
                                                 </p>
 
-                                                <p v-if="errorMessage" class="text-sm text-red-600 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-400/30 rounded-lg px-4 py-3">
-                                                    {{ errorMessage }}
-                                                </p>
-
                                                 <el-button
                                                     type="primary"
                                                     color="#f26c17"
@@ -721,10 +814,6 @@ onBeforeUnmount(() => {
                                                 <p v-if="remoteGeolocationRequired" class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
                                                     <el-icon><Location /></el-icon>
                                                     Se registrará tu ubicación como evidencia del registro.
-                                                </p>
-
-                                                <p v-if="errorMessage" class="text-sm text-red-600 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-400/30 rounded-lg px-4 py-3">
-                                                    {{ errorMessage }}
                                                 </p>
 
                                                 <el-button
@@ -1005,19 +1094,24 @@ onBeforeUnmount(() => {
         <!-- Today's records: modern read-only summary without photos or map -->
         <DayRecordsDialog v-model="todayDialog" :day="today" :show-map="false" />
 
-        <!-- Punch result -->
-        <div v-if="result" class="fixed bottom-6 right-6 bg-white dark:bg-[#1e1e20] border border-emerald-300 dark:border-emerald-500/40 shadow-lg rounded-2xl px-6 py-4 flex items-center gap-4 z-50">
-            <el-icon :size="36" class="text-emerald-500"><CircleCheck /></el-icon>
-            <div>
-                <p class="font-semibold text-gray-800 dark:text-gray-100">
-                    {{ result.type_label }} registrada a las {{ result.punched_at }}
-                </p>
-                <p class="text-xs text-gray-500 dark:text-gray-400">
-                    <template v-if="result.similarity">Rostro verificado · {{ result.similarity }}% · </template>
-                    <template v-if="result.suggested_next_label">Siguiente sugerido: {{ result.suggested_next_label }}</template>
-                </p>
-            </div>
-        </div>
+        <AttendanceRegistrationSuccessDialog
+            :model-value="Boolean(result)"
+            :user-name="page.props.auth?.user?.name ?? ''"
+            :type-label="result?.type_label ?? ''"
+            :punched-at="result?.punched_at ?? ''"
+            :similarity="result?.similarity ?? null"
+            :suggested-next-label="result?.suggested_next_label ?? ''"
+            @update:model-value="closeResult"
+        />
+
+        <AttendanceAlreadyRegisteredDialog
+            v-model="alreadyRegisteredDialogVisible"
+            :title="alreadyRegisteredTitle"
+            :message="alreadyRegisteredMessage"
+            :type-label="alreadyRegisteredTypeLabel"
+            :registered-at="alreadyRegisteredTime"
+            @closed="onAlreadyRegisteredDialogClosed"
+        />
     </AppLayout>
 </template>
 

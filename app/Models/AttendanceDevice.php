@@ -14,6 +14,7 @@ class AttendanceDevice extends Model
     protected $fillable = [
         'name',
         'token_hash',
+        'fingerprint_hash',
         'location',
         'notes',
         'registered_by',
@@ -35,6 +36,7 @@ class AttendanceDevice extends Model
 
     protected $hidden = [
         'token_hash',
+        'fingerprint_hash',
     ];
 
     public function registeredBy(): BelongsTo

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Actions\Payroll\AssignUserShiftAction;
 use App\Actions\Payroll\EnrollProfilePhotoAction;
 use App\Actions\Payroll\RemoveProfilePhotoAction;
+use App\Actions\Payroll\RemoveUserFacesAction;
 use App\Actions\Payroll\SyncPayrollProfileAction;
 use App\Models\FaceEnrollment;
 use App\Models\PayrollSetting;
@@ -35,6 +36,7 @@ class UserController extends Controller
         private readonly FaceRecognitionService $faceRecognition,
         private readonly EnrollProfilePhotoAction $enrollProfilePhotoAction,
         private readonly RemoveProfilePhotoAction $removeProfilePhotoAction,
+        private readonly RemoveUserFacesAction $removeUserFacesAction,
         private readonly ImageOptimizerService $imageOptimizer,
         private readonly VacationService $vacationService,
         private readonly VacationPeriodService $vacationPeriodService,
@@ -409,6 +411,8 @@ class UserController extends Controller
             return back()->with('error', 'No se puede eliminar al super administrador.');
         }
 
+        $this->removeUserFacesAction->execute($user);
+
         $this->nullifyUserReferences([$user->id]);
 
         $user->delete();
@@ -430,6 +434,10 @@ class UserController extends Controller
             return back()->with('error', 'No se puede eliminar al super administrador.');
         }
 
+        User::query()->whereIn('id', $ids)->get()->each(
+            fn (User $user) => $this->removeUserFacesAction->execute($user)
+        );
+
         $this->nullifyUserReferences($ids);
 
         User::whereIn('id', $ids)->delete();
@@ -440,7 +448,9 @@ class UserController extends Controller
     /**
      * Dismiss or reactivate a user. Dismissing stores the termination date in
      * the payroll profile so the collaborator leaves the payroll from that date
-     * on; reactivating clears it so they come back.
+     * on; reactivating clears it so they come back. The face reference follows
+     * the same lifecycle: it is removed on dismissal and indexed again from the
+     * profile photo on reactivation.
      */
     public function toggleStatus(Request $request, User $user)
     {
@@ -456,6 +466,8 @@ class UserController extends Controller
             $user->is_active = true;
             $user->save();
             $user->payrollProfile?->update(['termination_date' => null]);
+
+            $this->enrollProfilePhotoAction->enrollFromStoredPhoto($user, $request->user());
 
             return back()->with('success', 'Usuario activado. Se eliminó su fecha de baja.');
         }
@@ -476,6 +488,10 @@ class UserController extends Controller
         $user->is_active = false;
         $user->save();
         $profile?->update(['termination_date' => $terminationDate]);
+
+        // A dismissed collaborator no longer registers attendance, so their face
+        // must leave the Rekognition collection (every stored face is billed).
+        $this->removeUserFacesAction->execute($user);
 
         return back()->with('success', $profile
             ? 'Usuario dado de baja el '.$profile->termination_date->format('d/m/Y').'. Ya no aparecerá en los periodos de nómina posteriores.'

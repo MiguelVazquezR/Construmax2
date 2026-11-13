@@ -23,6 +23,14 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'attendance.device' => \App\Http\Middleware\EnsureAttendanceDevice::class,
+            'attendance.device.optional' => \App\Http\Middleware\ResolveAttendanceDevice::class,
+        ]);
+
+        // The kiosk identifies itself with the device token header, not with
+        // the user session, so its calls must not depend on a CSRF token that
+        // expires while the tablet stays on.
+        $middleware->validateCsrfTokens(except: [
+            'attendance/kiosk/*',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
@@ -41,6 +49,13 @@ return Application::configure(basePath: dirname(__DIR__))
         // 2. Manejar excepciones HTTP estándar
         $exceptions->render(function (HttpException $e, Request $request) {
             $status = $e->getStatusCode();
+
+            // Kiosk calls must receive JSON, so the tablet can show the real
+            // reason instead of the Inertia error page. The API group always
+            // answers JSON.
+            if ($request->hasHeader('X-Attendance-Device') || $request->is('attendance/kiosk/*') || $request->is('api/*')) {
+                return null;
+            }
 
             // Solo se activa para los códigos de error que queremos personalizar.
             if (! in_array($status, [403, 404, 419, 500, 503])) {

@@ -491,7 +491,7 @@ Created by the consolidated migration `2026_09_19_000001_create_payroll_module_t
 One per user. `employee_number` (unique, required by the Users/Technicians forms and also the kiosk identifier), `hire_date`, `termination_date`, `daily_salary`, `daily_hours` (kept in sync from the assigned schedule by `AssignUserShiftAction`; no longer typed in the forms), `is_payroll_subject`, `is_attendance_subject`, `can_remote_attendance`, `notes`.
 
 ### `attendance_devices`
-Authorized kiosk devices: `name`, `location`, `token_hash` (sha256, unique), registered by/at (`registered_by` nullable for the public registration link), `last_seen_at`/`last_seen_ip`/`user_agent`, `is_active`, revoked by/at.
+Authorized kiosk devices: `name`, `location`, `token_hash` (sha256, unique), `fingerprint_hash` (sha256 of the browser fingerprint reported at registration, used to recognize the device again when it loses its token), registered by/at (`registered_by` nullable for the public registration link), `last_seen_at`/`last_seen_ip`/`user_agent`, `is_active`, revoked by/at.
 
 ### `attendance_logs`
 Punches: `user_id`, `attendance_device_id` (nullable), `type` (check_in, lunch_start, lunch_end, break_start, break_end, check_out), `punched_at`, `source` (kiosk/remote/manual), `identifier_method` (face/employee_number/manual; legacy `pin` rows keep their historical value), `face_similarity`, `latitude`/`longitude`/`location_accuracy`, `ip`, `user_agent`, audit `edited_by`/`edited_at`/`edit_reason`. Evidence photo in media collection `capture`.

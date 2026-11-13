@@ -29,5 +29,20 @@ interface FaceRecognitionService
      */
     public function search(string $imageBase64): ?array;
 
+    /**
+     * Every face indexed in the collection.
+     *
+     * @return array<int, array{face_id: string, external_image_id: string, image_id: string}>
+     */
+    public function listFaces(): array;
+
     public function removeFace(string $faceId): void;
+
+    /**
+     * Delete several faces at once.
+     *
+     * @param  array<int, string>  $faceIds
+     * @return array<int, string> the face ids the provider confirmed as deleted
+     */
+    public function removeFaces(array $faceIds): array;
 }

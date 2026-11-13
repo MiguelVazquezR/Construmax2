@@ -126,12 +126,23 @@ Route::prefix('attendance/devices/register')->name('attendance.devices.')->group
 Route::prefix('attendance/kiosk')->name('attendance.kiosk.')->group(function () {
     Route::get('/', [KioskController::class, 'show'])->name('show');
 
+    // Recognize this browser again when its stored token is gone, so a device
+    // whose browsing data was cleared does not have to be registered twice.
+    Route::post('/recover', [KioskController::class, 'recover'])
+        ->middleware('throttle:20,1')->name('recover');
+
     Route::post('/bootstrap', [KioskController::class, 'bootstrap'])
         ->middleware(['attendance.device', 'throttle:120,1'])->name('bootstrap');
 
+    // Recognize the collaborator once and return the movements available today.
+    // The following punches reuse the identification token, so the face is not
+    // searched again in the biometric provider.
+    Route::post('/identify', [KioskController::class, 'identify'])
+        ->middleware(['attendance.device', 'throttle:30,1'])->name('identify');
+
     Route::post('/punch', [KioskController::class, 'punch'])
-        ->middleware(['attendance.device', 'throttle:30,1'])->name('punch');
+        ->middleware(['attendance.device', 'throttle:60,1'])->name('punch');
 
     Route::post('/face-punch', [KioskController::class, 'facePunch'])
-        ->middleware(['attendance.device', 'throttle:30,1'])->name('face-punch');
+        ->middleware(['attendance.device', 'throttle:60,1'])->name('face-punch');
 });

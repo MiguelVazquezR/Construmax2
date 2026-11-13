@@ -307,7 +307,7 @@ class SpecialCostAuthorizationTest extends TestCase
 
     public function test_costs_index_includes_needs_special_authorization_flag(): void
     {
-        $ticket = Ticket::factory()->create();
+        $ticket = Ticket::factory()->withStatus('Borrador')->create();
         $budget = Budget::factory()->create(['ticket_id' => $ticket->id]);
         BudgetCatalog::factory()->create([
             'budget_id' => $budget->id,

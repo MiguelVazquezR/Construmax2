@@ -6,6 +6,7 @@ use App\Models\PayrollSetting;
 use App\Models\User;
 use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Indexes an uploaded profile photo as the face reference of a collaborator,
@@ -57,6 +58,24 @@ class EnrollProfilePhotoAction
 
             return self::RESULT_FAILED;
         }
+    }
+
+    /**
+     * Enroll the face from the profile photo already stored for the user, which
+     * is what happens when a collaborator is hired again. Returns
+     * "not_applicable" when the collaborator has no portrait to index.
+     */
+    public function enrollFromStoredPhoto(User $user, ?User $actor = null): string
+    {
+        $disk = Storage::disk(config('jetstream.profile_photo_disk', 'public'));
+
+        if (! $user->profile_photo_path || ! $disk->exists($user->profile_photo_path)) {
+            return self::RESULT_NOT_APPLICABLE;
+        }
+
+        $photo = 'data:image/jpeg;base64,'.base64_encode((string) $disk->get($user->profile_photo_path));
+
+        return $this->execute($user, $photo, $actor);
     }
 
     /**

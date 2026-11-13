@@ -6,16 +6,16 @@ use App\Models\AttendanceDevice;
 use App\Models\AttendanceLog;
 use App\Models\PayrollSetting;
 use App\Models\User;
+use App\Services\Payroll\AttendancePunchPolicy;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class RegisterAttendancePunchAction
 {
-    /**
-     * Punches of the same type inside this window are considered duplicates.
-     */
-    public const DUPLICATE_WINDOW_MINUTES = 2;
+    public function __construct(
+        private readonly AttendancePunchPolicy $punchPolicy,
+    ) {}
 
     /**
      * Register an attendance punch for a collaborator.
@@ -32,6 +32,9 @@ class RegisterAttendancePunchAction
      *     photo?: string|null,
      *     edit_reason?: string|null,
      * }  $data
+     *
+     * @throws ValidationException
+     * @throws \App\Services\Payroll\Exceptions\AttendancePunchNotAllowedException
      */
     public function execute(User $user, array $data, ?AttendanceDevice $device = null): AttendanceLog
     {
@@ -60,14 +63,21 @@ class RegisterAttendancePunchAction
             ]);
         }
 
-        if ($this->alreadyRegistered($user->id, $type, $punchedAt)) {
-            throw ValidationException::withMessages([
-                'type' => 'Este registro ya se guardó hace unos momentos.',
-            ]);
-        }
+        // The daily sequence is the source of truth: it prevents an entry from
+        // being registered twice while allowing a new entry after the exit and
+        // as many lunch or permission cycles as the collaborator needs.
+        $this->punchPolicy->ensureCanRegister($user, $type, $punchedAt->toDateString());
 
         $latitude = $data['latitude'] ?? null;
         $longitude = $data['longitude'] ?? null;
+
+        // Kiosk punches always keep the coordinates of the device: they are the
+        // evidence of where the collaborator registered.
+        if ($source === AttendanceLog::SOURCE_KIOSK && ($latitude === null || $longitude === null)) {
+            throw ValidationException::withMessages([
+                'location' => 'No se pudo obtener la ubicación del dispositivo. Activa la ubicación e intenta de nuevo.',
+            ]);
+        }
 
         if ($source === AttendanceLog::SOURCE_REMOTE) {
             $settings = PayrollSetting::current();
@@ -100,17 +110,6 @@ class RegisterAttendancePunchAction
         }
 
         return $log;
-    }
-
-    private function alreadyRegistered(int $userId, string $type, Carbon $punchedAt): bool
-    {
-        return AttendanceLog::forUser($userId)
-            ->where('type', $type)
-            ->whereBetween('punched_at', [
-                $punchedAt->copy()->subMinutes(self::DUPLICATE_WINDOW_MINUTES),
-                $punchedAt->copy()->addMinutes(self::DUPLICATE_WINDOW_MINUTES),
-            ])
-            ->exists();
     }
 
     /**

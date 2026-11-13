@@ -5,6 +5,14 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Monitor, VideoCamera, Delete, RefreshRight, CircleClose, CopyDocument, Edit, Key } from '@element-plus/icons-vue';
 import axios from 'axios';
+import { readDeviceKey } from '@/Utils/attendanceDeviceKey';
+import {
+    forgetDeviceToken,
+    kioskUrlWithToken,
+    readDeviceToken,
+    saveDeviceToken,
+} from '@/Utils/attendanceDeviceToken';
+import { copyText } from '@/Utils/clipboard';
 
 const props = defineProps({
     devices: Array,
@@ -17,12 +25,16 @@ const props = defineProps({
     registrationPasswordConfigured: Boolean,
 });
 
-const TOKEN_KEY = 'attendance_device_token';
-
 const currentDevice = ref(null);
+// Device already registered from this browser that needs to be reactivated
+// because the token is gone (cleared browsing data).
+const recoverableDevice = ref(null);
 const checkingCurrent = ref(true);
+const reactivating = ref(false);
 const dialogVisible = ref(false);
 const saving = ref(false);
+
+const deviceKey = readDeviceKey();
 
 const form = reactive({
     name: '',
@@ -71,31 +83,110 @@ const formatDateTime = (value) => {
     });
 };
 
-const resolveCurrentDevice = async () => {
-    checkingCurrent.value = true;
-    const token = localStorage.getItem(TOKEN_KEY);
+/**
+ * The browser may be a device that is already registered but lost its token
+ * (cleared browsing data, iOS storage cleanup). Ask the server to recognize its
+ * fingerprint instead of offering a duplicate registration.
+ */
+const recognizeRegisteredDevice = async () => {
+    if (!deviceKey) {
+        recoverableDevice.value = null;
 
-    if (!token) {
-        currentDevice.value = null;
-        checkingCurrent.value = false;
         return;
     }
 
     try {
-        const { data } = await axios.post(route('attendance.kiosk.bootstrap'), {}, {
-            headers: { 'X-Attendance-Device': token },
+        const { data } = await axios.post(route('attendance.kiosk.recover'), {
+            device_key: deviceKey,
+            password: props.registrationPassword || null,
         });
-        currentDevice.value = data.device;
+
+        if (data.status === 'authorized') {
+            saveDeviceToken(data.token);
+            currentDevice.value = data.device;
+            recoverableDevice.value = null;
+            return;
+        }
+
+        recoverableDevice.value = data.device ?? null;
     } catch {
-        // Token revoked or invalid: forget it in this browser.
-        localStorage.removeItem(TOKEN_KEY);
-        currentDevice.value = null;
+        recoverableDevice.value = null;
+    }
+};
+
+const resolveCurrentDevice = async () => {
+    checkingCurrent.value = true;
+
+    const token = readDeviceToken();
+
+    if (token) {
+        try {
+            const { data } = await axios.post(route('attendance.kiosk.bootstrap'), {
+                device_key: deviceKey,
+            }, {
+                headers: { 'X-Attendance-Device': token },
+            });
+
+            currentDevice.value = data.device;
+            checkingCurrent.value = false;
+            return;
+        } catch (error) {
+            if ([401, 403].includes(error?.response?.status)) {
+                // Token revoked or invalid: forget it in this browser.
+                forgetDeviceToken();
+            }
+        }
+    }
+
+    await recognizeRegisteredDevice();
+    checkingCurrent.value = false;
+};
+
+/**
+ * Give this browser a new token for a device that is already registered. The
+ * shared password is required by the server, and this module already has it.
+ */
+const reactivateDevice = async () => {
+    const device = recoverableDevice.value;
+
+    if (!device) return;
+
+    if (!props.registrationPassword) {
+        ElMessage.warning('Configura la contraseña de registro para reactivar este dispositivo.');
+        return;
+    }
+
+    reactivating.value = true;
+
+    try {
+        const { data } = await axios.post(route('attendance.kiosk.recover'), {
+            device_key: deviceKey,
+            password: props.registrationPassword,
+            device_id: device.id,
+        });
+
+        if (data.status !== 'authorized') {
+            ElMessage.error('No se pudo reactivar el dispositivo.');
+            return;
+        }
+
+        saveDeviceToken(data.token);
+        currentDevice.value = data.device;
+        recoverableDevice.value = null;
+        ElMessage.success('Dispositivo reactivado en este navegador.');
+    } catch (error) {
+        ElMessage.error(error?.response?.data?.errors?.password?.[0] || 'No se pudo reactivar el dispositivo.');
     } finally {
-        checkingCurrent.value = false;
+        reactivating.value = false;
     }
 };
 
 const openRegisterDialog = () => {
+    if (currentDevice.value) {
+        ElMessage.info('Este dispositivo ya está autorizado.');
+        return;
+    }
+
     form.name = '';
     form.location = '';
     form.notes = '';
@@ -117,14 +208,22 @@ const register = async () => {
             name: form.name,
             location: form.location || null,
             notes: form.notes || null,
+            device_key: deviceKey,
         });
 
-        localStorage.setItem(TOKEN_KEY, data.token);
+        saveDeviceToken(data.token);
         currentDevice.value = data.device;
         dialogVisible.value = false;
         ElMessage.success('Dispositivo registrado correctamente en este navegador.');
         router.reload({ only: ['devices'] });
     } catch (error) {
+        if (error.response?.status === 409) {
+            dialogVisible.value = false;
+            ElMessage.warning(error.response.data?.message || 'Este dispositivo ya está autorizado.');
+            await resolveCurrentDevice();
+            return;
+        }
+
         const serverErrors = error.response?.data?.errors || {};
         Object.keys(errors).forEach((key) => {
             errors[key] = serverErrors[key]?.[0] || '';
@@ -150,7 +249,7 @@ const revoke = (device) => {
             await axios.patch(route('payroll.devices.revoke', device.id));
 
             if (currentDevice.value?.id === device.id) {
-                localStorage.removeItem(TOKEN_KEY);
+                forgetDeviceToken();
                 currentDevice.value = null;
             }
 
@@ -188,7 +287,7 @@ const remove = (device) => {
             await axios.delete(route('payroll.devices.destroy', device.id));
 
             if (currentDevice.value?.id === device.id) {
-                localStorage.removeItem(TOKEN_KEY);
+                forgetDeviceToken();
                 currentDevice.value = null;
             }
 
@@ -201,16 +300,22 @@ const remove = (device) => {
 };
 
 const openKiosk = () => {
-    window.open(props.kioskUrl, '_blank');
+    const url = kioskUrlWithToken(props.kioskUrl, readDeviceToken());
+    // Safari may ignore the new tab: fall back to the current one.
+    const opened = window.open(url, '_blank');
+
+    if (!opened) {
+        window.location.href = url;
+    }
 };
 
 const copyRegistrationLink = async () => {
-    try {
-        await navigator.clipboard.writeText(props.registrationUrl);
+    if (await copyText(props.registrationUrl)) {
         ElMessage.success('Link de registro copiado.');
-    } catch {
-        ElMessage.warning('No se pudo copiar el link. Cópialo manualmente.');
+        return;
     }
+
+    ElMessage.warning('No se pudo copiar el link. Cópialo manualmente.');
 };
 
 const openEditDialog = (device) => {
@@ -287,7 +392,11 @@ const savePassword = async () => {
 
         passwordDialogVisible.value = false;
         ElMessage.success('Contraseña de registro actualizada.');
-        router.reload({ only: ['registrationPassword', 'registrationPasswordConfigured'] });
+        router.reload({
+            only: ['registrationPassword', 'registrationPasswordConfigured'],
+            // With the new password this browser can be recognized again.
+            onSuccess: () => resolveCurrentDevice(),
+        });
     } catch (error) {
         passwordError.value = error.response?.data?.errors?.password?.[0]
             || 'No se pudo actualizar la contraseña de registro.';
@@ -318,7 +427,13 @@ onMounted(resolveCurrentDevice);
                     <el-button :icon="VideoCamera" @click="openKiosk">
                         Abrir kiosco
                     </el-button>
-                    <el-button type="primary" color="#f26c17" :icon="Plus" @click="openRegisterDialog">
+                    <el-button
+                        v-if="!checkingCurrent && !currentDevice && !recoverableDevice"
+                        type="primary"
+                        color="#f26c17"
+                        :icon="Plus"
+                        @click="openRegisterDialog"
+                    >
                         Registrar este dispositivo
                     </el-button>
                 </div>
@@ -342,6 +457,16 @@ onMounted(resolveCurrentDevice);
                                 </p>
                                 <p class="text-sm text-gray-500">{{ currentDevice.location || 'Sin ubicación registrada' }}</p>
                             </template>
+                            <template v-else-if="recoverableDevice">
+                                <p class="text-lg font-bold text-gray-800 dark:text-white">
+                                    {{ recoverableDevice.name }}
+                                    <el-tag type="warning" size="small" effect="plain" class="ml-2">Por reactivar</el-tag>
+                                </p>
+                                <p class="text-sm text-gray-500">
+                                    Este dispositivo ya estaba registrado, pero este navegador perdió su acceso.
+                                    Reactívalo para no crearlo otra vez.
+                                </p>
+                            </template>
                             <template v-else>
                                 <p class="text-lg font-bold text-gray-800 dark:text-white">Dispositivo sin registrar</p>
                                 <p class="text-sm text-gray-500">
@@ -350,7 +475,23 @@ onMounted(resolveCurrentDevice);
                             </template>
                         </div>
                     </div>
-                    <el-button v-if="!checkingCurrent && !currentDevice" type="primary" color="#f26c17" :icon="Plus" @click="openRegisterDialog">
+                    <el-button
+                        v-if="!checkingCurrent && recoverableDevice"
+                        type="primary"
+                        color="#f26c17"
+                        :icon="RefreshRight"
+                        :loading="reactivating"
+                        @click="reactivateDevice"
+                    >
+                        Reactivar este dispositivo
+                    </el-button>
+                    <el-button
+                        v-else-if="!checkingCurrent && !currentDevice"
+                        type="primary"
+                        color="#f26c17"
+                        :icon="Plus"
+                        @click="openRegisterDialog"
+                    >
                         Registrar este dispositivo
                     </el-button>
                 </div>
@@ -486,7 +627,7 @@ onMounted(resolveCurrentDevice);
                 :closable="false"
                 show-icon
                 title="Cómo funciona"
-                description="Al registrar un dispositivo, se genera un token que se guarda únicamente en el navegador de ese dispositivo. También puedes compartir el link de registro para autorizar un dispositivo sin iniciar sesión: solo pedirá sus datos y la contraseña de registro. En tablets compartidas se recomienda abrir el kiosco en pantalla completa y evitar borrar los datos del navegador."
+                description="Al registrar un dispositivo, se genera un token que se guarda únicamente en el navegador de ese dispositivo. También puedes compartir el link de registro para autorizar un dispositivo sin iniciar sesión: solo pedirá sus datos y la contraseña de registro. Si el navegador borra sus datos (o el sistema los elimina después de unos días), el kiosco reconoce el dispositivo por su huella y lo reactiva sin registrarlo de nuevo: solo pide la contraseña de registro en este módulo. En tablets compartidas se recomienda abrir el kiosco en pantalla completa."
             />
         </div>
 

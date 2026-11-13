@@ -6,6 +6,7 @@ use App\Models\Ticket;
 use App\Models\User;
 use App\Models\WorkAcceptanceReport;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
@@ -139,6 +140,8 @@ class WorkAcceptanceReportControllerTest extends TestCase
 
     public function test_store_signature_locks_report(): void
     {
+        Storage::fake('public');
+
         $ticket = Ticket::factory()->create();
         $report = WorkAcceptanceReport::factory()->create([
             'ticket_id' => $ticket->id,
@@ -163,7 +166,9 @@ class WorkAcceptanceReportControllerTest extends TestCase
         $this->assertNotNull($report->signed_at);
         $this->assertEquals('Juan Pérez', $report->signatory_name);
         $this->assertEquals('Todo en orden.', $report->client_comments);
-        $this->assertNotEmpty($report->signature_data);
+        // The signature is stored as a PNG file, not as the base64 blob.
+        $this->assertNotEmpty($report->signature_path);
+        Storage::disk('public')->assertExists($report->signature_path);
     }
 
     public function test_store_signature_prevents_double_signing(): void

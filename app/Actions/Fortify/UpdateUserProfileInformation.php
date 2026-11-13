@@ -2,6 +2,7 @@
 
 namespace App\Actions\Fortify;
 
+use App\Actions\Payroll\EnrollProfilePhotoAction;
 use App\Models\User;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Support\Facades\Validator;
@@ -10,6 +11,10 @@ use Laravel\Fortify\Contracts\UpdatesUserProfileInformation;
 
 class UpdateUserProfileInformation implements UpdatesUserProfileInformation
 {
+    public function __construct(
+        private readonly EnrollProfilePhotoAction $enrollProfilePhotoAction,
+    ) {}
+
     /**
      * Validate and update the given user's profile information.
      *
@@ -25,6 +30,10 @@ class UpdateUserProfileInformation implements UpdatesUserProfileInformation
 
         if (isset($input['photo'])) {
             $user->updateProfilePhoto($input['photo']);
+
+            // The portrait doubles as the kiosk face reference: the new photo
+            // replaces the previous one in the collection.
+            $this->enrollProfilePhotoAction->enrollFromStoredPhoto($user, $user);
         }
 
         if ($input['email'] !== $user->email &&
