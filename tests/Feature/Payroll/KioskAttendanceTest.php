@@ -8,9 +8,11 @@ use App\Models\AttendanceLog;
 use App\Models\PayrollProfile;
 use App\Models\PayrollSetting;
 use App\Models\User;
+use App\Services\Payroll\FaceRecognition\FaceRecognitionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
+use Mockery\MockInterface;
 use Tests\TestCase;
 
 class KioskAttendanceTest extends TestCase
@@ -289,5 +291,136 @@ class KioskAttendanceTest extends TestCase
         $this->assertDatabaseCount('attendance_logs', 1);
 
         Carbon::setTestNow();
+    }
+
+    public function test_identify_returns_the_available_movements_and_a_token(): void
+    {
+        $this->postJson(route('attendance.kiosk.identify'), [
+            'method' => 'employee_number',
+            'employee_number' => 'EMP-0100',
+        ], $this->deviceHeaders())
+            ->assertOk()
+            ->assertJsonPath('user_name', 'Juan Pérez')
+            ->assertJsonPath('employee_number', 'EMP-0100')
+            ->assertJsonPath('identifier_method', AttendanceLog::IDENTIFIER_EMPLOYEE_NUMBER)
+            ->assertJsonStructure([
+                'identification_token',
+                'expires_in',
+                'options' => [['type', 'label', 'allowed', 'reason', 'last_registered_at']],
+            ])
+            ->assertJsonPath('options.0.type', AttendanceLog::TYPE_CHECK_IN)
+            ->assertJsonPath('options.0.allowed', true)
+            ->assertJsonPath('options.1.type', AttendanceLog::TYPE_LUNCH_START)
+            ->assertJsonPath('options.1.allowed', false);
+
+        $this->assertDatabaseCount('attendance_logs', 0);
+    }
+
+    public function test_face_identification_is_reused_by_multiple_punches(): void
+    {
+        PayrollSetting::current()->update(['face_recognition_enabled' => true]);
+
+        $this->mock(FaceRecognitionService::class, function (MockInterface $mock) {
+            $mock->shouldReceive('isConfigured')->andReturn(true);
+            $mock->shouldReceive('search')->once()->andReturn([
+                'external_image_id' => (string) $this->employee->id,
+                'face_id' => 'aws-face-1',
+                'similarity' => 97.5,
+            ]);
+        });
+
+        $token = $this->postJson(route('attendance.kiosk.identify'), [
+            'method' => 'face',
+            'photo' => 'data:image/jpeg;base64,/9j/AAAA',
+        ], $this->deviceHeaders())
+            ->assertOk()
+            ->json('identification_token');
+
+        $this->assertNotEmpty($token);
+
+        $this->postJson(route('attendance.kiosk.punch'), [
+            'identification_token' => $token,
+            'type' => AttendanceLog::TYPE_CHECK_IN,
+            ...$this->locationPayload(),
+        ], $this->deviceHeaders())
+            ->assertOk()
+            ->assertJsonPath('type', AttendanceLog::TYPE_CHECK_IN)
+            ->assertJsonPath('options.0.allowed', false);
+
+        $this->postJson(route('attendance.kiosk.punch'), [
+            'identification_token' => $token,
+            'type' => AttendanceLog::TYPE_LUNCH_START,
+            ...$this->locationPayload(),
+        ], $this->deviceHeaders())
+            ->assertOk()
+            ->assertJsonPath('type', AttendanceLog::TYPE_LUNCH_START);
+
+        $this->assertDatabaseCount('attendance_logs', 2);
+    }
+
+    public function test_punch_with_an_invalid_identification_token_is_rejected(): void
+    {
+        $this->postJson(route('attendance.kiosk.punch'), [
+            'identification_token' => 'invalid-token',
+            'type' => AttendanceLog::TYPE_CHECK_IN,
+            ...$this->locationPayload(),
+        ], $this->deviceHeaders())
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'identification_expired');
+
+        $this->assertDatabaseCount('attendance_logs', 0);
+    }
+
+    public function test_punch_rejects_a_movement_already_registered_and_returns_the_options(): void
+    {
+        $token = $this->postJson(route('attendance.kiosk.identify'), [
+            'method' => 'employee_number',
+            'employee_number' => 'EMP-0100',
+        ], $this->deviceHeaders())
+            ->assertOk()
+            ->json('identification_token');
+
+        $this->postJson(route('attendance.kiosk.punch'), [
+            'identification_token' => $token,
+            'type' => AttendanceLog::TYPE_CHECK_IN,
+            ...$this->locationPayload(),
+        ], $this->deviceHeaders())->assertOk();
+
+        $this->postJson(route('attendance.kiosk.punch'), [
+            'identification_token' => $token,
+            'type' => AttendanceLog::TYPE_CHECK_IN,
+            ...$this->locationPayload(),
+        ], $this->deviceHeaders())
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'attendance_punch_not_allowed')
+            ->assertJsonValidationErrors('type')
+            ->assertJsonPath('options.0.allowed', false)
+            ->assertJsonPath('options.0.last_registered_at', now()->format('H:i'));
+
+        $this->assertDatabaseCount('attendance_logs', 1);
+    }
+
+    public function test_punch_allows_a_new_entry_after_the_exit(): void
+    {
+        $token = $this->postJson(route('attendance.kiosk.identify'), [
+            'method' => 'employee_number',
+            'employee_number' => 'EMP-0100',
+        ], $this->deviceHeaders())
+            ->assertOk()
+            ->json('identification_token');
+
+        foreach ([
+            AttendanceLog::TYPE_CHECK_IN,
+            AttendanceLog::TYPE_CHECK_OUT,
+            AttendanceLog::TYPE_CHECK_IN,
+        ] as $type) {
+            $this->postJson(route('attendance.kiosk.punch'), [
+                'identification_token' => $token,
+                'type' => $type,
+                ...$this->locationPayload(),
+            ], $this->deviceHeaders())->assertOk();
+        }
+
+        $this->assertDatabaseCount('attendance_logs', 3);
     }
 }
